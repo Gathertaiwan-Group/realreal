@@ -172,6 +172,65 @@ function HeroSection({ content }: { content?: HeroContent | null }) {
   )
 }
 
+function FeatureCardsSection() {
+  const cards = [
+    {
+      src: "/brand/card1.jpg",
+      alt: "聰明生活科普文章",
+      label: "聰明生活",
+      href: "/blog",
+    },
+    {
+      src: "/brand/card2.jpg",
+      alt: "了解我們的產品",
+      label: "了解產品",
+      href: "/shop",
+    },
+    {
+      src: "/brand/card3.jpg",
+      alt: "公益里程計畫",
+      label: "公益里程",
+      href: "/idea",
+    },
+  ]
+
+  return (
+    <section className="py-6 sm:py-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          {cards.map((card) => (
+            <Link
+              key={card.href}
+              href={card.href}
+              className="group relative block aspect-square overflow-hidden rounded-xl"
+            >
+              <Image
+                src={card.src}
+                alt={card.alt}
+                fill
+                sizes="(max-width: 640px) 100vw, 33vw"
+                className="object-cover transition-transform duration-500 group-hover:scale-105"
+              />
+              {/* subtle dark overlay */}
+              <div className="absolute inset-0 bg-black/25 transition-colors duration-300 group-hover:bg-black/35" />
+              {/* label */}
+              <div className="absolute bottom-0 left-0 right-0 p-5">
+                <p
+                  className="text-lg font-bold text-white tracking-wide"
+                  style={{ fontFamily: "'Gill Sans', 'Gill Sans MT', Calibri, sans-serif" }}
+                >
+                  {card.label}
+                </p>
+                <p className="mt-1 text-xs text-white/80">了解更多 →</p>
+              </div>
+            </Link>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
 function MembershipSection() {
   const tiers = [
     {
@@ -646,6 +705,9 @@ export default async function HomePage() {
 
       {/* 1. Hero */}
       <HeroSection content={heroContent} />
+
+      {/* 1b. Feature cards (below hero) */}
+      <FeatureCardsSection />
 
       {/* 2. Membership tiers */}
       <MembershipSection />

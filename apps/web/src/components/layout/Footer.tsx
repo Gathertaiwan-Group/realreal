@@ -86,7 +86,7 @@ export function Footer() {
             {/* Social icons */}
             <div className="mt-6 flex gap-4">
               <a
-                href="https://www.instagram.com"
+                href="https://www.instagram.com/realreal.yinsin/"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Instagram"
