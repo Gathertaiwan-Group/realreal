@@ -1,17 +1,7 @@
-import { Worker } from "bullmq"
-import { Redis } from "ioredis"
 import { supabase } from "../lib/supabase"
 import { createCvsLogistics, createHomeDelivery } from "../lib/ecpay-logistics"
 
-const connection = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
-  maxRetriesPerRequest: null,
-})
-
-export const logisticsWorker = new Worker("inventory", async (job) => {
-  if (job.name !== "create-shipment") return
-
-  const { orderId } = job.data as { orderId: string }
-
+export async function processCreateShipment(orderId: string) {
   // Fetch order with address
   const { data: order } = await supabase
     .from("orders")
@@ -90,7 +80,4 @@ export const logisticsWorker = new Worker("inventory", async (job) => {
   }
 
   console.log(`[logistics-creator] shipment created for order ${orderId}, logisticsId=${logisticsId}`)
-}, {
-  connection,
-  // Only process create-shipment jobs; other job names on this queue are handled by other workers
-})
+}
