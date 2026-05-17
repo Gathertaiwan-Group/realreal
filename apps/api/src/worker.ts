@@ -1,3 +1,4 @@
+import http from "http"
 import pino from "pino"
 import { inventoryQueue } from "./lib/queue"
 import { inventoryWorker } from "./workers/inventory-worker"
@@ -46,6 +47,20 @@ registerSchedulers().catch((err) => {
   process.exit(1)
 })
 
+// Minimal liveness endpoint so Railway's shared /health check passes for the
+// worker service (it has no HTTP API otherwise).
+const healthServer = http.createServer((req, res) => {
+  if (req.url === "/health") {
+    res.writeHead(200, { "Content-Type": "application/json" })
+    res.end(JSON.stringify({ status: "ok", role: "worker", timestamp: new Date().toISOString() }))
+    return
+  }
+  res.writeHead(404)
+  res.end()
+})
+healthServer.listen(Number(process.env.PORT ?? 4001), () =>
+  logger.info({ port: process.env.PORT ?? 4001 }, "worker health server listening"))
+
 logger.info("Worker process started (inventory, invoice, subscription-billing)")
 
 let shuttingDown = false
@@ -53,6 +68,7 @@ async function shutdown(signal: string) {
   if (shuttingDown) return
   shuttingDown = true
   logger.info({ signal }, "shutting down workers")
+  healthServer.close()
   await Promise.allSettled(workers.map(({ worker }) => worker.close()))
   process.exit(0)
 }
