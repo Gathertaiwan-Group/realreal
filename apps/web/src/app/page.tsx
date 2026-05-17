@@ -78,23 +78,32 @@ type HeroContent = {
 }
 
 function HeroSection({ content }: { content?: HeroContent | null }) {
-  const bgImage = content?.image || "/brand/hero-banner.jpg"
-  const bgScale = content?.image_scale ?? 100
-  const bgPosX = content?.image_position_x ?? 50
-  const bgPosY = content?.image_position_y ?? 50
+  const banner = content?.image || "/home/banner.jpg"
 
   return (
-    <section className="relative overflow-hidden min-h-[75vh] lg:min-h-[82vh]">
-      <div
-        className="absolute inset-0"
-        style={{
-          backgroundImage: `url('${bgImage}')`,
-          backgroundSize: `${bgScale}%`,
-          backgroundPosition: `${bgPosX}% ${bgPosY}%`,
-          backgroundRepeat: "no-repeat",
-          backgroundColor: "#eef3f9",
-        }}
-      />
+    <section>
+      <img src={banner} alt="" className="w-full block" />
+    </section>
+  )
+}
+
+function HomeSquareImages() {
+  return (
+    <section className="py-6 sm:py-8">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          {[2, 3, 4, 5].map((n) => (
+            <div key={n} className="relative aspect-square overflow-hidden rounded-xl">
+              <img
+                src={`/home/${n}.jpg`}
+                alt=""
+                loading="lazy"
+                className="w-full h-full object-cover"
+              />
+            </div>
+          ))}
+        </div>
+      </div>
     </section>
   )
 }
@@ -151,80 +160,6 @@ function FeatureCardsSection() {
                 <p className="mt-1 text-xs text-white/80">了解更多 →</p>
               </div>
             </Link>
-          ))}
-        </div>
-      </div>
-    </section>
-  )
-}
-
-function MembershipSection() {
-  const tiers = [
-    {
-      name: "初心之友",
-      stars: 1,
-      benefits: [
-        "常態 95折",
-        "消費 2.3% 累積公益存款或購物金",
-        "生日 95折 + 公益存款雙倍",
-      ],
-      qualification: "註冊即可成為",
-    },
-    {
-      name: "知心之友",
-      stars: 2,
-      benefits: [
-        "常態 95折",
-        "消費 3.3% 累積公益存款或購物金",
-        "生日 9折 + 公益存款雙倍",
-        "線上講座參與資格",
-      ],
-      qualification: "累計消費滿 NT$3,500",
-    },
-    {
-      name: "同心之友",
-      stars: 3,
-      benefits: [
-        "常態 9折",
-        "消費 3.3% 累積公益存款或購物金",
-        "生日公益存款雙倍 + 專屬生日禮",
-        "線上 + 實體活動參與資格",
-      ],
-      qualification: "累計消費滿 NT$12,000",
-    },
-  ]
-
-  return (
-    <section className="bg-[#fffeee] py-16 sm:py-20">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl">
-          消費額 2.3% 累積公益存款或購物金
-        </h2>
-
-        {/* Membership tier image from WordPress */}
-        <div className="mt-10">
-          <Image
-            src="https://realreal.cc/wp-content/uploads/2026/01/會員制度表0106-2.png"
-            alt="會員等級：初心之友、知心之友、同心之友"
-            width={1800}
-            height={600}
-            className="mx-auto w-full max-w-5xl rounded-xl"
-            unoptimized
-          />
-        </div>
-
-        {/* Option B: Tailwind tier cards (always rendered below for accessibility / SEO) */}
-        <div className="sr-only">
-          {tiers.map((tier) => (
-            <div key={tier.name}>
-              <h3>{tier.name}</h3>
-              <ul>
-                {tier.benefits.map((b) => (
-                  <li key={b}>{b}</li>
-                ))}
-              </ul>
-              <p>{tier.qualification}</p>
-            </div>
           ))}
         </div>
       </div>
@@ -632,6 +567,9 @@ export default async function HomePage() {
 
       {/* 1. Hero */}
       <HeroSection content={heroContent} />
+
+      {/* 1a. Square images (below banner) */}
+      <HomeSquareImages />
 
       {/* 1b. Feature cards (below hero) */}
       <FeatureCardsSection />
