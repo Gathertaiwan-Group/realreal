@@ -239,16 +239,18 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
 
-        {/* 3-column shop detail */}
-        {hasShopColumns && (
-          <div className="mt-14 border-t border-gray-200 pt-10">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-10 lg:gap-14">
-              {product.shop_left && <RichContent html={product.shop_left} />}
-              {product.shop_middle && <RichContent html={product.shop_middle} />}
-              {product.shop_right && <RichContent html={product.shop_right} />}
-            </div>
-          </div>
-        )}
+        {/* Product info images (shared 6–14, full-width vertical stack) */}
+        <div className="mt-14">
+          {[6, 7, 8, 9, 10, 11, 12, 13, 14].map((n) => (
+            <img
+              key={n}
+              src={`/product-info/${n}.jpg`}
+              alt={`商品說明 ${n}`}
+              loading="lazy"
+              className="w-full block"
+            />
+          ))}
+        </div>
 
         {/* Reviews */}
         <div className="mt-14 border-t border-gray-200 pt-10">
