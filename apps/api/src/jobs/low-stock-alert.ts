@@ -1,10 +1,4 @@
-import { Worker } from "bullmq"
-import { Redis } from "ioredis"
 import { supabase } from "../lib/supabase"
-
-const connection = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
-  maxRetriesPerRequest: null,
-})
 
 export const LOW_STOCK_THRESHOLD = 5
 
@@ -24,9 +18,3 @@ export async function processLowStockAlert() {
 
   return { count: data?.length ?? 0 }
 }
-
-export const lowStockWorker = new Worker("inventory", async (job) => {
-  if (job.name === "low-stock-check") {
-    return processLowStockAlert()
-  }
-}, { connection })
