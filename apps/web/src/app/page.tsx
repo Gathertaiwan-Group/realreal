@@ -571,9 +571,6 @@ export default async function HomePage() {
       {/* 1a. Square images (below banner) */}
       <HomeSquareImages />
 
-      {/* 1b. Feature cards (below hero) */}
-      <FeatureCardsSection />
-
       {/* 2. Product section: 純植物蛋白粉 */}
       <ProductSection
         title="純植物蛋白粉"
