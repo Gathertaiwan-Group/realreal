@@ -4,18 +4,7 @@ import { ChevronRight } from "lucide-react"
 import { getProductBySlug } from "@/lib/catalog"
 import { AddToCartSection } from "@/components/product/AddToCartSection"
 import { ImageGallery } from "@/components/product/ImageGallery"
-import { ReviewForm } from "@/components/product/ReviewForm"
-import { createClient } from "@/lib/supabase/server"
-
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
-
-type Review = {
-  id: string
-  rating: number
-  content: string
-  author_name: string
-  created_at: string
-}
 
 function displayName(name: string) {
   return name || "匿名"
@@ -123,24 +112,6 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
   const images = product.images ?? []
   const mainImage = images[0]
-
-  let reviews: Review[] = []
-  let averageRating = 0
-  let totalCount = 0
-  try {
-    const reviewsRes = await fetch(`${API_URL}/products/${product.id}/reviews`, { next: { revalidate: 60 } })
-    if (reviewsRes.ok) {
-      const json = await reviewsRes.json()
-      reviews = json.data ?? []
-      averageRating = json.averageRating ?? 0
-      totalCount = json.totalCount ?? 0
-    }
-  } catch { /* API unavailable */ }
-
-  const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  const { data: sessionData } = await supabase.auth.getSession()
-  const token = sessionData?.session?.access_token ?? ""
 
   const hasShopColumns = product.shop_left || product.shop_middle || product.shop_right
   const isHtml = (s: string | null) => (s ?? "").includes("<")
@@ -252,52 +223,6 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           ))}
         </div>
 
-        {/* Reviews */}
-        <div className="mt-14 border-t border-gray-200 pt-10">
-          <h2 className="text-xl font-bold mb-2" style={{ color: "#10305a" }}>商品評價</h2>
-          <div className="flex items-center gap-3 mb-6">
-            <span className="text-3xl font-bold" style={{ color: "#10305a" }}>
-              {totalCount > 0 ? averageRating.toFixed(1) : "-"}
-            </span>
-            <div>
-              <StarRating rating={Math.round(averageRating)} />
-              <p className="text-sm" style={{ color: "#687279" }}>
-                {totalCount > 0 ? `${totalCount} 則評價` : "尚無評價"}
-              </p>
-            </div>
-          </div>
-
-          {user && token && (
-            <div className="mb-8">
-              <ReviewForm productId={product.id} token={token} />
-            </div>
-          )}
-
-          <div className="space-y-4">
-            {reviews.map(review => (
-              <div key={review.id} className="rounded-[10px] border border-gray-200 p-5">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium" style={{ color: "#10305a" }}>
-                      {displayName(review.author_name)}
-                    </span>
-                    <StarRating rating={review.rating} />
-                  </div>
-                  <span className="text-xs" style={{ color: "#687279" }}>
-                    {new Date(review.created_at).toLocaleDateString("zh-TW")}
-                  </span>
-                </div>
-                <p style={{ fontSize: "15px", lineHeight: "1.8", color: "#687279", marginTop: "0.5rem" }}>
-                  {review.content}
-                </p>
-              </div>
-            ))}
-          </div>
-
-          {reviews.length === 0 && !user && (
-            <p className="text-sm text-center py-8" style={{ color: "#687279" }}>此商品尚無評價</p>
-          )}
-        </div>
       </div>
     </div>
   )

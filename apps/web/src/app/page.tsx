@@ -2,7 +2,6 @@ import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { ReviewImagesCarousel } from "@/components/ui/review-images-carousel"
 import { getProducts, getCategories } from "@/lib/catalog"
 import type { Product, Category } from "@/lib/catalog"
 import { getSiteContent, getPosts } from "@/lib/content"
@@ -383,61 +382,6 @@ function BlogSection({ posts }: { posts: Post[] }) {
   )
 }
 
-type Testimonial = { name: string; text: string; rating?: number }
-
-const defaultReviews: Testimonial[] = [
-  {
-    name: "小美",
-    text: "喝了一個月的植物蛋白粉，精神變得好多！味道也很好入口，推薦給怕奶味的人。",
-  },
-  {
-    name: "阿凱",
-    text: "凍乾水果真的超方便，帶去辦公室當零食，同事都問我在哪裡買的。",
-  },
-  {
-    name: "Jenny",
-    text: "很喜歡誠真的理念，買東西還能做公益，而且產品品質真的很好！",
-  },
-]
-
-
-function ReviewsSection({ testimonials }: { testimonials?: Testimonial[] | null }) {
-  const reviews = testimonials && testimonials.length > 0 ? testimonials : defaultReviews
-
-  return (
-    <section className="py-16 sm:py-20">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl">
-          使用者真實回饋
-        </h2>
-
-        {/* DB-driven text testimonials */}
-        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {reviews.map((review) => (
-            <Card
-              key={review.name}
-              className="border-0 bg-[#f9f9f6] shadow-sm p-6"
-            >
-              <div className="flex items-center gap-1 text-yellow-400 text-lg mb-3">
-                {"★".repeat(review.rating ?? 5)}
-              </div>
-              <p className="text-sm leading-relaxed text-[#687279] italic">
-                &ldquo;{review.text}&rdquo;
-              </p>
-              <p className="mt-4 text-sm font-semibold text-[#10305a]">
-                — {review.name}
-              </p>
-            </Card>
-          ))}
-        </div>
-
-        {/* Real customer review screenshots - carousel */}
-        <ReviewImagesCarousel />
-      </div>
-    </section>
-  )
-}
-
 function RetailSection() {
   const stores = [
     {
@@ -551,13 +495,12 @@ export default async function HomePage() {
   ])
 
   // Fetch products, content and blog posts in parallel
-  const [proteinProducts, fruitProducts, heroContent, blogResult, testimonials] =
+  const [proteinProducts, fruitProducts, heroContent, blogResult] =
     await Promise.all([
       getProductsByCategory(proteinSlug ?? "protein"),
       getProductsByCategory(fruitSlug ?? "freeze-dried"),
       getSiteContent<HeroContent>("homepage_hero"),
       getPosts({ limit: 3 }),
-      getSiteContent<Testimonial[]>("testimonials"),
     ])
 
   return (
@@ -589,10 +532,7 @@ export default async function HomePage() {
         />
       </div>
 
-      {/* 5. Customer reviews (before blog, matching WordPress order) */}
-      <ReviewsSection testimonials={testimonials} />
-
-      {/* 6. Blog section */}
+      {/* 5. Blog section */}
       <BlogSection posts={blogResult.data} />
 
       {/* 7. Retail stores */}
