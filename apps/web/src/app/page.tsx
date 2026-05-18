@@ -569,8 +569,6 @@ export default async function HomePage() {
       <HeroSection content={heroContent} />
 
       {/* 1a. Square images (below banner) */}
-      <HomeSquareImages />
-
       {/* 2. Product section: 純植物蛋白粉 */}
       <ProductSection
         title="純植物蛋白粉"
