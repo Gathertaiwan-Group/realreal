@@ -3,6 +3,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "https://realreal-seven.vercel.app",
+  "https://realreal-store.vercel.app",
   "https://realreal.cc",
   "https://www.realreal.cc",
 ]
