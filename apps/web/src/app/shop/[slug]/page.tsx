@@ -6,22 +6,6 @@ import { AddToCartSection } from "@/components/product/AddToCartSection"
 import { ImageGallery } from "@/components/product/ImageGallery"
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
-function displayName(name: string) {
-  return name || "匿名"
-}
-
-function StarRating({ rating }: { rating: number }) {
-  return (
-    <span className="inline-flex gap-0.5">
-      {[1, 2, 3, 4, 5].map((star) => (
-        <span key={star} style={{ color: star <= rating ? "#f59e0b" : "#d1d5db" }}>
-          &#9733;
-        </span>
-      ))}
-    </span>
-  )
-}
-
 const BULLET_CHARS = "✔✅✓▪▸•◆■◉"
 const BULLET_START_RE = new RegExp(`^[${BULLET_CHARS}]`)
 // Split "✔ A ✔ B" → ["✔ A", "✔ B"] by splitting on space-before-bullet
@@ -168,19 +152,6 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
             >
               {product.name}
             </h1>
-
-            {/* Stars */}
-            <div className="mt-3 flex items-center gap-1">
-              {[1, 2, 3, 4, 5].map(star => (
-                <span key={star} className="text-lg"
-                  style={{ color: star <= Math.round(averageRating) ? "#f59e0b" : "#d1d5db" }}>
-                  &#9733;
-                </span>
-              ))}
-              <span className="ml-2 text-sm" style={{ color: "#687279" }}>
-                ({totalCount > 0 ? averageRating.toFixed(1) : "尚無評價"})
-              </span>
-            </div>
 
             <div className="mt-6">
               <AddToCartSection
