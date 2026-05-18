@@ -58,9 +58,9 @@ export function Header() {
             <Image
               src="/logo.svg"
               alt="誠真生活 RealReal"
-              width={200}
-              height={100}
-              className="h-16 w-auto"
+              width={220}
+              height={110}
+              className="h-[70px] w-auto"
               priority
             />
           </Link>
