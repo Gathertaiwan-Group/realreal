@@ -42,7 +42,7 @@ export default async function AdminOrdersPage({
   let query = supabase
     .from("orders")
     .select(
-      "id, order_number, status, payment_status, payment_method, total, created_at, user_profiles(display_name, email)"
+      "id, order_number, status, payment_status, payment_method, total, created_at, user_id, guest_email"
     )
     .order("created_at", { ascending: false })
     .limit(200)
@@ -53,6 +53,19 @@ export default async function AdminOrdersPage({
   if (params.to) query = query.lte("created_at", params.to)
 
   const { data: orders } = await query
+
+  // orders has no FK to user_profiles, so resolve display names in a second query
+  const userIds = [
+    ...new Set((orders ?? []).map((o) => o.user_id).filter(Boolean) as string[]),
+  ]
+  const nameByUser = new Map<string, string | null>()
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from("user_profiles")
+      .select("user_id, display_name")
+      .in("user_id", userIds)
+    for (const p of profiles ?? []) nameByUser.set(p.user_id, p.display_name)
+  }
 
   return (
     <div>
@@ -100,15 +113,13 @@ export default async function AdminOrdersPage({
               </tr>
             ) : (
               orders.map((order) => {
-                const profile = order.user_profiles as unknown as
-                  | { display_name: string | null; email: string }
-                  | null
+                const displayName = order.user_id ? nameByUser.get(order.user_id) : null
                 return (
                   <tr key={order.id} className="hover:bg-zinc-50">
                     <td className="px-4 py-3 font-mono text-xs">{order.order_number}</td>
                     <td className="px-4 py-3">
-                      <p className="font-medium text-xs">{profile?.display_name ?? "訪客"}</p>
-                      <p className="text-zinc-400 text-xs">{profile?.email ?? "—"}</p>
+                      <p className="font-medium text-xs">{displayName ?? "訪客"}</p>
+                      <p className="text-zinc-400 text-xs">{order.guest_email ?? "—"}</p>
                     </td>
                     <td className="px-4 py-3">
                       <Badge className={STATUS_BADGE_CLASSES[order.status] ?? "bg-[#10305a]/10 text-[#10305a] border-[#10305a]/20"}>
