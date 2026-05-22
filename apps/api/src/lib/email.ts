@@ -1,44 +1,42 @@
-import nodemailer from "nodemailer"
+import axios from "axios"
 
-const CLIENT_ID = process.env.GMAIL_CLIENT_ID
-const CLIENT_SECRET = process.env.GMAIL_CLIENT_SECRET
-const REFRESH_TOKEN = process.env.GMAIL_REFRESH_TOKEN
-const FROM = process.env.GMAIL_FROM ?? "love@realreal.cc"
+/**
+ * Transactional email via Resend (https://resend.com).
+ * Requires RESEND_API_KEY; RESEND_FROM_EMAIL must be on a domain verified
+ * in the Resend account.
+ */
 
-let transporter: nodemailer.Transporter | null = null
+const RESEND_API_KEY = process.env.RESEND_API_KEY
+const FROM = process.env.RESEND_FROM_EMAIL ?? "誠真生活 RealReal <love@realreal.cc>"
 
-if (CLIENT_ID && CLIENT_SECRET && REFRESH_TOKEN) {
-  transporter = nodemailer.createTransport({
-    service: "gmail",
-    auth: {
-      type: "OAuth2",
-      user: FROM,
-      clientId: CLIENT_ID,
-      clientSecret: CLIENT_SECRET,
-      refreshToken: REFRESH_TOKEN,
-    },
-  })
-  console.log("[email] Gmail SMTP configured for", FROM)
+if (RESEND_API_KEY) {
+  console.log("[email] Resend configured, from:", FROM)
 } else {
-  console.warn("[email] Gmail credentials not set — emails will be logged but not sent")
+  console.warn("[email] RESEND_API_KEY not set — emails will be logged but not sent")
 }
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-  if (!transporter) {
-    console.warn(`[email] Skipping send (no Gmail config): to=${to} subject="${subject}"`)
+  if (!RESEND_API_KEY) {
+    console.warn(`[email] Skipping send (no Resend config): to=${to} subject="${subject}"`)
     return
   }
 
   try {
-    await transporter.sendMail({
-      from: `誠真生活 RealReal <${FROM}>`,
-      to,
-      subject,
-      html,
-    })
+    await axios.post(
+      "https://api.resend.com/emails",
+      { from: FROM, to, subject, html },
+      {
+        headers: {
+          Authorization: `Bearer ${RESEND_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+        timeout: 15000,
+      },
+    )
     console.log(`[email] Sent: to=${to} subject="${subject}"`)
   } catch (err) {
-    console.error(`[email] Failed to send: to=${to} subject="${subject}"`, err)
+    const detail = axios.isAxiosError(err) ? JSON.stringify(err.response?.data) : String(err)
+    console.error(`[email] Failed to send: to=${to} subject="${subject}" — ${detail}`)
     throw err
   }
 }
