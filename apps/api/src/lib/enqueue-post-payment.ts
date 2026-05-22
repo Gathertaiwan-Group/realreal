@@ -1,6 +1,7 @@
 import { supabase } from "./supabase"
 import { renderAndSendEmail } from "../workers/email-sender"
 import { incrementSpendAndUpgrade } from "./tier"
+import { inventoryQueue } from "./queue"
 
 /**
  * After a successful payment, send confirmation email, create invoice,
@@ -74,5 +75,18 @@ export async function enqueuePostPaymentJobs(orderId: string) {
     }
   } catch (err) {
     console.warn("[post-payment] invoice creation failed (non-fatal):", err)
+  }
+
+  // 3) Enqueue logistics shipment creation (processed by the inventory worker).
+  // The worker is idempotent — it re-checks order.status === "paid" and skips
+  // if a logistics record already exists.
+  try {
+    await inventoryQueue.add(
+      "create-shipment",
+      { orderId },
+      { attempts: 5, backoff: { type: "exponential", delay: 60000 } },
+    )
+  } catch (err) {
+    console.warn("[post-payment] logistics enqueue failed (non-fatal):", err)
   }
 }
