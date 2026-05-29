@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -106,10 +107,14 @@ export function PostForm({ initialData, mode }: PostFormProps) {
         : `${process.env.NEXT_PUBLIC_API_URL}/admin/posts`
 
     try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(url, {
         method: mode === "edit" ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+        },
         body: JSON.stringify(body),
       })
 

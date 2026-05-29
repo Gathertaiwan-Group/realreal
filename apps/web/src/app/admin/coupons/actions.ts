@@ -1,6 +1,7 @@
 "use server"
 
 import { revalidatePath } from "next/cache"
+import { createClient } from "@/lib/supabase/server"
 import { apiClient } from "@/lib/api-client"
 
 interface CreateCouponInput {
@@ -13,10 +14,12 @@ interface CreateCouponInput {
 }
 
 export async function createCouponAction(input: CreateCouponInput) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
   await apiClient("/admin/coupons", {
     method: "POST",
     body: JSON.stringify(input),
-    internal: true,
+    token: session?.access_token,
   })
   revalidatePath("/admin/coupons")
 }

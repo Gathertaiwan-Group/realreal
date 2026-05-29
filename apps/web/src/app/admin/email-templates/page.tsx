@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
@@ -30,8 +31,10 @@ export default function AdminEmailTemplatesPage() {
   useEffect(() => {
     async function fetchTemplates() {
       try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
         const res = await fetch(`${API_URL}/admin/site-contents`, {
-          credentials: "include",
+          headers: { Authorization: `Bearer ${session?.access_token ?? ""}` },
         })
         if (!res.ok) throw new Error("fetch failed")
         const data: SiteContent[] = await res.json()

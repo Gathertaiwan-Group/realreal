@@ -128,13 +128,8 @@ export default async function AdminSubscriptionsPage({
                       "0"
                     )}
                   </td>
-                  <td className="px-4 py-3">
-                    <Link
-                      href={`/admin/subscriptions/${sub.id}`}
-                      className="text-[#10305a] hover:underline text-xs font-medium"
-                    >
-                      管理
-                    </Link>
+                  <td className="px-4 py-3 text-xs text-zinc-400">
+                    —
                   </td>
                 </tr>
               ))
