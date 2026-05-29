@@ -89,10 +89,17 @@ export async function createPayment(
   params: CreatePaymentParams,
 ): Promise<{ paymentUrl: string; orderId: string }> {
   const token = await getToken()
+  // Allow override via env so the merchant can opt into the payment
+  // products they've actually signed up for. Default is credit-card only,
+  // which is what every PChomePay merchant has by default.
+  const payTypes = (process.env.PCHOMEPAY_PAY_TYPES ?? "CARD")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+
   const body = {
     order_id: params.orderNumber,
-    // Offer credit card + ATM + account balance + 7-11 code + post-pay
-    pay_type: ["CARD", "ATM", "ACCT", "EACH", "PI"],
+    pay_type: payTypes,
     amount: Math.round(params.amount),
     return_url: params.returnUrl,
     notify_url: params.notifyUrl,
