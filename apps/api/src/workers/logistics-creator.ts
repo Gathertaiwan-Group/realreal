@@ -49,11 +49,11 @@ export async function processCreateShipment(orderId: string) {
     )
     logisticsId = result.logisticsId
   } else {
-    // CVS: cvs_711 -> UNIMART, cvs_family -> FAMI
-    const cvsType = order.shipping_method === "cvs_711" ? "UNIMART" : "FAMI"
+    // CVS: cvs_711 -> UNIMARTC2C (店到店), cvs_family -> FAMIC2C
+    const cvsType = order.shipping_method === "cvs_711" ? "UNIMARTC2C" : "FAMIC2C"
     const result = await createCvsLogistics(
       orderId,
-      cvsType as "UNIMART" | "FAMI",
+      cvsType as "UNIMARTC2C" | "FAMIC2C",
       address.name,
       address.cvs_store_id ?? ""
     )

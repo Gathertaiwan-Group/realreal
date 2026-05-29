@@ -29,7 +29,7 @@ export interface CvsLogisticsResult {
 
 export async function createCvsLogistics(
   orderId: string,
-  cvsType: "UNIMART" | "FAMI",
+  cvsType: "UNIMARTC2C" | "FAMIC2C",
   storeName: string,
   storeId: string
 ): Promise<CvsLogisticsResult> {

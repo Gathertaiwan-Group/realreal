@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
@@ -29,10 +30,14 @@ export default function SubscribeConfirmPage() {
       setIsSubscribing(true)
       setError("")
       try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
         const res = await fetch(`${API_URL}/subscriptions`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token ?? ""}`,
+          },
           body: JSON.stringify({ planId, paymentToken: token }),
         })
         if (!res.ok) throw new Error("subscribe failed")

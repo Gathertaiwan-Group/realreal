@@ -10,10 +10,9 @@ type OrderStatus = "pending" | "paid" | "shipped" | "delivered" | "cancelled"
 
 type OrderItem = {
   id: string
-  product_name: string
-  variant_name: string
   qty: number
   unit_price: number
+  product_snapshot?: { name?: string; variant_name?: string } | null
 }
 
 type OrderDetail = {
@@ -162,8 +161,8 @@ export default async function OrderDetailPage({
               {order.items.map(item => (
                 <tr key={item.id}>
                   <td className="p-3">
-                    <p className="font-medium">{item.product_name}</p>
-                    <p className="text-zinc-500">{item.variant_name}</p>
+                    <p className="font-medium">{item.product_snapshot?.name ?? "商品"}</p>
+                    <p className="text-zinc-500">{item.product_snapshot?.variant_name ?? ""}</p>
                   </td>
                   <td className="p-3 text-center">{item.qty}</td>
                   <td className="p-3 text-right">

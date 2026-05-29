@@ -141,10 +141,10 @@ export default function CheckoutPage() {
       setCvsStoreId(storeId)
       setCvsStoreName(storeName)
       if (storeAddress) setCvsAddress(storeAddress)
-      if (subType === "FAMI") {
+      if (subType === "FAMIC2C" || subType === "FAMI") {
         setShippingMethod("family")
         setAddressType("cvs")
-      } else if (subType === "UNIMART") {
+      } else if (subType === "UNIMARTC2C" || subType === "UNIMART") {
         setShippingMethod("711")
         setAddressType("cvs")
       }
@@ -155,7 +155,7 @@ export default function CheckoutPage() {
 
   const openCvsMap = useCallback(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
-    const subType = shippingMethod === "family" ? "FAMI" : "UNIMART"
+    const subType = shippingMethod === "family" ? "FAMIC2C" : "UNIMARTC2C"
     const url = `${apiUrl}/logistics/map?logisticsSubType=${subType}&isCollection=N`
     window.open(url, "_blank", "width=800,height=600")
   }, [shippingMethod])
