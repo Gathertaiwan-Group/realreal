@@ -1,5 +1,7 @@
+import Link from "next/link"
 import { notFound } from "next/navigation"
 import { redirect } from "next/navigation"
+import { ChevronLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { apiClient } from "@/lib/api-client"
 import { Badge } from "@/components/ui/badge"
@@ -90,7 +92,14 @@ export default async function OrderDetailPage({
   const currentStepIndex = TIMELINE_ORDER.indexOf(status)
 
   return (
-    <div>
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      <Link
+        href="/my-account/orders"
+        className="mb-4 inline-flex items-center gap-1 text-sm text-[#10305a] hover:underline"
+      >
+        <ChevronLeft className="h-4 w-4" />
+        回訂單列表
+      </Link>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-[#10305a]">訂單詳情</h1>
         <p className="text-[#687279] font-mono mt-1">{order.order_number}</p>

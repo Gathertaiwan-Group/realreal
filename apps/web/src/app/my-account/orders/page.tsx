@@ -1,5 +1,6 @@
 import Link from "next/link"
 import { redirect } from "next/navigation"
+import { ChevronLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { apiClient } from "@/lib/api-client"
 import { Badge } from "@/components/ui/badge"
@@ -52,7 +53,14 @@ export default async function OrdersPage() {
   }
 
   return (
-    <div>
+    <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+      <Link
+        href="/my-account"
+        className="mb-4 inline-flex items-center gap-1 text-sm text-[#10305a] hover:underline"
+      >
+        <ChevronLeft className="h-4 w-4" />
+        回帳戶概覽
+      </Link>
       <h1 className="text-2xl font-bold mb-6 text-[#10305a]">我的訂單</h1>
 
       {orders.length === 0 ? (
