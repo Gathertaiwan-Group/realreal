@@ -15,12 +15,12 @@ invoicesRouter.get("/", async (req, res) => {
   let query = supabase
     .from("invoices")
     .select("*", { count: "exact" })
-    .order("created_at", { ascending: false })
+    .order("issued_at", { ascending: false, nullsFirst: true })
     .range((Number(page) - 1) * Number(limit), Number(page) * Number(limit) - 1)
 
   if (status) query = query.eq("status", status)
-  if (from) query = query.gte("created_at", from)
-  if (to) query = query.lte("created_at", to)
+  if (from) query = query.gte("issued_at", from)
+  if (to) query = query.lte("issued_at", to)
 
   const { data, error, count } = await query
 
