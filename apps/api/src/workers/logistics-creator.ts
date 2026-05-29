@@ -40,7 +40,7 @@ export async function processCreateShipment(orderId: string) {
 
   const { data: address } = await supabase
     .from("order_addresses")
-    .select("name, phone, address, cvs_store_id, cvs_type")
+    .select("name, phone, email, address, cvs_store_id, cvs_type")
     .eq("order_id", orderId)
     .eq("type", "shipping")
     .maybeSingle()
@@ -70,6 +70,8 @@ export async function processCreateShipment(orderId: string) {
       orderId,
       cvsType as "UNIMARTC2C" | "FAMIC2C",
       address.name,
+      address.phone,
+      address.email ?? "",
       address.cvs_store_id ?? "",
     )
     ecpayLogisticsId = result.logisticsId

@@ -73,8 +73,10 @@ export interface CvsLogisticsResult {
 export async function createCvsLogistics(
   _orderId: string,
   cvsType: "UNIMARTC2C" | "FAMIC2C",
-  storeName: string,
-  storeId: string
+  receiverName: string,
+  receiverPhone: string,
+  receiverEmail: string,
+  storeId: string,
 ): Promise<CvsLogisticsResult> {
   const merchantTradeNo = `RRL${Date.now()}`
   const apiUrl = getApiBaseUrl()
@@ -95,10 +97,13 @@ export async function createCvsLogistics(
     SenderPhone: c.senderPhone,
     SenderZipCode: c.senderZip,
     SenderAddress: c.senderAddress,
-    ReceiverName: storeName,
-    ReceiverPhone: c.senderPhone,
+    // ReceiverName / Phone are the END CUSTOMER's — not the store.
+    // ECPay sends SMS pickup notifications to ReceiverPhone, so this must
+    // be the buyer's mobile or the customer never gets the pickup code.
+    ReceiverName: receiverName,
+    ReceiverPhone: receiverPhone,
     ReceiverStoreID: storeId,
-    ReceiverEmail: "",
+    ReceiverEmail: receiverEmail,
     IsCollection: "N",
     ServerReplyURL: `${apiUrl}/webhooks/ecpay-logistics`,
   }
@@ -113,7 +118,11 @@ export async function createCvsLogistics(
   const result = Object.fromEntries(new URLSearchParams(text))
 
   if (result.RtnCode !== "1") {
-    throw new Error(`ECPay Logistics CVS error: ${result.RtnCode} ${result.RtnMsg}`)
+    // Surface the raw response so we don't lose what ECPay actually said
+    // when the body isn't the expected key=value form.
+    throw new Error(
+      `ECPay Logistics CVS error: RtnCode=${result.RtnCode ?? "?"} RtnMsg=${result.RtnMsg ?? "?"} raw=${text.slice(0, 500)}`,
+    )
   }
 
   return {
