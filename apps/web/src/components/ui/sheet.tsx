@@ -88,15 +88,19 @@ function SheetContent({
 
   return (
     <div className="fixed inset-0 z-50">
-      {/* backdrop — slightly stronger + blur for focus */}
+      {/* backdrop — dim only, no blur (blur made the panel look hazy) */}
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in-0"
+        className="fixed inset-0 bg-black/50 animate-in fade-in-0"
         onClick={() => onOpenChange(false)}
       />
-      {/* panel — full width on mobile, 520px on md+ unless overridden */}
+      {/* panel — full width on mobile, 520px on md+ unless overridden.
+          Explicit bg-white + h-screen (not relying on bg-background var or
+          inset-y-0 alone) to guarantee fully opaque, full-viewport-tall panel.
+          A previous build looked translucent because `cn()` merging interacted
+          oddly with the consumer's `p-0` override. */}
       <div
         className={cn(
-          "fixed inset-y-0 z-50 flex flex-col bg-background shadow-lg transition-transform duration-300",
+          "fixed top-0 z-50 flex h-screen flex-col bg-white shadow-2xl",
           "w-full md:max-w-[520px]",
           side === "right"
             ? "right-0 border-l animate-in slide-in-from-right"
