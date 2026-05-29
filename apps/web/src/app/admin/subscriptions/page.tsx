@@ -1,6 +1,12 @@
 import { createClient } from "@/lib/supabase/server"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
+import { AdminTabs } from "../_components/AdminTabs"
+
+const ORDER_TABS = [
+  { href: "/admin/orders", label: "訂單" },
+  { href: "/admin/subscriptions", label: "訂閱" },
+]
 
 export const metadata = { title: "訂閱管理 | Admin" }
 
@@ -57,7 +63,8 @@ export default async function AdminSubscriptionsPage({
 
   return (
     <div>
-      <h1 className="text-xl font-semibold mb-4 text-[#10305a]">訂閱管理</h1>
+      <h1 className="text-xl font-semibold mb-2 text-[#10305a]">訂閱</h1>
+      <AdminTabs tabs={ORDER_TABS} />
 
       {/* Status filter tabs */}
       <div className="flex gap-2 mb-4 flex-wrap">

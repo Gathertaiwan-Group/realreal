@@ -6,14 +6,9 @@ import {
   ShoppingCart,
   Package,
   Users,
-  RefreshCw,
-  Tag,
   FileText,
-  BarChart2,
   LayoutDashboard,
   Megaphone,
-  MessageSquare,
-  Mail,
   Settings,
 } from "lucide-react"
 
@@ -26,20 +21,19 @@ interface NavItem {
   roles?: Role[]
 }
 
+// 7-item simplified nav per
+// docs/superpowers/specs/2026-05-30-admin-simplification-design.md
+// Subscriptions merged into 訂單 (tab), 評價 into 商品 (tab), 優惠券+行銷活動 into
+// 行銷 (tabs), 數據分析 absorbed into 概覽 (with deep link), Email 模板 + 團隊
+// + 系統參數 collapsed into 設定 (tabs).
 const NAV_ITEMS: NavItem[] = [
   { href: "/admin", label: "概覽", icon: LayoutDashboard, roles: ["admin", "editor"] },
-  { href: "/admin/orders", label: "訂單管理", icon: ShoppingCart, roles: ["admin", "editor"] },
-  { href: "/admin/products", label: "商品管理", icon: Package, roles: ["admin", "editor"] },
-  { href: "/admin/customers", label: "客戶管理", icon: Users, roles: ["admin", "editor"] },
-  { href: "/admin/subscriptions", label: "訂閱管理", icon: RefreshCw, roles: ["admin", "editor"] },
-  { href: "/admin/coupons", label: "優惠券", icon: Tag, roles: ["admin", "editor"] },
-  { href: "/admin/reviews", label: "評價管理", icon: MessageSquare, roles: ["admin", "editor"] },
-  { href: "/admin/campaigns", label: "行銷活動", icon: Megaphone, roles: ["admin", "editor"] },
-  { href: "/admin/analytics", label: "數據分析", icon: BarChart2, roles: ["admin", "editor"] },
-  { href: "/admin/posts", label: "文章管理", icon: FileText, roles: ["admin", "editor"] },
-  { href: "/admin/users", label: "團隊成員", icon: Users, roles: ["admin"] },
-  { href: "/admin/email-templates", label: "Email 模板", icon: Mail, roles: ["admin"] },
-  { href: "/admin/settings", label: "系統設定", icon: Settings, roles: ["admin"] },
+  { href: "/admin/orders", label: "訂單", icon: ShoppingCart, roles: ["admin", "editor"] },
+  { href: "/admin/products", label: "商品", icon: Package, roles: ["admin", "editor"] },
+  { href: "/admin/customers", label: "客戶", icon: Users, roles: ["admin", "editor"] },
+  { href: "/admin/campaigns", label: "行銷", icon: Megaphone, roles: ["admin", "editor"] },
+  { href: "/admin/posts", label: "文章", icon: FileText, roles: ["admin", "editor"] },
+  { href: "/admin/settings", label: "設定", icon: Settings, roles: ["admin"] },
 ]
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {

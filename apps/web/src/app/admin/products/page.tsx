@@ -4,6 +4,12 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
+import { AdminTabs } from "../_components/AdminTabs"
+
+const PRODUCT_TABS = [
+  { href: "/admin/products", label: "商品" },
+  { href: "/admin/reviews", label: "評價" },
+]
 
 export const metadata = { title: "商品管理 | Admin" }
 
@@ -19,10 +25,11 @@ export default async function AdminProductsPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold">商品管理</h1>
+      <div className="mb-2 flex items-center justify-between">
+        <h1 className="text-2xl font-bold">商品</h1>
         <Link href="/admin/products/new"><Button>新增商品</Button></Link>
       </div>
+      <AdminTabs tabs={PRODUCT_TABS} />
       <div className="border rounded-lg divide-y">
         {products.length === 0 && <p className="p-4 text-zinc-500">尚無商品</p>}
         {products.map(p => (

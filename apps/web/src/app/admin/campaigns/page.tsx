@@ -8,6 +8,12 @@ import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { Trash2, Plus, X } from "lucide-react"
 import { adminFetch } from "@/lib/admin-fetch"
+import { AdminTabs } from "../_components/AdminTabs"
+
+const MARKETING_TABS = [
+  { href: "/admin/campaigns", label: "行銷活動" },
+  { href: "/admin/coupons", label: "優惠券" },
+]
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -585,8 +591,9 @@ export default function AdminCampaignsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">行銷活動管理</h1>
+      <div>
+        <h1 className="mb-2 text-xl font-semibold text-[#10305a]">行銷</h1>
+        <AdminTabs tabs={MARKETING_TABS} />
       </div>
 
       {/* Create toggle / form */}

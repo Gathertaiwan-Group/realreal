@@ -7,6 +7,13 @@ import { adminFetch } from "@/lib/admin-fetch"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { AdminTabs } from "../_components/AdminTabs"
+
+const SETTINGS_TABS = [
+  { href: "/admin/settings", label: "系統參數" },
+  { href: "/admin/settings/team", label: "團隊成員" },
+  { href: "/admin/settings/email-templates", label: "Email 模板" },
+]
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -181,15 +188,16 @@ export default function AdminSettingsPage() {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 p-6">
-      <header className="flex items-center gap-3">
-        <SettingsIcon className="h-6 w-6 text-[#10305a]" />
-        <div>
-          <h1 className="text-2xl font-semibold text-[#10305a]">系統設定</h1>
-          <p className="text-sm text-zinc-500">
-            金流、發票、物流、通知信參數熱更新。儲存後 30 秒內全站生效，
-            不需重新部署。Secret 欄位儲存後僅顯示遮罩末四碼。
-          </p>
+      <header>
+        <div className="mb-3 flex items-center gap-3">
+          <SettingsIcon className="h-6 w-6 text-[#10305a]" />
+          <h1 className="text-2xl font-semibold text-[#10305a]">設定</h1>
         </div>
+        <AdminTabs tabs={SETTINGS_TABS} />
+        <p className="text-sm text-zinc-500">
+          金流、發票、物流、通知信參數熱更新。儲存後 30 秒內全站生效，
+          不需重新部署。Secret 欄位儲存後僅顯示遮罩末四碼。
+        </p>
       </header>
 
       {sections.map((section) => {

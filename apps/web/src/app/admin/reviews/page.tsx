@@ -1,6 +1,12 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { ReviewsTable } from "./_client"
+import { AdminTabs } from "../_components/AdminTabs"
+
+const PRODUCT_TABS = [
+  { href: "/admin/products", label: "商品" },
+  { href: "/admin/reviews", label: "評價" },
+]
 
 export const metadata = { title: "評價管理 | Admin" }
 
@@ -54,10 +60,11 @@ export default async function AdminReviewsPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="flex items-center justify-between mb-6">
-        <h1 className="text-2xl font-bold text-[#10305a]">評價管理</h1>
+      <div className="mb-2 flex items-center justify-between">
+        <h1 className="text-2xl font-bold text-[#10305a]">評價</h1>
         <span className="text-sm text-[#687279]">共 {total} 則評價</span>
       </div>
+      <AdminTabs tabs={PRODUCT_TABS} />
 
       <ReviewsTable reviews={reviews} token={token} />
     </div>

@@ -1,6 +1,12 @@
 import { createClient } from "@/lib/supabase/server"
 import { Badge } from "@/components/ui/badge"
 import { CreateCouponForm } from "./_client"
+import { AdminTabs } from "../_components/AdminTabs"
+
+const MARKETING_TABS = [
+  { href: "/admin/campaigns", label: "行銷活動" },
+  { href: "/admin/coupons", label: "優惠券" },
+]
 
 export const metadata = { title: "優惠券管理 | Admin" }
 
@@ -70,8 +76,9 @@ export default async function AdminCouponsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">優惠券管理</h1>
+      <div>
+        <h1 className="mb-2 text-xl font-semibold text-[#10305a]">行銷</h1>
+        <AdminTabs tabs={MARKETING_TABS} />
       </div>
 
       {/* Inline create form */}
