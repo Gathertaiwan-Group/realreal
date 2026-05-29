@@ -47,7 +47,7 @@ export default async function AdminOrderDetailPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const { data: order } = await supabase
+  const { data: order, error: orderErr } = await supabase
     .from("orders")
     .select(
       `
@@ -55,12 +55,13 @@ export default async function AdminOrderDetailPage({
       order_items(*),
       order_addresses(*),
       payments(*),
-      invoices(*)
+      invoices!invoices_order_id_fkey(*)
     `
     )
     .eq("id", id)
     .single()
 
+  if (orderErr) console.error("[admin/orders/[id]] query error:", orderErr)
   if (!order) notFound()
 
   // user_profiles has no FK to orders, so resolve separately. Email lives in
