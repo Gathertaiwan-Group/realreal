@@ -4,6 +4,7 @@ import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { adminFetch } from "@/lib/admin-fetch"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -49,7 +50,7 @@ export function ReviewsTable({ reviews: initialReviews, token }: { reviews: Revi
   function handleToggle(id: string) {
     startTransition(async () => {
       try {
-        const res = await fetch(`${API_URL}/admin/reviews/${id}`, {
+        const res = await adminFetch(`${API_URL}/admin/reviews/${id}`, {
           method: "PATCH",
           headers: { Authorization: `Bearer ${token}` },
         })
@@ -69,7 +70,7 @@ export function ReviewsTable({ reviews: initialReviews, token }: { reviews: Revi
     if (!confirm("確定要刪除這則評價？")) return
     startTransition(async () => {
       try {
-        const res = await fetch(`${API_URL}/admin/reviews/${id}`, {
+        const res = await adminFetch(`${API_URL}/admin/reviews/${id}`, {
           method: "DELETE",
           headers: { Authorization: `Bearer ${token}` },
         })

@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { ImageIcon, Trash2, X } from "lucide-react"
 import { toast } from "sonner"
+import { adminFetch } from "@/lib/admin-fetch"
 
 export interface MediaItem {
   id: string
@@ -59,7 +60,7 @@ export function MediaGrid({ items }: MediaGridProps) {
     if (!selected) return
     const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
     try {
-      const res = await fetch(`${API_URL}/admin/media/${selected.id}`, {
+      const res = await adminFetch(`${API_URL}/admin/media/${selected.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ alt_text: altText }),
@@ -78,7 +79,7 @@ export function MediaGrid({ items }: MediaGridProps) {
     setDeleting(true)
     const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
     try {
-      const res = await fetch(`${API_URL}/admin/media/${selected.id}`, {
+      const res = await adminFetch(`${API_URL}/admin/media/${selected.id}`, {
         method: "DELETE",
       })
       if (!res.ok) throw new Error("刪除失敗")

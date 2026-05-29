@@ -36,14 +36,17 @@ export default async function AdminUsersPage() {
   if (profile?.role !== "admin") redirect("/admin")
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token ?? ""
   let users: UserRow[] = []
   try {
     const res = await fetch(`${API_URL}/admin/users`, {
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       cache: "no-store",
     })
     if (res.ok) {
-      users = await res.json()
+      const json = await res.json()
+      users = Array.isArray(json) ? json : (json.data ?? json.users ?? [])
     }
   } catch {
     // fallback to empty

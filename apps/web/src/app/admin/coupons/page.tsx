@@ -1,3 +1,4 @@
+import { createClient } from "@/lib/supabase/server"
 import { Badge } from "@/components/ui/badge"
 import { CreateCouponForm } from "./_client"
 
@@ -18,7 +19,8 @@ interface CouponRow {
 }
 
 interface CouponsResponse {
-  coupons: CouponRow[]
+  data?: CouponRow[]
+  coupons?: CouponRow[]
 }
 
 const TYPE_LABEL: Record<string, string> = {
@@ -46,18 +48,21 @@ function formatValue(coupon: CouponRow): string {
 }
 
 export default async function AdminCouponsPage() {
-  const API_URL = process.env.RAILWAY_API_URL ?? "http://localhost:4000"
+  const API_URL = process.env.NEXT_PUBLIC_API_URL ?? process.env.RAILWAY_API_URL ?? "http://localhost:4000"
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  const token = session?.access_token ?? ""
 
   let coupons: CouponRow[] = []
 
   try {
     const res = await fetch(`${API_URL}/admin/coupons`, {
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       next: { revalidate: 30 },
     })
     if (res.ok) {
       const data: CouponsResponse = await res.json()
-      coupons = data.coupons ?? []
+      coupons = data.data ?? data.coupons ?? []
     }
   } catch {
     // API unavailable — show empty state

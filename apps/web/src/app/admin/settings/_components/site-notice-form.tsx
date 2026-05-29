@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -28,10 +29,14 @@ export default function SiteNoticeForm({
     setSaved(false)
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
       await fetch(`${API_URL}/admin/settings/site-notice`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+        },
         body: JSON.stringify({ message, active, variant }),
       })
       setSaved(true)

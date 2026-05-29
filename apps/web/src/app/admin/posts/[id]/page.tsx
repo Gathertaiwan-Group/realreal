@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useParams } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 import { PostForm } from "../_components/PostForm"
 import type { Post } from "../_components/PostForm"
 
@@ -14,9 +15,11 @@ export default function EditPostPage() {
   useEffect(() => {
     async function fetchPost() {
       try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
         const res = await fetch(
           `${process.env.NEXT_PUBLIC_API_URL}/admin/posts/${params.id}`,
-          { credentials: "include" }
+          { headers: { Authorization: `Bearer ${session?.access_token ?? ""}` } }
         )
         if (!res.ok) throw new Error("Failed to fetch post")
         const json = await res.json()

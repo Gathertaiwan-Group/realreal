@@ -1,6 +1,7 @@
 "use client"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -24,10 +25,14 @@ export default function NewProductPage() {
       images,
       is_active: true,
     }
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products`, {
+    const supabase = createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/products`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${session?.access_token ?? ""}`,
+      },
       body: JSON.stringify(body),
     })
     if (res.ok) router.push("/admin/products")

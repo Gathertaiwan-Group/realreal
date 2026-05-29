@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation"
 import { Progress } from "@/components/ui/progress"
 import { Upload, ImageIcon } from "lucide-react"
 import { toast } from "sonner"
+import { adminFetch } from "@/lib/admin-fetch"
 
 const MAX_SIZE = 10 * 1024 * 1024 // 10 MB
 

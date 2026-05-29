@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { toast } from "sonner"
+import { createClient } from "@/lib/supabase/client"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -20,10 +21,14 @@ export default function RoleSelect({ userId, currentRole }: RoleSelectProps) {
     if (newRole === role) return
     setSaving(true)
     try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`${API_URL}/admin/users/${userId}/role`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+        },
         body: JSON.stringify({ role: newRole }),
       })
       if (res.ok) {

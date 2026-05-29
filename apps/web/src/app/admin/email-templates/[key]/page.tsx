@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
+import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -48,8 +49,10 @@ export default function AdminEmailTemplateEditorPage() {
   useEffect(() => {
     async function fetchTemplate() {
       try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
         const res = await fetch(`${API_URL}/site-contents/${key}`, {
-          credentials: "include",
+          headers: { Authorization: `Bearer ${session?.access_token ?? ""}` },
         })
         if (res.ok) {
           const data = await res.json()
@@ -80,10 +83,14 @@ export default function AdminEmailTemplateEditorPage() {
   async function handleSave() {
     setSaving(true)
     try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`${API_URL}/admin/site-contents/${key}`, {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+        },
         body: JSON.stringify({ value: { subject, body_html: bodyHtml } }),
       })
       if (res.ok) toast.success("已儲存")

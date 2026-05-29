@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
 import { Trash2, Plus, X } from "lucide-react"
+import { adminFetch } from "@/lib/admin-fetch"
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -416,7 +417,7 @@ export default function AdminCampaignsPage() {
   function handleImportPreset(preset: PresetTemplate) {
     startTransition(async () => {
       try {
-        const res = await fetch(`${API_URL}/admin/campaigns`, {
+        const res = await adminFetch(`${API_URL}/admin/campaigns`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -444,7 +445,7 @@ export default function AdminCampaignsPage() {
       let ok = 0, fail = 0
       for (const preset of PRESET_TEMPLATES) {
         try {
-          const res = await fetch(`${API_URL}/admin/campaigns`, {
+          const res = await adminFetch(`${API_URL}/admin/campaigns`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
@@ -470,7 +471,7 @@ export default function AdminCampaignsPage() {
 
   const fetchCampaigns = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/admin/campaigns`)
+      const res = await adminFetch(`${API_URL}/admin/campaigns`)
       if (res.ok) {
         const json = await res.json()
         setCampaigns(json.campaigns ?? json.data ?? json ?? [])
@@ -480,7 +481,7 @@ export default function AdminCampaignsPage() {
 
   const fetchTiers = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/membership-tiers`)
+      const res = await adminFetch(`${API_URL}/membership-tiers`)
       if (res.ok) {
         const json = await res.json()
         setTiers(json.data ?? json.tiers ?? json ?? [])
@@ -505,7 +506,7 @@ export default function AdminCampaignsPage() {
 
     startTransition(async () => {
       try {
-        const res = await fetch(`${API_URL}/admin/campaigns`, {
+        const res = await adminFetch(`${API_URL}/admin/campaigns`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -540,7 +541,7 @@ export default function AdminCampaignsPage() {
 
     startTransition(async () => {
       try {
-        const res = await fetch(`${API_URL}/admin/campaigns/${id}`, {
+        const res = await adminFetch(`${API_URL}/admin/campaigns/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -570,7 +571,7 @@ export default function AdminCampaignsPage() {
     if (!confirm(`確定要刪除活動「${name}」嗎？此操作無法還原。`)) return
     startTransition(async () => {
       try {
-        const res = await fetch(`${API_URL}/admin/campaigns/${id}`, { method: "DELETE" })
+        const res = await adminFetch(`${API_URL}/admin/campaigns/${id}`, { method: "DELETE" })
         if (!res.ok) throw new Error("刪除失敗")
         toast.success("活動已刪除")
         await fetchCampaigns()

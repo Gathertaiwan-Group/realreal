@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import { Search, Upload, ImageIcon, X, Check } from "lucide-react"
 import { toast } from "sonner"
+import { adminFetch } from "@/lib/admin-fetch"
 
 interface MediaItem {
   id: string
@@ -42,7 +43,7 @@ export function MediaPicker({ open, onOpenChange, onSelect }: MediaPickerProps) 
     setLoading(true)
     const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
     try {
-      const res = await fetch(`${API_URL}/admin/media`)
+      const res = await adminFetch(`${API_URL}/admin/media`)
       if (res.ok) {
         const data = await res.json()
         setItems(data.media ?? [])

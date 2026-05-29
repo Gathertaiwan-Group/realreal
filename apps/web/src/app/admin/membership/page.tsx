@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { toast } from "sonner"
+import { adminFetch } from "@/lib/admin-fetch"
 
 // ---------------------------------------------------------------------------
 // Types
@@ -113,7 +114,7 @@ function TierSettingsTab() {
 
   const fetchTiers = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/membership-tiers`, { credentials: "include" })
+      const res = await adminFetch(`${API_URL}/membership-tiers`, {})
       if (res.ok) {
         const data = await res.json()
         setTiers(Array.isArray(data) ? data : data.data ?? [])
@@ -142,10 +143,9 @@ function TierSettingsTab() {
   async function saveEdit(tierId: string) {
     setSaving(true)
     try {
-      const res = await fetch(`${API_URL}/admin/membership-tiers/${tierId}`, {
+      const res = await adminFetch(`${API_URL}/admin/membership-tiers/${tierId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify(editValues),
       })
       if (!res.ok) throw new Error()
@@ -163,9 +163,8 @@ function TierSettingsTab() {
   async function deleteTier(tierId: string) {
     if (!confirm("確定要刪除此等級？")) return
     try {
-      const res = await fetch(`${API_URL}/admin/membership-tiers/${tierId}`, {
+      const res = await adminFetch(`${API_URL}/admin/membership-tiers/${tierId}`, {
         method: "DELETE",
-        credentials: "include",
       })
       if (!res.ok) throw new Error()
       toast.success("已刪除")
@@ -426,10 +425,9 @@ function NewTierForm({
     }
     setSaving(true)
     try {
-      const res = await fetch(`${API_URL}/admin/membership-tiers`, {
+      const res = await adminFetch(`${API_URL}/admin/membership-tiers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
         body: JSON.stringify({
           name: name.trim(),
           min_spend: minSpend,
@@ -549,8 +547,7 @@ function AnalyticsTab() {
   useEffect(() => {
     async function fetchAnalytics() {
       try {
-        const res = await fetch(`${API_URL}/admin/analytics/membership`, {
-          credentials: "include",
+        const res = await adminFetch(`${API_URL}/admin/analytics/membership`, {
         })
         if (res.ok) {
           const data = await res.json()
@@ -688,7 +685,7 @@ function BenefitsTab() {
   useEffect(() => {
     async function fetchTiers() {
       try {
-        const res = await fetch(`${API_URL}/membership-tiers`, { credentials: "include" })
+        const res = await adminFetch(`${API_URL}/membership-tiers`, {})
         if (res.ok) {
           const data = await res.json()
           setTiers(Array.isArray(data) ? data : data.data ?? [])
