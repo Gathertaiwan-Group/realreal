@@ -1,7 +1,7 @@
 import { Router } from "express"
 import { z } from "zod"
 import { supabase } from "../lib/supabase"
-import { requireAuth } from "../middleware/auth"
+import { requireAuth, optionalAuth } from "../middleware/auth"
 import { getMemberDiscountRate } from "../lib/tier"
 import { createPayment as pchomepayCreatePayment } from "../lib/pchomepay"
 import { requestPayment as linePayRequestPayment } from "../lib/linepay"
@@ -39,8 +39,11 @@ const createOrderSchema = z.object({
   couponCode: z.string().optional(),
 })
 
-// POST /orders — create order from cart items
-ordersRouter.post("/", async (req, res) => {
+// POST /orders — create order from cart items.
+// optionalAuth: if a Bearer token is present, the order is linked to that
+// user; if absent, the order is created as a guest checkout (user_id=null,
+// guest_email used). Either path is fine.
+ordersRouter.post("/", optionalAuth, async (req, res) => {
   const parsed = createOrderSchema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid request", details: parsed.error.flatten() }); return
