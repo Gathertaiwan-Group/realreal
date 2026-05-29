@@ -52,12 +52,48 @@ ordersRouter.post("/", async (req, res) => {
   const orderNumber = "RR" + Date.now()
   const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
   const shippingFees: Record<string, number> = { home_delivery: 100, cvs_711: 60, cvs_family: 60 }
-  const shippingFeeCents = shippingFees[shippingMethod] ?? 100
+  let shippingFeeCents = shippingFees[shippingMethod] ?? 100
 
   // Apply member discount based on membership tier
   const discountRate = await getMemberDiscountRate(userId)
   const memberDiscountCents = Math.round(subtotalCents * discountRate)
-  const totalCents = subtotalCents - memberDiscountCents + shippingFeeCents
+
+  // Optionally apply a coupon — server-side validation + computation so the
+  // client can't forge a discount. Silent skip if invalid (status_code-equivalent
+  // detection happens via /coupons/validate before the user reaches checkout).
+  let couponDiscountCents = 0
+  let appliedCouponId: string | null = null
+  if (couponCode) {
+    const { data: coupon } = await supabase
+      .from("coupons")
+      .select("id, type, value, min_order, max_uses, used_count, expires_at, tier_id")
+      .eq("code", couponCode)
+      .maybeSingle()
+    const now = new Date()
+    const valid =
+      coupon &&
+      (!coupon.expires_at || new Date(coupon.expires_at) >= now) &&
+      (coupon.max_uses == null || coupon.used_count < coupon.max_uses) &&
+      (coupon.min_order == null || subtotalCents >= coupon.min_order)
+    if (valid && coupon) {
+      const baseAfterMember = Math.max(0, subtotalCents - memberDiscountCents)
+      if (coupon.type === "percentage") {
+        couponDiscountCents = Math.round(baseAfterMember * (Number(coupon.value) / 100))
+      } else if (coupon.type === "fixed") {
+        couponDiscountCents = Math.min(baseAfterMember, Math.round(Number(coupon.value)))
+      } else if (coupon.type === "free_shipping") {
+        // Don't deduct from items; zero the shipping fee instead.
+        shippingFeeCents = 0
+      }
+      appliedCouponId = coupon.id
+    }
+  }
+
+  const totalCents = Math.max(
+    0,
+    subtotalCents - memberDiscountCents - couponDiscountCents + shippingFeeCents,
+  )
+  const totalDiscount = memberDiscountCents + couponDiscountCents
 
   // Insert order
   const { data: order, error: orderError } = await supabase
@@ -72,9 +108,11 @@ ordersRouter.post("/", async (req, res) => {
       payment_method: paymentMethod,
       subtotal: subtotalCents,
       shipping_fee: shippingFeeCents,
-      discount_amount: memberDiscountCents,
+      discount_amount: totalDiscount,
       total: totalCents,
-      metadata: couponCode ? { coupon_code: couponCode } : null,
+      metadata: couponCode
+        ? { coupon_code: couponCode, coupon_id: appliedCouponId, coupon_discount: couponDiscountCents }
+        : null,
     })
     .select("id, order_number")
     .single()
@@ -286,4 +324,16 @@ ordersRouter.get("/", requireAuth, async (req, res) => {
     data: data ?? [],
     pagination: { page, limit, total: count ?? 0 },
   })
+})
+
+// GET /orders/by-number/:orderNumber/status — public, returns the minimal
+// status info the post-payment confirm page needs. No PII, no items.
+ordersRouter.get("/by-number/:orderNumber/status", async (req, res) => {
+  const { data, error } = await supabase
+    .from("orders")
+    .select("order_number, status, payment_status, payment_method, total")
+    .eq("order_number", req.params.orderNumber)
+    .maybeSingle()
+  if (error || !data) { res.status(404).json({ error: "Order not found" }); return }
+  res.json({ data })
 })

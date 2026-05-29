@@ -1,10 +1,12 @@
 "use client"
 
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useCart } from "@/lib/cart"
 import { Button } from "@/components/ui/button"
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
 function getEstimatedDelivery(): string {
   const now = new Date()
@@ -69,23 +71,24 @@ function StepIndicator({ current }: { current: number }) {
   )
 }
 
-type PaymentStatus = "success" | "pending" | "failed"
+type PaymentStatus = "success" | "pending" | "failed" | "loading"
 
-function deriveStatus(searchParams: URLSearchParams): PaymentStatus {
-  // PChomePay redirects with ?order=RR...&status=success (or similar via OrderResultURL)
-  const status = searchParams.get("status")
-  if (status === "success" || status === "paid") return "success"
-  if (status === "failed" || status === "fail") return "failed"
+function deriveOrderNumber(sp: URLSearchParams): string | null {
+  // LINE Pay redirect: ?order=<orderNumber>&status=success
+  // PChomePay OrderResultURL: ?MerchantTradeNo=<orderNumber>&RtnCode=1
+  // JKOPay result_url: ?merchant_trade_no=<orderNumber>
+  return (
+    sp.get("order") ||
+    sp.get("MerchantTradeNo") ||
+    sp.get("merchant_trade_no") ||
+    sp.get("orderNumber") ||
+    null
+  )
+}
 
-  // LINE Pay webhook redirects with ?success=true&order=...
-  const success = searchParams.get("success")
-  if (success === "true") return "success"
-  if (success === "false") return "failed"
-
-  // If we have an order param but no explicit status, payment is pending
-  // (e.g. gateway redirected back before webhook confirmed the payment)
-  if (searchParams.get("order")) return "pending"
-
+function mapPaymentStatus(payment_status: string | undefined): PaymentStatus {
+  if (payment_status === "paid" || payment_status === "captured") return "success"
+  if (payment_status === "failed") return "failed"
   return "pending"
 }
 
@@ -94,9 +97,40 @@ export default function ConfirmPage() {
   const clearCart = useCart((s) => s.clear)
   const cleanedUp = useRef(false)
 
-  const orderNumber = searchParams.get("order") ?? "---"
-  const paymentStatus = deriveStatus(searchParams)
+  const orderNumber = deriveOrderNumber(searchParams) ?? "---"
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("loading")
   const estimatedDelivery = getEstimatedDelivery()
+
+  // Server-side truth: fetch the real payment_status from the API.
+  // URL params from the gateway redirect can lie (a hostile redirect could
+  // forge ?status=success), so we always trust the DB.
+  useEffect(() => {
+    if (orderNumber === "---") {
+      // No order info → derive a soft default from URL (failed only if
+      // the gateway explicitly told us so)
+      const explicit = searchParams.get("status")
+      setPaymentStatus(
+        explicit === "failed" || explicit === "fail" || searchParams.get("success") === "false"
+          ? "failed"
+          : "pending",
+      )
+      return
+    }
+    let cancelled = false
+    fetch(`${API_URL}/orders/by-number/${encodeURIComponent(orderNumber)}/status`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        if (cancelled) return
+        const ps = (res?.data?.payment_status as string | undefined) ?? undefined
+        setPaymentStatus(mapPaymentStatus(ps))
+      })
+      .catch(() => {
+        if (!cancelled) setPaymentStatus("pending")
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [orderNumber, searchParams])
 
   // Clear cart and checkout data once on mount
   useEffect(() => {
@@ -112,6 +146,18 @@ export default function ConfirmPage() {
       // ignore — SSR or storage unavailable
     }
   }, [clearCart])
+
+  if (paymentStatus === "loading") {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-lg">
+        <StepIndicator current={3} />
+        <div className="text-center py-10">
+          <div className="mx-auto mb-4 h-10 w-10 animate-spin rounded-full border-4 border-zinc-200 border-t-[#10305a]" />
+          <p className="text-sm text-zinc-500">確認付款狀態中…</p>
+        </div>
+      </div>
+    )
+  }
 
   if (paymentStatus === "failed") {
     return (
