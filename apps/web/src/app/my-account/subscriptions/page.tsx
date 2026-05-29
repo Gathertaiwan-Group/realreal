@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation"
 import Link from "next/link"
+import { ChevronLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { SubscriptionsListClient } from "./subscriptions-list-client"
 
@@ -31,6 +32,13 @@ export default async function MySubscriptionsPage() {
 
   return (
     <div className="container mx-auto max-w-3xl px-4 py-12">
+      <Link
+        href="/my-account"
+        className="mb-4 inline-flex items-center gap-1 text-sm text-[#10305a] hover:underline"
+      >
+        <ChevronLeft className="h-4 w-4" />
+        回帳戶概覽
+      </Link>
       <div className="flex items-center justify-between mb-8">
         <h1 className="text-2xl font-bold text-[#10305a]">我的訂閱</h1>
         <Link
