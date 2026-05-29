@@ -3,6 +3,7 @@ import { z } from "zod"
 import { supabase } from "../lib/supabase"
 import { requireAuth } from "../middleware/auth"
 import { requireAdmin } from "../middleware/admin"
+import { enqueuePostPaymentJobs } from "../lib/enqueue-post-payment"
 
 export const adminOrdersRouter = Router()
 
@@ -106,4 +107,35 @@ adminOrdersRouter.post("/bulk-status", async (req, res) => {
   }
 
   res.json({ data: { updated: ids.length } })
+})
+
+// POST /admin/orders/:id/retry-post-payment
+// Re-runs the post-payment side effects (admin email, invoice insert,
+// invoice issuance enqueue, logistics enqueue, tier upgrade). All the
+// underlying jobs are idempotent — invoices.insert is skipped if a row
+// already exists, logistics worker checks for an existing logistics row,
+// and tier upgrade is bounded by total_spend. Used to backfill orders
+// that paid before a post-payment bug was fixed.
+adminOrdersRouter.post("/:id/retry-post-payment", async (req, res) => {
+  const orderId = req.params.id
+
+  // Sanity check — only retry for orders that ARE paid.
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, payment_status")
+    .eq("id", orderId)
+    .single()
+  if (!order) { res.status(404).json({ error: "Order not found" }); return }
+  if (order.payment_status !== "paid") {
+    res.status(400).json({ error: `payment_status is "${order.payment_status}", must be "paid"` })
+    return
+  }
+
+  try {
+    await enqueuePostPaymentJobs(orderId)
+    res.json({ ok: true, message: "Post-payment jobs re-enqueued" })
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: "retry failed", detail })
+  }
 })
