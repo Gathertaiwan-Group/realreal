@@ -44,17 +44,19 @@ export function CategoryFilter({ categories, layout = "horizontal" }: CategoryFi
       >
         全部商品
       </TabButton>
-      {categories.map(cat => (
-        <TabButton
-          key={cat.id}
-          active={current === cat.slug}
-          onClick={() => navigate(cat.slug)}
-          count={cat.product_count}
-          layout={layout}
-        >
-          {cat.name}
-        </TabButton>
-      ))}
+      {categories
+        .filter((cat) => cat.slug !== "all")
+        .map((cat) => (
+          <TabButton
+            key={cat.id}
+            active={current === cat.slug}
+            onClick={() => navigate(cat.slug)}
+            count={cat.product_count}
+            layout={layout}
+          >
+            {cat.name}
+          </TabButton>
+        ))}
     </nav>
   )
 }

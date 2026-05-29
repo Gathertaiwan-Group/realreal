@@ -18,7 +18,10 @@ export default async function ShopPage({
 }: {
   searchParams: Promise<{ category?: string; q?: string; page?: string; sort?: string }>
 }) {
-  const { category, q, page, sort } = await searchParams
+  const { category: rawCategory, q, page, sort } = await searchParams
+  // The legacy "all" slug was imported from WooCommerce but holds zero
+  // products; treat it as "no filter" so users always see everything.
+  const category = rawCategory && rawCategory !== "all" ? rawCategory : undefined
   const currentPage = page ? Number(page) : 1
   const sortOption = (sort as SortOption) || "newest"
 
