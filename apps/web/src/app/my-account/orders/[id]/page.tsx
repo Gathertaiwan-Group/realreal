@@ -21,7 +21,7 @@ type OrderDetail = {
   order_number: string
   created_at: string
   status: OrderStatus
-  total_amount: number
+  total: number
   payment_method: string
   payment_status: string
   shipping_method: string
@@ -75,10 +75,11 @@ export default async function OrderDetailPage({
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/auth/login")
+  const { data: { session } } = await supabase.auth.getSession()
 
   let order: OrderDetail | null = null
   try {
-    const res = await apiClient<{ data: OrderDetail }>(`/orders/${id}`, { token: user.id })
+    const res = await apiClient<{ data: OrderDetail }>(`/orders/${id}`, { token: session?.access_token ?? "" })
     order = res.data ?? null
   } catch {
     order = null
@@ -175,7 +176,7 @@ export default async function OrderDetailPage({
               <tr>
                 <td colSpan={2} className="p-3 font-semibold text-right">總計</td>
                 <td className="p-3 font-semibold text-right">
-                  NT$ {Number(order.total_amount).toLocaleString()}
+                  NT$ {Number(order.total).toLocaleString()}
                 </td>
               </tr>
             </tfoot>

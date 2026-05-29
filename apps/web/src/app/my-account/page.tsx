@@ -14,7 +14,7 @@ type Order = {
   order_number: string
   created_at: string
   status: string
-  total_amount: number
+  total: number
 }
 
 type SubRow = {
@@ -37,6 +37,10 @@ export default async function MyAccountPage() {
     data: { user },
   } = await supabase.auth.getUser()
   if (!user) redirect("/auth/login")
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const accessToken = session?.access_token ?? ""
 
   // Fetch profile, orders, and subscriptions in parallel
   const [profileResult, ordersResult, subscriptionsResult] = await Promise.all([
@@ -45,7 +49,7 @@ export default async function MyAccountPage() {
       .select("display_name, total_spend, membership_tiers(name)")
       .eq("user_id", user.id)
       .single(),
-    apiClient<{ data: Order[] }>("/orders", { token: user.id }).catch(
+    apiClient<{ data: Order[] }>("/orders", { token: accessToken }).catch(
       () => ({ data: [] }) as { data: Order[] }
     ),
     supabase
@@ -153,7 +157,7 @@ export default async function MyAccountPage() {
                       {STATUS_LABELS[order.status] ?? order.status}
                     </Badge>
                     <span className="text-sm font-semibold">
-                      NT$ {Number(order.total_amount).toLocaleString()}
+                      NT$ {Number(order.total).toLocaleString()}
                     </span>
                   </div>
                 </div>

@@ -59,7 +59,16 @@ app.use("/webhooks/pchomepay", express.urlencoded({ extended: false }))
 app.use("/webhooks/ecpay-logistics", express.urlencoded({ extended: false }))
 app.use("/logistics/map-result", express.urlencoded({ extended: false }))
 
-app.use(express.json({ limit: "5mb" }))
+// Capture the raw request body for routes that need byte-exact HMAC
+// verification (JKOPay + Amego webhooks).
+app.use(
+  express.json({
+    limit: "5mb",
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf.toString("utf8")
+    },
+  }),
+)
 app.use("/health", healthRouter)
 app.use("/categories", categoriesRouter)
 app.use("/products/:id/variants", variantsRouter)

@@ -1,24 +1,48 @@
 import { Router } from "express"
+import { createHmac, timingSafeEqual } from "crypto"
 import { supabase } from "../../lib/supabase"
-import { verifyCheckMacValue } from "../../lib/pchomepay"
 
 export const pchomepayWebhookRouter = Router()
 
-const HASH_KEY = process.env.PCHOMEPAY_HASH_KEY ?? ""
-const HASH_IV = process.env.PCHOMEPAY_HASH_IV ?? ""
+const SECRET = process.env.PCHOMEPAY_SECRET ?? ""
 
-// POST /webhooks/pchomepay — PChomePay server notification
-// PChomePay sends form-encoded POST; must return "1|OK" on success
+/**
+ * POST /webhooks/pchomepay — PChomePay 支付連 server notification.
+ *
+ * PChomePay sends a JSON-ish form-encoded payload with a `sign` field that is
+ * HMAC-SHA256(secret, JSON.stringify(payload_without_sign)).  We accept either
+ * the form-encoded or JSON variants (Express has body parsers for both
+ * registered above this router).
+ *
+ * Must return "1|OK" on success or PChomePay will keep retrying.
+ */
 pchomepayWebhookRouter.post("/", async (req, res) => {
-  const params = req.body as Record<string, string>
+  const params = { ...(req.body as Record<string, string>) }
+  const sign = (params.sign as string) || ""
+  delete params.sign
 
-  // Verify CheckMacValue (timing-safe)
-  if (!verifyCheckMacValue(params, HASH_KEY, HASH_IV)) {
+  // HMAC verification — same algorithm as the outbound createPayment() in
+  // lib/pchomepay.ts so the gateway-merchant pair is symmetric.
+  let valid = false
+  if (SECRET && sign) {
+    const expected = createHmac("sha256", SECRET)
+      .update(JSON.stringify(params))
+      .digest("hex")
+    try {
+      const a = Buffer.from(expected)
+      const b = Buffer.from(sign)
+      valid = a.length === b.length && timingSafeEqual(a, b)
+    } catch { /* fallthrough — valid stays false */ }
+  }
+  if (!valid) {
     res.status(400).send("0|SignatureError"); return
   }
 
-  const { MerchantTradeNo, TradeNo, RtnCode } = params
-  if (!MerchantTradeNo) {
+  const merchantTradeNo = (params.merchant_trade_no || params.MerchantTradeNo) as string
+  const gatewayTradeNo = (params.trade_no || params.TradeNo) as string | undefined
+  const rtnCode = (params.status || params.RtnCode || "") as string
+
+  if (!merchantTradeNo) {
     res.status(400).send("0|MissingTradeNo"); return
   }
 
@@ -27,36 +51,31 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
     .from("webhook_events")
     .insert({
       gateway: "pchomepay",
-      merchant_trade_no: MerchantTradeNo,
-      payload: JSON.stringify(params),
+      merchant_trade_no: merchantTradeNo,
+      payload: JSON.stringify(req.body),
     })
 
   if (idempotencyError) {
-    if (idempotencyError.code === "23505") {
-      // Duplicate webhook — already processed, return success
-      res.send("1|OK"); return
-    }
+    if (idempotencyError.code === "23505") { res.send("1|OK"); return }
     console.error("[webhooks/pchomepay] idempotency insert failed:", idempotencyError)
     res.status(500).send("0|InternalError"); return
   }
 
-  const success = RtnCode === "1"
+  const success = rtnCode === "1" || rtnCode === "SUCCESS" || rtnCode === "success"
 
-  // Find the payment transaction by MerchantTradeNo
+  // Find the payment row by gateway_tx_id (= merchant_trade_no on PChomePay).
   const { data: tx } = await supabase
-    .from("payment_transactions")
+    .from("payments")
     .select("id, order_id")
-    .eq("merchant_trade_no", MerchantTradeNo)
-    .single()
+    .eq("gateway_tx_id", merchantTradeNo)
+    .maybeSingle()
 
   if (tx) {
     await supabase
-      .from("payment_transactions")
+      .from("payments")
       .update({
         status: success ? "captured" : "failed",
-        gateway_trade_no: TradeNo ?? null,
-        raw_response: JSON.stringify(params),
-        updated_at: new Date().toISOString(),
+        raw_response: JSON.stringify({ ...req.body, gateway_trade_no: gatewayTradeNo }),
       })
       .eq("id", tx.id)
 
@@ -70,7 +89,6 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
       .eq("id", tx.order_id)
 
     if (success) {
-      // Enqueue email + invoice jobs
       try {
         const { enqueuePostPaymentJobs } = await import("../../lib/enqueue-post-payment")
         await enqueuePostPaymentJobs(tx.order_id)
@@ -80,6 +98,5 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
     }
   }
 
-  // PChomePay requires this exact response
   res.send("1|OK")
 })

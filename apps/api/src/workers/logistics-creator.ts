@@ -5,13 +5,13 @@ export async function processCreateShipment(orderId: string) {
   // Fetch order with address
   const { data: order } = await supabase
     .from("orders")
-    .select("id, order_number, shipping_method, status")
+    .select("id, order_number, shipping_method, status, payment_status")
     .eq("id", orderId)
     .single()
 
   if (!order) throw new Error(`Order ${orderId} not found`)
-  if (order.status !== "paid") {
-    console.log(`[logistics-creator] order ${orderId} status is "${order.status}", skipping`)
+  if (order.payment_status !== "paid") {
+    console.log(`[logistics-creator] order ${orderId} payment_status="${order.payment_status}", skipping`)
     return
   }
 
@@ -21,7 +21,7 @@ export async function processCreateShipment(orderId: string) {
     .select("id")
     .eq("order_id", orderId)
     .limit(1)
-    .single()
+    .maybeSingle()
 
   if (existing) {
     console.log(`[logistics-creator] logistics record already exists for order ${orderId}, skipping`)

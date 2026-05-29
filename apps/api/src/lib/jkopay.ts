@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual } from "crypto"
+import { getApiBaseUrl, getSiteUrl } from "./urls"
 
 // JKOPay Online Payment API — https://developer.jkopay.com/
 // NOTE: JKOPay does NOT support recurring / token payments. For subscriptions, use PChomePay only.
@@ -25,7 +26,8 @@ export async function initiatePayment(
   amount: number
 ): Promise<{ paymentUrl: string; merchantTradeNo: string }> {
   const merchantTradeNo = `RRJ${Date.now()}`
-  const siteUrl = process.env.SITE_URL ?? "https://realreal.cc"
+  const apiUrl = getApiBaseUrl()
+  const siteUrl = getSiteUrl()
 
   const bodyObj = {
     store_id: STORE_ID,
@@ -33,8 +35,8 @@ export async function initiatePayment(
     currency: "TWD",
     total_price: amount,
     order_desc: `realreal.cc 訂單 ${orderId.slice(0, 8)}`,
-    result_url: `${siteUrl}/webhooks/jkopay/result`,
-    notify_url: `${siteUrl}/api/webhooks/jkopay`,
+    result_url: `${siteUrl}/checkout/confirm`,
+    notify_url: `${apiUrl}/webhooks/jkopay`,
   }
   const payload = JSON.stringify(bodyObj)
   const signature = createHmac("sha256", SECRET_KEY).update(payload).digest("hex")
