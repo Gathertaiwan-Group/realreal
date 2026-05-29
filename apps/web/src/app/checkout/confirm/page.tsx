@@ -104,10 +104,12 @@ export default function ConfirmPage() {
   // Server-side truth: fetch the real payment_status from the API.
   // URL params from the gateway redirect can lie (a hostile redirect could
   // forge ?status=success), so we always trust the DB.
+  //
+  // Polling: webhook from PChomePay can race the redirect — user arrives
+  // before payment_status flips to "paid". Poll every 3s for up to 2 min
+  // so the user doesn't have to manually refresh.
   useEffect(() => {
     if (orderNumber === "---") {
-      // No order info → derive a soft default from URL (failed only if
-      // the gateway explicitly told us so)
       const explicit = searchParams.get("status")
       setPaymentStatus(
         explicit === "failed" || explicit === "fail" || searchParams.get("success") === "false"
@@ -116,19 +118,45 @@ export default function ConfirmPage() {
       )
       return
     }
+
     let cancelled = false
-    fetch(`${API_URL}/orders/by-number/${encodeURIComponent(orderNumber)}/status`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((res) => {
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const startedAt = Date.now()
+    const MAX_POLL_MS = 2 * 60_000
+    const INTERVAL_MS = 3_000
+
+    async function tick() {
+      if (cancelled) return
+      try {
+        const r = await fetch(
+          `${API_URL}/orders/by-number/${encodeURIComponent(orderNumber)}/status`,
+        )
+        const res = r.ok ? await r.json() : null
         if (cancelled) return
         const ps = (res?.data?.payment_status as string | undefined) ?? undefined
-        setPaymentStatus(mapPaymentStatus(ps))
-      })
-      .catch(() => {
-        if (!cancelled) setPaymentStatus("pending")
-      })
+        const mapped = mapPaymentStatus(ps)
+        setPaymentStatus(mapped)
+        // Stop polling once we reach a terminal state OR the budget runs out.
+        const terminal = mapped === "success" || mapped === "failed"
+        const expired = Date.now() - startedAt > MAX_POLL_MS
+        if (!terminal && !expired) {
+          timer = setTimeout(tick, INTERVAL_MS)
+        }
+      } catch {
+        if (cancelled) return
+        // Network blip → keep polling within budget.
+        if (Date.now() - startedAt > MAX_POLL_MS) {
+          setPaymentStatus("pending")
+        } else {
+          timer = setTimeout(tick, INTERVAL_MS)
+        }
+      }
+    }
+    void tick()
+
     return () => {
       cancelled = true
+      if (timer) clearTimeout(timer)
     }
   }, [orderNumber, searchParams])
 
