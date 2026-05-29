@@ -165,6 +165,8 @@ export const ALLOWED_KEYS = new Set<string>([
   "resend.api_key",
   "resend.from_address",
   "resend.from_name",
+  // Notifications
+  "notifications.admin_email",
 ])
 
 /**
@@ -247,5 +249,9 @@ export const SECTIONS: Record<string, { label: string; keys: string[] }> = {
   resend: {
     label: "Resend 通知信",
     keys: ["resend.api_key", "resend.from_address", "resend.from_name"],
+  },
+  notifications: {
+    label: "通知收件人",
+    keys: ["notifications.admin_email"],
   },
 }

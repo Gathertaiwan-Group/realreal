@@ -69,6 +69,12 @@ const FIELD_META: Record<
   "resend.api_key":       { label: "Resend API Key", placeholder: "re_…" },
   "resend.from_address":  { label: "寄件 Email", placeholder: "love@realreal.cc 或 \"誠真生活 <love@realreal.cc>\"" },
   "resend.from_name":     { label: "寄件人顯示名稱", placeholder: "誠真生活 RealReal" },
+  // Notifications
+  "notifications.admin_email": {
+    label: "管理員通知信收件 Email",
+    hint: "新訂單成立時系統會寄一封通知信到這個地址",
+    placeholder: "orders@realreal.cc",
+  },
 }
 
 function fieldLabel(key: string): string {

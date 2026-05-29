@@ -124,6 +124,7 @@ function StepIndicator({ current }: { current: number }) {
 type FieldErrors = {
   name?: string
   phone?: string
+  email?: string
   city?: string
   postalCode?: string
   address?: string
@@ -336,6 +337,8 @@ export default function CheckoutPage() {
     if (!name.trim()) errs.name = "請輸入收件人姓名"
     if (!phone.trim()) errs.phone = "請輸入手機號碼"
     else if (!/^09\d{8}$/.test(phone.trim())) errs.phone = "手機號碼格式不正確（09xxxxxxxx）"
+    if (!email.trim()) errs.email = "請輸入電子信箱"
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errs.email = "電子信箱格式不正確"
 
     if (addressType === "home") {
       if (!city.trim()) errs.city = "請選擇縣市"
@@ -354,7 +357,7 @@ export default function CheckoutPage() {
     const errs = validate()
     setErrors(errs)
     // Mark all as touched to show errors
-    setTouched({ name: true, phone: true, city: true, address: true, cvsStore: true })
+    setTouched({ name: true, phone: true, email: true, city: true, address: true, cvsStore: true })
     if (Object.keys(errs).length > 0) return
 
     const checkoutData = {
@@ -443,14 +446,22 @@ export default function CheckoutPage() {
                 </div>
 
                 <div className="space-y-1.5">
-                  <Label htmlFor="email">電子信箱（選填，用於寄送發票通知）</Label>
+                  <Label htmlFor="email">
+                    電子信箱 <span className="text-red-500">*</span>
+                    <span className="ml-1 text-xs text-zinc-500">(用於訂單通知與發票)</span>
+                  </Label>
                   <Input
                     id="email"
                     type="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
+                    onBlur={() => handleBlur("email")}
                     placeholder="example@email.com"
+                    className={touched.email && errors.email ? "border-red-500" : ""}
                   />
+                  {touched.email && errors.email && (
+                    <p className="text-xs text-red-500">{errors.email}</p>
+                  )}
                 </div>
               </section>
 
