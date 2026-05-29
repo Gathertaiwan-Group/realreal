@@ -88,18 +88,19 @@ function SheetContent({
 
   return (
     <div className="fixed inset-0 z-50">
-      {/* backdrop */}
+      {/* backdrop — slightly stronger + blur for focus */}
       <div
-        className="fixed inset-0 bg-black/50 animate-in fade-in-0"
+        className="fixed inset-0 bg-black/60 backdrop-blur-sm animate-in fade-in-0"
         onClick={() => onOpenChange(false)}
       />
-      {/* panel */}
+      {/* panel — full width on mobile, 520px on md+ unless overridden */}
       <div
         className={cn(
           "fixed inset-y-0 z-50 flex flex-col bg-background shadow-lg transition-transform duration-300",
+          "w-full md:max-w-[520px]",
           side === "right"
-            ? "right-0 w-full max-w-sm border-l animate-in slide-in-from-right"
-            : "left-0 w-full max-w-sm border-r animate-in slide-in-from-left",
+            ? "right-0 border-l animate-in slide-in-from-right"
+            : "left-0 border-r animate-in slide-in-from-left",
           className
         )}
       >
