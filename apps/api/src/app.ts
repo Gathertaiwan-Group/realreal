@@ -28,8 +28,6 @@ import { pchomepayTokenWebhookRouter } from "./routes/webhooks/pchomepay-token"
 import { postsPublicRouter, postsAdminRouter } from "./routes/posts"
 import { postCategoriesPublicRouter, postCategoriesAdminRouter } from "./routes/post-categories"
 import { postTagsPublicRouter, postTagsAdminRouter } from "./routes/post-tags"
-import { mediaRouter } from "./routes/media"
-import { requireEditor } from "./middleware/editor"
 import { siteContentsRouter } from "./routes/site-contents"
 import { usersRouter } from "./routes/users"
 import { tiersRouter } from "./routes/tiers"
@@ -93,7 +91,6 @@ app.use("/post-categories", postCategoriesPublicRouter)
 app.use("/admin/post-categories", postCategoriesAdminRouter)
 app.use("/post-tags", postTagsPublicRouter)
 app.use("/admin/post-tags", postTagsAdminRouter)
-app.use("/admin/media", requireAuth, requireEditor, mediaRouter)
 app.use("/", siteContentsRouter)
 app.use("/", usersRouter)
 app.use("/", tiersRouter)
