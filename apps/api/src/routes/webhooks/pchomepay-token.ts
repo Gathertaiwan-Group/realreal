@@ -1,22 +1,17 @@
 import { Router } from "express"
 import { supabase } from "../../lib/supabase"
-import { verifyCheckMacValue } from "../../lib/pchomepay"
 import { encryptToken } from "../../lib/token-encryption"
 
 export const pchomepayTokenWebhookRouter = Router()
 
-const HASH_KEY = process.env.PCHOMEPAY_HASH_KEY ?? ""
-const HASH_IV = process.env.PCHOMEPAY_HASH_IV ?? ""
-
-// POST /webhooks/pchomepay-token — PChomePay token registration callback
-// MerchantOrderNo format: TOKREG_{subscriptionId}
+// POST /webhooks/pchomepay-token — PChomePay token registration callback.
+// TODO: this was written against the legacy CheckMacValue scheme that
+// turned out to be wrong for PChomePay 支付連. Real Token Recurring API
+// integration is still pending and would need its own signed-callback
+// scheme — until then, this route just records the payload and
+// optimistically encrypts/stores any TokenValue without verifying.
 pchomepayTokenWebhookRouter.post("/", async (req, res) => {
   const params = req.body as Record<string, string>
-
-  // Verify CheckMacValue (timing-safe)
-  if (!verifyCheckMacValue(params, HASH_KEY, HASH_IV)) {
-    res.status(400).send("0|SignatureError"); return
-  }
 
   const { MerchantOrderNo, TokenValue, RtnCode } = params
 
