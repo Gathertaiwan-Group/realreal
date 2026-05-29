@@ -31,7 +31,9 @@ export function verifyCheckMacValue(params: Record<string, string>, hashKey: str
 // The `sign` field is HMAC-SHA256 of the JSON body using PCHOMEPAY_SECRET.
 // ---------------------------------------------------------------------------
 
-const PCHOMEPAY_API_URL = "https://api.pchomepay.com.tw/v1/payment/request"
+const PCHOMEPAY_API_URL = process.env.PCHOMEPAY_SANDBOX === "true"
+  ? "https://sandbox-api.pchomepay.com.tw/v1/payment"
+  : "https://api.pchomepay.com.tw/v1/payment"
 
 export async function createPayment(params: {
   orderId: string
