@@ -10,9 +10,7 @@ import {
   Tag,
   FileText,
   BarChart2,
-  Settings,
   LayoutDashboard,
-  PenSquare,
   Megaphone,
   MessageSquare,
   Mail,
@@ -39,9 +37,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/campaigns", label: "行銷活動", icon: Megaphone, roles: ["admin", "editor"] },
   { href: "/admin/analytics", label: "數據分析", icon: BarChart2, roles: ["admin", "editor"] },
   { href: "/admin/posts", label: "文章管理", icon: FileText, roles: ["admin", "editor"] },
-  { href: "/admin/pages", label: "頁面編輯", icon: PenSquare, roles: ["admin", "editor"] },
   { href: "/admin/users", label: "團隊成員", icon: Users, roles: ["admin"] },
-  { href: "/admin/settings", label: "系統設定", icon: Settings, roles: ["admin", "editor"] },
   { href: "/admin/email-templates", label: "Email 模板", icon: Mail, roles: ["admin"] },
 ]
 
