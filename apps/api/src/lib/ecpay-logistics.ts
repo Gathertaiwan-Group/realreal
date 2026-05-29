@@ -1,13 +1,56 @@
 import { createHash } from "crypto"
 import { getApiBaseUrl } from "./urls"
+import { getSettingOrEnv } from "./settings"
 
-const MERCHANT_ID = process.env.ECPAY_MERCHANT_ID ?? ""
-const HASH_KEY = process.env.ECPAY_HASH_KEY ?? ""
-const HASH_IV = process.env.ECPAY_HASH_IV ?? ""
+interface EcpayCreds {
+  merchantId: string
+  hashKey: string
+  hashIv: string
+  baseUrl: string
+  senderName: string
+  senderPhone: string
+  senderZip: string
+  senderCity: string
+  senderAddress: string
+}
 
-const BASE_URL = process.env.ECPAY_SANDBOX === "true"
-  ? "https://logistics-stage.ecpay.com.tw"
-  : "https://logistics.ecpay.com.tw"
+export async function getEcpayCreds(): Promise<EcpayCreds> {
+  const [
+    merchantId,
+    hashKey,
+    hashIv,
+    sandbox,
+    senderName,
+    senderPhone,
+    senderZip,
+    senderCity,
+    senderAddress,
+  ] = await Promise.all([
+    getSettingOrEnv("ecpay.merchant_id", "ECPAY_MERCHANT_ID"),
+    getSettingOrEnv("ecpay.hash_key", "ECPAY_HASH_KEY"),
+    getSettingOrEnv("ecpay.hash_iv", "ECPAY_HASH_IV"),
+    getSettingOrEnv("ecpay.sandbox", "ECPAY_SANDBOX"),
+    getSettingOrEnv("ecpay.sender_name", "ECPAY_SENDER_NAME", "誠真生活"),
+    getSettingOrEnv("ecpay.sender_phone", "ECPAY_SENDER_PHONE"),
+    getSettingOrEnv("ecpay.sender_zip", "ECPAY_SENDER_ZIP", "100"),
+    getSettingOrEnv("ecpay.sender_city", "ECPAY_SENDER_CITY"),
+    getSettingOrEnv("ecpay.sender_address", "ECPAY_SENDER_ADDRESS"),
+  ])
+  return {
+    merchantId,
+    hashKey,
+    hashIv,
+    baseUrl:
+      sandbox === "true"
+        ? "https://logistics-stage.ecpay.com.tw"
+        : "https://logistics.ecpay.com.tw",
+    senderName,
+    senderPhone,
+    senderZip,
+    senderCity,
+    senderAddress,
+  }
+}
 
 export function buildCheckMacValue(params: Record<string, string>, hashKey: string, hashIV: string): string {
   const sorted = Object.keys(params)
@@ -28,16 +71,17 @@ export interface CvsLogisticsResult {
 }
 
 export async function createCvsLogistics(
-  orderId: string,
+  _orderId: string,
   cvsType: "UNIMARTC2C" | "FAMIC2C",
   storeName: string,
   storeId: string
 ): Promise<CvsLogisticsResult> {
   const merchantTradeNo = `RRL${Date.now()}`
   const apiUrl = getApiBaseUrl()
+  const c = await getEcpayCreds()
 
   const fields: Record<string, string> = {
-    MerchantID: MERCHANT_ID,
+    MerchantID: c.merchantId,
     MerchantTradeNo: merchantTradeNo,
     MerchantTradeDate: new Date()
       .toLocaleString("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
@@ -47,20 +91,20 @@ export async function createCvsLogistics(
     GoodsAmount: "1",
     GoodsWeight: "1",
     GoodName: "realreal.cc 訂單",
-    SenderName: process.env.ECPAY_SENDER_NAME ?? "誠真生活",
-    SenderPhone: process.env.ECPAY_SENDER_PHONE ?? "",
-    SenderZipCode: process.env.ECPAY_SENDER_ZIP ?? "100",
-    SenderAddress: process.env.ECPAY_SENDER_ADDRESS ?? "",
+    SenderName: c.senderName,
+    SenderPhone: c.senderPhone,
+    SenderZipCode: c.senderZip,
+    SenderAddress: c.senderAddress,
     ReceiverName: storeName,
-    ReceiverPhone: process.env.ECPAY_SENDER_PHONE ?? "",
+    ReceiverPhone: c.senderPhone,
     ReceiverStoreID: storeId,
     ReceiverEmail: "",
     IsCollection: "N",
     ServerReplyURL: `${apiUrl}/webhooks/ecpay-logistics`,
   }
-  fields.CheckMacValue = buildCheckMacValue(fields, HASH_KEY, HASH_IV)
+  fields.CheckMacValue = buildCheckMacValue(fields, c.hashKey, c.hashIv)
 
-  const response = await fetch(`${BASE_URL}/Express/Create`, {
+  const response = await fetch(`${c.baseUrl}/Express/Create`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(fields).toString(),
@@ -85,16 +129,17 @@ export interface HomeDeliveryResult {
 }
 
 export async function createHomeDelivery(
-  orderId: string,
+  _orderId: string,
   receiverName: string,
   receiverPhone: string,
   receiverAddress: string
 ): Promise<HomeDeliveryResult> {
   const merchantTradeNo = `RRH${Date.now()}`
   const apiUrl = getApiBaseUrl()
+  const c = await getEcpayCreds()
 
   const fields: Record<string, string> = {
-    MerchantID: MERCHANT_ID,
+    MerchantID: c.merchantId,
     MerchantTradeNo: merchantTradeNo,
     MerchantTradeDate: new Date()
       .toLocaleString("zh-TW", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false })
@@ -104,10 +149,10 @@ export async function createHomeDelivery(
     GoodsAmount: "1",
     GoodsWeight: "1",
     GoodName: "realreal.cc 訂單",
-    SenderName: process.env.ECPAY_SENDER_NAME ?? "誠真生活",
-    SenderPhone: process.env.ECPAY_SENDER_PHONE ?? "",
-    SenderZipCode: process.env.ECPAY_SENDER_ZIP ?? "100",
-    SenderAddress: process.env.ECPAY_SENDER_ADDRESS ?? "",
+    SenderName: c.senderName,
+    SenderPhone: c.senderPhone,
+    SenderZipCode: c.senderZip,
+    SenderAddress: c.senderAddress,
     ReceiverName: receiverName,
     ReceiverPhone: receiverPhone,
     ReceiverZipCode: "",
@@ -115,9 +160,9 @@ export async function createHomeDelivery(
     IsCollection: "N",
     ServerReplyURL: `${apiUrl}/webhooks/ecpay-logistics`,
   }
-  fields.CheckMacValue = buildCheckMacValue(fields, HASH_KEY, HASH_IV)
+  fields.CheckMacValue = buildCheckMacValue(fields, c.hashKey, c.hashIv)
 
-  const response = await fetch(`${BASE_URL}/Express/Create`, {
+  const response = await fetch(`${c.baseUrl}/Express/Create`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(fields).toString(),

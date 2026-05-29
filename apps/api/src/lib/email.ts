@@ -1,22 +1,31 @@
 import axios from "axios"
+import { getSettingOrEnv } from "./settings"
 
 /**
  * Transactional email via Resend (https://resend.com).
- * Requires RESEND_API_KEY; RESEND_FROM_EMAIL must be on a domain verified
- * in the Resend account.
+ * Credentials resolved at send-time from /admin/settings, falling back to
+ * RESEND_API_KEY / RESEND_FROM_EMAIL env vars. Admin-edited values take
+ * effect within ~30s (settings cache TTL).
  */
 
-const RESEND_API_KEY = process.env.RESEND_API_KEY
-const FROM = process.env.RESEND_FROM_EMAIL ?? "誠真生活 RealReal <love@realreal.cc>"
-
-if (RESEND_API_KEY) {
-  console.log("[email] Resend configured, from:", FROM)
-} else {
-  console.warn("[email] RESEND_API_KEY not set — emails will be logged but not sent")
+async function getEmailCreds() {
+  const [apiKey, fromAddress, fromName] = await Promise.all([
+    getSettingOrEnv("resend.api_key", "RESEND_API_KEY"),
+    getSettingOrEnv("resend.from_address", "RESEND_FROM_EMAIL", "love@realreal.cc"),
+    getSettingOrEnv("resend.from_name", "RESEND_FROM_NAME", "誠真生活 RealReal"),
+  ])
+  // Build the RFC-5322 "Name <addr>" form. Allow the admin to either set the
+  // bare address and let us decorate, OR set the entire decorated string
+  // in from_address; the simple regex below detects which case we're in.
+  const from = /<.+@.+>/.test(fromAddress)
+    ? fromAddress
+    : `${fromName} <${fromAddress}>`
+  return { apiKey, from }
 }
 
 export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
-  if (!RESEND_API_KEY) {
+  const { apiKey, from } = await getEmailCreds()
+  if (!apiKey) {
     console.warn(`[email] Skipping send (no Resend config): to=${to} subject="${subject}"`)
     return
   }
@@ -24,10 +33,10 @@ export async function sendEmail({ to, subject, html }: { to: string; subject: st
   try {
     await axios.post(
       "https://api.resend.com/emails",
-      { from: FROM, to, subject, html },
+      { from, to, subject, html },
       {
         headers: {
-          Authorization: `Bearer ${RESEND_API_KEY}`,
+          Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
         timeout: 15000,

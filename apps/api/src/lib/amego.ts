@@ -1,5 +1,6 @@
 import axios from "axios"
 import { createHash } from "crypto"
+import { getSettingOrEnv } from "./settings"
 
 /**
  * Amego e-invoice API client.
@@ -14,19 +15,27 @@ import { createHash } from "crypto"
  * reconciled to it with a "系統尾差調整" rounding line when they differ.
  */
 
-const AMEGO_API_URL = process.env.AMEGO_API_URL ?? "https://invoice-api.amego.tw"
-
-function amegoConfig() {
-  const taxId = process.env.AMEGO_TAX_ID
-  const appKey = process.env.AMEGO_APP_KEY
+async function amegoConfig() {
+  const [taxId, appKey, sandbox] = await Promise.all([
+    getSettingOrEnv("amego.tax_id", "AMEGO_TAX_ID"),
+    getSettingOrEnv("amego.app_key", "AMEGO_APP_KEY"),
+    getSettingOrEnv("amego.sandbox", "AMEGO_SANDBOX"),
+  ])
   if (!taxId || !appKey) {
-    throw new Error("Missing required env vars: AMEGO_TAX_ID, AMEGO_APP_KEY")
+    throw new Error("Missing Amego TAX_ID / APP_KEY (check /admin/settings or env)")
   }
-  return { taxId, appKey }
+  // Amego sandbox vs production: same host today, but keep the toggle wired
+  // so we can swap easily if they introduce a staging URL.
+  const baseUrl =
+    process.env.AMEGO_API_URL ??
+    (sandbox === "true"
+      ? "https://invoice-api.amego.tw"
+      : "https://invoice-api.amego.tw")
+  return { taxId, appKey, baseUrl }
 }
 
 async function amegoPost<T>(path: string, payload: unknown): Promise<T> {
-  const { taxId, appKey } = amegoConfig()
+  const { taxId, appKey, baseUrl } = await amegoConfig()
   const data = JSON.stringify(payload)
   const time = Math.floor(Date.now() / 1000)
   const sign = createHash("md5").update(data + String(time) + appKey).digest("hex")
@@ -38,7 +47,7 @@ async function amegoPost<T>(path: string, payload: unknown): Promise<T> {
     sign,
   })
 
-  const res = await axios.post(`${AMEGO_API_URL}${path}`, body.toString(), {
+  const res = await axios.post(`${baseUrl}${path}`, body.toString(), {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     timeout: 45000,
   })
@@ -166,5 +175,9 @@ export async function queryInvoice(invoiceNumber: string) {
 }
 
 export function invoicePdfUrl(invoiceNumber: string) {
-  return `${AMEGO_API_URL}/invoice/pdf/${invoiceNumber}`
+  // PDFs are served from the same host as the API. Sandbox/prod toggle is
+  // resolved inside amegoConfig() at call-time; here we use the env default
+  // since this returns a plain URL (no async).
+  const base = process.env.AMEGO_API_URL ?? "https://invoice-api.amego.tw"
+  return `${base}/invoice/pdf/${invoiceNumber}`
 }
