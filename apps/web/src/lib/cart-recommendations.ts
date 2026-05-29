@@ -39,19 +39,35 @@ interface ApiProduct {
   } | null
 }
 
+async function fetchProductsList(
+  apiUrl: string,
+  query: string,
+): Promise<ApiProduct[]> {
+  const res = await fetch(`${apiUrl}/products?${query}`, {
+    next: { revalidate: 300 },
+  })
+  if (!res.ok) return []
+  const json = (await res.json()) as { data?: ApiProduct[] }
+  return json.data ?? []
+}
+
 export async function fetchRecommendations(
   excludeVariantIds: string[] = [],
   limit = 4,
 ): Promise<RecommendedProduct[]> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+  const total = limit + excludeVariantIds.length
   try {
-    const res = await fetch(
-      `${apiUrl}/products?sort=best_selling&limit=${limit + excludeVariantIds.length}`,
-      { next: { revalidate: 300 } },
+    // Try best_selling first; if the API doesn't support that sort it'll
+    // typically return latest anyway, but fall back explicitly if we get
+    // nothing back so the user always sees a recommendation strip.
+    let products = await fetchProductsList(
+      apiUrl,
+      `sort=best_selling&limit=${total}`,
     )
-    if (!res.ok) return []
-    const json = (await res.json()) as { data?: ApiProduct[] }
-    const products = json.data ?? []
+    if (products.length === 0) {
+      products = await fetchProductsList(apiUrl, `limit=${total}`)
+    }
 
     const out: RecommendedProduct[] = []
     for (const p of products) {
