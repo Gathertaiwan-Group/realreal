@@ -3,9 +3,19 @@
 import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { FileText, RefreshCw, Ban, ExternalLink } from "lucide-react"
+import {
+  FileText,
+  RefreshCw,
+  Ban,
+  ExternalLink,
+  Truck,
+  Copy,
+  Check,
+} from "lucide-react"
+import { toast } from "sonner"
 import {
   reissueInvoiceAction,
+  retryShipmentAction,
   updateOrderStatusAction,
   voidInvoiceAction,
 } from "./actions"
@@ -357,6 +367,269 @@ export function InvoiceCard({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+/* ---------- Logistics Card ---------- */
+
+const LOGISTICS_STATUS_LABEL: Record<string, string> = {
+  pending: "建立中",
+  in_transit: "已交寄",
+  arrived_cvs: "已到店",
+  delivered: "已取貨",
+  failed: "失敗",
+}
+
+const LOGISTICS_STATUS_VARIANT: Record<
+  string,
+  "default" | "secondary" | "outline" | "destructive"
+> = {
+  pending: "outline",
+  in_transit: "secondary",
+  arrived_cvs: "default",
+  delivered: "default",
+  failed: "destructive",
+}
+
+const CVS_LABEL: Record<string, string> = {
+  cvs_711: "7-11 取貨",
+  cvs_family: "全家取貨",
+  "7-11": "7-11 取貨",
+  family: "全家取貨",
+}
+
+interface LogisticsRow {
+  id: string
+  provider: string | null
+  type: string | null // "CVS" | "HOME"
+  ecpay_logistics_id: string | null
+  tracking_number: string | null
+  cvs_payment_no: string | null
+  cvs_validation_no: string | null
+  status: string
+  shipped_at: string | null
+  delivered_at: string | null
+  raw_response?: unknown
+}
+
+interface ShippingInfo {
+  name: string | null
+  phone: string | null
+  address: string | null
+  cvs_store_id: string | null
+  cvs_type: string | null
+  address_type: string | null
+}
+
+interface LogisticsCardProps {
+  orderId: string
+  logistics: LogisticsRow | null
+  shipping: ShippingInfo | null
+  paymentStatus: string
+  shippingMethod: string | null
+}
+
+export function LogisticsCard({
+  orderId,
+  logistics,
+  shipping,
+  paymentStatus,
+  shippingMethod,
+}: LogisticsCardProps) {
+  const [isPending, startTransition] = useTransition()
+  const isCvs = shipping?.address_type === "cvs" || shippingMethod?.startsWith("cvs")
+  const cvsLabel = CVS_LABEL[shippingMethod ?? ""] ?? (isCvs ? "超商取貨" : "宅配到府")
+
+  function handleRetry() {
+    startTransition(() => retryShipmentAction(orderId))
+  }
+
+  // Empty state — explain why + offer retry if payment is settled.
+  if (!logistics) {
+    return (
+      <div className="rounded-lg border bg-white p-4 text-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <div className="flex items-center gap-2 text-zinc-900">
+            <Truck className="h-4 w-4" />
+            <span className="font-medium">物流資訊</span>
+          </div>
+          {paymentStatus === "paid" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isPending}
+              onClick={handleRetry}
+            >
+              <RefreshCw className="mr-1 h-3.5 w-3.5" />
+              {isPending ? "重派中…" : "重派物流"}
+            </Button>
+          )}
+        </div>
+        <p className="text-zinc-400">
+          {paymentStatus === "paid"
+            ? "尚未建立物流（系統應已自動派工；若超過 1 分鐘仍無資料請按右上「重派物流」）"
+            : "尚未建立物流（需付款完成）"}
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="rounded-lg border bg-white p-4 text-sm">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-zinc-900">
+          <Truck className="h-4 w-4" />
+          <span className="font-medium">物流資訊</span>
+        </div>
+        <Badge variant={LOGISTICS_STATUS_VARIANT[logistics.status] ?? "outline"}>
+          {LOGISTICS_STATUS_LABEL[logistics.status] ?? logistics.status}
+        </Badge>
+      </div>
+
+      <div className="space-y-1.5">
+        <Row label="物流商" value={logistics.provider === "ecpay" ? "綠界 (ECPay)" : logistics.provider ?? "—"} />
+        <Row label="取貨方式" value={cvsLabel} />
+
+        {isCvs && shipping && (
+          <Row
+            label="取貨門市"
+            value={
+              <span>
+                {shipping.address ?? "—"}
+                {shipping.cvs_store_id && (
+                  <span className="ml-1 text-xs text-zinc-400">({shipping.cvs_store_id})</span>
+                )}
+              </span>
+            }
+          />
+        )}
+        {shipping && !isCvs && (
+          <Row label="收件地址" value={shipping.address ?? "—"} />
+        )}
+        {shipping && (
+          <Row
+            label="收件人"
+            value={
+              <span>
+                {shipping.name ?? "—"}
+                {shipping.phone && (
+                  <span className="ml-2 text-xs text-zinc-500">/ {shipping.phone}</span>
+                )}
+              </span>
+            }
+          />
+        )}
+
+        <div className="my-2 border-t border-dashed border-zinc-200" />
+
+        <Row label="物流編號" value={<span className="font-mono text-xs">{logistics.ecpay_logistics_id ?? "—"}</span>} />
+
+        {isCvs && (
+          <>
+            <CopyableRow
+              label="超商寄件代碼"
+              value={logistics.cvs_payment_no ?? ""}
+              emptyText="—"
+            />
+            <CopyableRow
+              label="超商驗證碼"
+              value={logistics.cvs_validation_no ?? ""}
+              emptyText="—"
+            />
+          </>
+        )}
+
+        {!isCvs && logistics.tracking_number && (
+          <Row
+            label="宅配追蹤號"
+            value={<span className="font-mono text-xs">{logistics.tracking_number}</span>}
+          />
+        )}
+
+        {logistics.shipped_at && (
+          <Row
+            label="已出貨"
+            value={new Date(logistics.shipped_at).toLocaleString("zh-TW")}
+          />
+        )}
+        {logistics.delivered_at && (
+          <Row
+            label="已送達"
+            value={new Date(logistics.delivered_at).toLocaleString("zh-TW")}
+          />
+        )}
+      </div>
+
+      {(logistics.status === "failed" || logistics.status === "pending") && (
+        <div className="mt-4 flex justify-end border-t pt-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={isPending}
+            onClick={handleRetry}
+          >
+            <RefreshCw className="mr-1 h-3.5 w-3.5" />
+            {isPending ? "重派中…" : "重派物流"}
+          </Button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Row({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <span className="text-zinc-500">{label}</span>
+      <span className="text-right text-zinc-900">{value}</span>
+    </div>
+  )
+}
+
+function CopyableRow({
+  label,
+  value,
+  emptyText,
+}: {
+  label: string
+  value: string
+  emptyText: string
+}) {
+  const [copied, setCopied] = useState(false)
+
+  async function handleCopy() {
+    if (!value) return
+    try {
+      await navigator.clipboard.writeText(value)
+      setCopied(true)
+      toast.success(`${label}已複製`)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      toast.error("複製失敗")
+    }
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span className="text-zinc-500">{label}</span>
+      <div className="flex items-center gap-1.5">
+        <span className={`font-mono text-xs ${value ? "text-zinc-900" : "text-zinc-400"}`}>
+          {value || emptyText}
+        </span>
+        {value && (
+          <button
+            type="button"
+            onClick={handleCopy}
+            className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700"
+            aria-label={`複製${label}`}
+          >
+            {copied ? <Check className="h-3 w-3 text-green-600" /> : <Copy className="h-3 w-3" />}
+          </button>
+        )}
+      </div>
     </div>
   )
 }

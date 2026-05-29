@@ -3,7 +3,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { InvoiceCard, OrderActions, OrderTimeline } from "./_client"
+import { InvoiceCard, LogisticsCard, OrderActions, OrderTimeline } from "./_client"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -277,38 +277,25 @@ export default async function AdminOrderDetailPage({
           </CardContent>
         </Card>
 
-        {/* Logistics Info */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-sm">物流資訊</CardTitle>
-          </CardHeader>
-          <CardContent className="text-sm space-y-2">
-            {order.logistics?.[0] ? (
-              <>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">物流商</span>
-                  <span>{order.logistics[0].provider}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">追蹤號</span>
-                  <span className="font-mono text-xs">{order.logistics[0].tracking_number ?? "—"}</span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-zinc-500">物流狀態</span>
-                  <Badge variant="outline">{order.logistics[0].status}</Badge>
-                </div>
-                {order.logistics[0].shipped_at && (
-                  <div className="flex justify-between">
-                    <span className="text-zinc-500">出貨時間</span>
-                    <span>{new Date(order.logistics[0].shipped_at).toLocaleString("zh-TW")}</span>
-                  </div>
-                )}
-              </>
-            ) : (
-              <p className="text-zinc-400">尚未建立物流</p>
-            )}
-          </CardContent>
-        </Card>
+        {/* Logistics Info — rich card with copy buttons + retry */}
+        <LogisticsCard
+          orderId={id}
+          logistics={order.logistics?.[0] ?? null}
+          shipping={
+            shippingAddr
+              ? {
+                  name: (shippingAddr.name as string | null) ?? null,
+                  phone: (shippingAddr.phone as string | null) ?? null,
+                  address: (shippingAddr.address as string | null) ?? null,
+                  cvs_store_id: (shippingAddr.cvs_store_id as string | null) ?? null,
+                  cvs_type: (shippingAddr.cvs_type as string | null) ?? null,
+                  address_type: (shippingAddr.address_type as string | null) ?? null,
+                }
+              : null
+          }
+          paymentStatus={order.payment_status}
+          shippingMethod={order.shipping_method ?? null}
+        />
 
         {/* Invoice Info — always render; component handles empty state + actions */}
         <InvoiceCard

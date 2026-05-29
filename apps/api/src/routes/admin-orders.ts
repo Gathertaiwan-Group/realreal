@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase"
 import { requireAuth } from "../middleware/auth"
 import { requireAdmin } from "../middleware/admin"
 import { enqueuePostPaymentJobs } from "../lib/enqueue-post-payment"
+import { inventoryQueue } from "../lib/queue"
 
 export const adminOrdersRouter = Router()
 
@@ -137,5 +138,46 @@ adminOrdersRouter.post("/:id/retry-post-payment", async (req, res) => {
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)
     res.status(500).json({ error: "retry failed", detail })
+  }
+})
+
+// POST /admin/orders/:id/retry-shipment
+// Just re-enqueue the create-shipment job (without re-running emails /
+// invoice / tier upgrade). The worker already short-circuits when a
+// logistics row exists; this is for ECPay failures where the row is
+// still missing.
+adminOrdersRouter.post("/:id/retry-shipment", async (req, res) => {
+  const orderId = req.params.id
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, payment_status")
+    .eq("id", orderId)
+    .single()
+  if (!order) { res.status(404).json({ error: "Order not found" }); return }
+  if (order.payment_status !== "paid") {
+    res.status(400).json({ error: `payment_status is "${order.payment_status}", must be "paid"` })
+    return
+  }
+
+  // If a logistics row already exists, the worker will short-circuit. Force
+  // a retry by deleting any failed/incomplete row first so the next job
+  // actually attempts ECPay again.
+  await supabase
+    .from("logistics")
+    .delete()
+    .eq("order_id", orderId)
+    .is("ecpay_logistics_id", null)
+
+  try {
+    await inventoryQueue.add(
+      "create-shipment",
+      { orderId },
+      { attempts: 3, backoff: { type: "exponential", delay: 30000 } },
+    )
+    res.json({ ok: true, message: "Shipment job re-enqueued" })
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    res.status(500).json({ error: "enqueue failed", detail })
   }
 })
