@@ -191,6 +191,27 @@ export default function CheckoutPage() {
     setHydrated(true)
   }, [])
 
+  // 2b. Pre-fill email from the logged-in account if the user hasn't typed
+  //     one yet. Required email + auto-fill = guaranteed delivery without
+  //     friction for return customers. Imported lazily to avoid pulling
+  //     the supabase client into SSR.
+  useEffect(() => {
+    let cancelled = false
+    ;(async () => {
+      if (email) return // user already has something (draft restore or typing)
+      const { createClient } = await import("@/lib/supabase/client")
+      const supabase = createClient()
+      const { data } = await supabase.auth.getUser()
+      if (cancelled) return
+      const authEmail = data.user?.email
+      if (authEmail && !email) setEmail(authEmail)
+    })()
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // 3. Listen for postMessage from the ECPay store-picker popup.
   //    Origin guard prevents third-party tabs from injecting fake selections.
   useEffect(() => {
@@ -337,11 +358,8 @@ export default function CheckoutPage() {
     if (!name.trim()) errs.name = "請輸入收件人姓名"
     if (!phone.trim()) errs.phone = "請輸入手機號碼"
     else if (!/^09\d{8}$/.test(phone.trim())) errs.phone = "手機號碼格式不正確（09xxxxxxxx）"
-    // Email is OPTIONAL. Logged-in users automatically receive emails at their
-    // registered account address (resolved server-side from auth.users in
-    // enqueue-post-payment). Guests can still type an email if they want
-    // confirmation/invoice notifications. We only enforce format when filled.
-    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    if (!email.trim()) errs.email = "請輸入電子信箱"
+    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       errs.email = "電子信箱格式不正確"
     }
 
@@ -452,9 +470,9 @@ export default function CheckoutPage() {
 
                 <div className="space-y-1.5">
                   <Label htmlFor="email">
-                    電子信箱
+                    電子信箱 <span className="text-red-500">*</span>
                     <span className="ml-1 text-xs text-zinc-500">
-                      (選填；登入用戶將自動使用註冊 Email)
+                      (寄送訂單通知 + 電子發票)
                     </span>
                   </Label>
                   <Input
