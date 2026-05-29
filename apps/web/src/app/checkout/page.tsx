@@ -12,6 +12,35 @@ import { InvoiceSelector, type InvoiceData } from "@/components/checkout/Invoice
 type AddressType = "home" | "cvs"
 type ShippingMethod = "711" | "family" | "home_delivery"
 
+/**
+ * Cross-window contract for ECPay CVS store picker.
+ * Spec: docs/superpowers/specs/2026-05-30-ecpay-cvs-popup-flow-design.md
+ */
+type CvsMessage = {
+  type: "cvs-selected"
+  storeId: string
+  storeName: string
+  address?: string
+  subType?: "FAMIC2C" | "UNIMARTC2C"
+}
+
+type CvsDraft = {
+  name: string
+  phone: string
+  email: string
+  addressType: AddressType
+  city: string
+  district: string
+  postalCode: string
+  addressLine: string
+  shippingMethod: ShippingMethod
+  invoice: InvoiceData
+  expiresAt: number
+}
+
+const CVS_DRAFT_KEY = "realreal-cvs-draft"
+const CVS_DRAFT_TTL_MS = 5 * 60_000
+
 const SHIPPING_LABELS: Record<ShippingMethod, string> = {
   "711": "7-11取貨",
   "family": "全家取貨",
@@ -125,40 +154,172 @@ export default function CheckoutPage() {
 
   const searchParams = useSearchParams()
 
+  // 1. Draft restore — must run BEFORE the URL-params useEffect so its setState
+  //    doesn't get overwritten by the (potentially empty) post-redirect state.
+  //    Only runs once on mount.
+  useEffect(() => {
+    const raw = typeof window !== "undefined" ? localStorage.getItem(CVS_DRAFT_KEY) : null
+    if (!raw) return
+    try {
+      const draft = JSON.parse(raw) as CvsDraft
+      if (!draft || typeof draft.expiresAt !== "number" || Date.now() > draft.expiresAt) {
+        localStorage.removeItem(CVS_DRAFT_KEY)
+        return
+      }
+      if (draft.name) setName(draft.name)
+      if (draft.phone) setPhone(draft.phone)
+      if (draft.email) setEmail(draft.email)
+      if (draft.addressType) setAddressType(draft.addressType)
+      if (draft.city) setCity(draft.city)
+      if (draft.district) setDistrict(draft.district)
+      if (draft.postalCode) setPostalCode(draft.postalCode)
+      if (draft.addressLine) setAddressLine(draft.addressLine)
+      if (draft.shippingMethod) setShippingMethod(draft.shippingMethod)
+      if (draft.invoice) setInvoice(draft.invoice)
+    } catch {
+      // bad json → fall through to cleanup
+    } finally {
+      localStorage.removeItem(CVS_DRAFT_KEY)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // 2. Cart hydration
   useEffect(() => {
     useCart.persist.rehydrate()
     setHydrated(true)
   }, [])
 
-  // Read store selection result from URL query params (ECPay redirects back here)
+  // 3. Listen for postMessage from the ECPay store-picker popup.
+  //    Origin guard prevents third-party tabs from injecting fake selections.
   useEffect(() => {
-    const storeId = searchParams.get("cvsStoreId")
-    const storeName = searchParams.get("cvsStoreName")
-    const storeAddress = searchParams.get("cvsAddress")
-    const subType = searchParams.get("logisticsSubType")
+    function onMessage(e: MessageEvent) {
+      if (e.origin !== window.location.origin) return
+      const data = e.data as Partial<CvsMessage> | null
+      if (!data || data.type !== "cvs-selected") return
+      if (!data.storeId || !data.storeName) return
 
-    if (storeId && storeName) {
-      setCvsStoreId(storeId)
-      setCvsStoreName(storeName)
-      if (storeAddress) setCvsAddress(storeAddress)
-      if (subType === "FAMIC2C" || subType === "FAMI") {
+      setCvsStoreId(data.storeId)
+      setCvsStoreName(data.storeName)
+      if (data.address) setCvsAddress(data.address)
+      if (data.subType === "FAMIC2C") {
         setShippingMethod("family")
         setAddressType("cvs")
-      } else if (subType === "UNIMARTC2C" || subType === "UNIMART") {
+      } else if (data.subType === "UNIMARTC2C") {
         setShippingMethod("711")
         setAddressType("cvs")
       }
-      // Clean up URL params
-      window.history.replaceState({}, "", "/checkout")
     }
+    window.addEventListener("message", onMessage)
+    return () => window.removeEventListener("message", onMessage)
+  }, [])
+
+  // 4. ECPay redirected us back with store info in URL params.
+  //    If we're the popup → postMessage to opener + close ourselves.
+  //    If we're the main tab (C fallback) or opener is gone → update inline.
+  useEffect(() => {
+    const storeId = searchParams.get("cvsStoreId")
+    const storeName = searchParams.get("cvsStoreName")
+    if (!storeId || !storeName) return
+
+    const storeAddress = searchParams.get("cvsAddress") ?? undefined
+    const subType = searchParams.get("logisticsSubType") ?? undefined
+
+    // Popup path: relay to opener and close.
+    if (typeof window !== "undefined" && window.opener && !window.opener.closed) {
+      try {
+        const msg: CvsMessage = {
+          type: "cvs-selected",
+          storeId,
+          storeName,
+          address: storeAddress,
+          subType:
+            subType === "FAMIC2C" || subType === "FAMI"
+              ? "FAMIC2C"
+              : subType === "UNIMARTC2C" || subType === "UNIMART"
+                ? "UNIMARTC2C"
+                : undefined,
+        }
+        window.opener.postMessage(msg, window.location.origin)
+        window.close()
+        return
+      } catch {
+        // postMessage / close blocked → fall through to inline update so the
+        // user at least sees their store and can finish manually.
+      }
+    }
+
+    // Inline path (C fallback's same-tab return, or opener-already-closed edge).
+    setCvsStoreId(storeId)
+    setCvsStoreName(storeName)
+    if (storeAddress) setCvsAddress(storeAddress)
+    if (subType === "FAMIC2C" || subType === "FAMI") {
+      setShippingMethod("family")
+      setAddressType("cvs")
+    } else if (subType === "UNIMARTC2C" || subType === "UNIMART") {
+      setShippingMethod("711")
+      setAddressType("cvs")
+    }
+    window.history.replaceState({}, "", "/checkout")
   }, [searchParams])
+
+  const saveCvsDraft = useCallback(() => {
+    const draft: CvsDraft = {
+      name,
+      phone,
+      email,
+      addressType,
+      city,
+      district,
+      postalCode,
+      addressLine,
+      shippingMethod,
+      invoice,
+      expiresAt: Date.now() + CVS_DRAFT_TTL_MS,
+    }
+    try {
+      localStorage.setItem(CVS_DRAFT_KEY, JSON.stringify(draft))
+    } catch {
+      // localStorage full / private browsing — drop silently; flow still works,
+      // user just loses unsaved form state on return.
+    }
+  }, [
+    name,
+    phone,
+    email,
+    addressType,
+    city,
+    district,
+    postalCode,
+    addressLine,
+    shippingMethod,
+    invoice,
+  ])
 
   const openCvsMap = useCallback(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
     const subType = shippingMethod === "family" ? "FAMIC2C" : "UNIMARTC2C"
     const url = `${apiUrl}/logistics/map?logisticsSubType=${subType}&isCollection=N`
-    window.open(url, "_blank", "width=800,height=600")
-  }, [shippingMethod])
+
+    const isMobile =
+      typeof navigator !== "undefined" &&
+      /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)
+
+    // C fallback for mobile: popups are unreliable; same-tab nav is bulletproof.
+    if (isMobile) {
+      saveCvsDraft()
+      window.location.href = url
+      return
+    }
+
+    const popup = window.open(url, "_blank", "width=800,height=600")
+    const blocked = !popup || typeof popup.closed === "undefined"
+    if (blocked) {
+      // C fallback: popup blocked → save draft and navigate same tab.
+      saveCvsDraft()
+      window.location.href = url
+    }
+  }, [shippingMethod, saveCvsDraft])
 
   // When switching to CVS, auto-select a CVS shipping method
   useEffect(() => {
