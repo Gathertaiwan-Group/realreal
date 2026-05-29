@@ -16,8 +16,8 @@ export type Post = {
   title: string
   slug: string
   excerpt: string
-  content: string
-  cover_image_url: string
+  content_html: string
+  cover_image: string
   category_id: string
   tags: string
   seo_title: string
@@ -52,8 +52,8 @@ export function PostForm({ initialData, mode }: PostFormProps) {
   const [title, setTitle] = useState(initialData?.title ?? "")
   const [slug, setSlug] = useState(initialData?.slug ?? "")
   const [excerpt, setExcerpt] = useState(initialData?.excerpt ?? "")
-  const [content, setContent] = useState(initialData?.content ?? "")
-  const [coverImageUrl, setCoverImageUrl] = useState(initialData?.cover_image_url ?? "")
+  const [content, setContent] = useState(initialData?.content_html ?? "")
+  const [coverImageUrl, setCoverImageUrl] = useState(initialData?.cover_image ?? "")
   const [categoryId, setCategoryId] = useState(initialData?.category_id ?? "")
   const [tags, setTags] = useState(initialData?.tags ?? "")
   const [seoTitle, setSeoTitle] = useState(initialData?.seo_title ?? "")
@@ -91,8 +91,8 @@ export function PostForm({ initialData, mode }: PostFormProps) {
       title,
       slug,
       excerpt,
-      content,
-      cover_image_url: coverImageUrl,
+      content_html: content,
+      cover_image: coverImageUrl || null,
       category_id: categoryId || null,
       tags,
       seo_title: seoTitle,
