@@ -1,83 +1,146 @@
-import { createHmac } from "crypto"
-import { timingSafeEqual } from "crypto"
+import axios from "axios"
 
-// ---------------------------------------------------------------------------
-// Webhook verification (CheckMacValue)
-// Used to verify inbound POST notifications from PChomePay.
-// Sort params alphabetically, URL-encode, wrap with HashKey/HashIV, then HMAC-SHA256.
-// ---------------------------------------------------------------------------
+/**
+ * PChomePay 支付連 API client.
+ *
+ * Auth is a two-step OAuth-style flow (NOT direct Bearer):
+ *   1. POST /v1/token with Authorization: Basic base64(APP_ID:SECRET)
+ *      → { token, expired_timestamp }  (token lifetime ≈ 30 min)
+ *   2. POST /v1/payment with custom header  pcpay-token: <token>
+ *      (NOT Authorization: Bearer)
+ *
+ * Cached so we don't burn a token call on every order.
+ *
+ * Reference: PChomePay's own WooCommerce plugin
+ *   https://github.com/PChomePay/PChomePay-Cart-for-WooCommerce
+ */
 
-export function buildCheckMacValue(params: Record<string, string>, hashKey: string, hashIV: string): string {
-  const sorted = Object.keys(params).sort().reduce((acc, k) => ({ ...acc, [k]: params[k] }), {} as Record<string, string>)
-  const str = `HashKey=${hashKey}&${new URLSearchParams(sorted).toString()}&HashIV=${hashIV}`
-  const encoded = encodeURIComponent(str).toLowerCase()
-    .replace(/%20/g, "+").replace(/%21/g, "!").replace(/%28/g, "(").replace(/%29/g, ")")
-    .replace(/%2a/g, "*").replace(/%2d/g, "-").replace(/%2e/g, ".").replace(/%5f/g, "_")
-  return createHmac("sha256", hashKey).update(encoded).digest("hex").toUpperCase()
+const BASE_URL =
+  process.env.PCHOMEPAY_SANDBOX === "true"
+    ? "https://sandbox-api.pchomepay.com.tw"
+    : "https://api.pchomepay.com.tw"
+
+interface CachedToken {
+  value: string
+  /** Unix ms at which the token expires (server-provided). */
+  expiresAt: number
 }
+let tokenCache: CachedToken | null = null
 
-export function verifyCheckMacValue(params: Record<string, string>, hashKey: string, hashIV: string): boolean {
-  const { CheckMacValue, ...rest } = params
-  if (!CheckMacValue) return false
-  const expected = buildCheckMacValue(rest, hashKey, hashIV)
+async function getToken(): Promise<string> {
+  // Use cached if it's still good for at least another minute.
+  if (tokenCache && tokenCache.expiresAt > Date.now() + 60_000) {
+    return tokenCache.value
+  }
+
+  const appId = process.env.PCHOMEPAY_APP_ID
+  const secret = process.env.PCHOMEPAY_SECRET
+  if (!appId || !secret) {
+    throw new Error("Missing PCHOMEPAY_APP_ID / PCHOMEPAY_SECRET env vars")
+  }
+
+  const basic = Buffer.from(`${appId}:${secret}`).toString("base64")
   try {
-    return timingSafeEqual(Buffer.from(expected), Buffer.from(CheckMacValue.toUpperCase()))
-  } catch { return false }
+    const res = await axios.post(
+      `${BASE_URL}/v1/token`,
+      {},
+      {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Basic ${basic}`,
+        },
+        timeout: 15000,
+      },
+    )
+    const data = res.data as { token?: string; expired_timestamp?: number }
+    if (!data.token) {
+      throw new Error(`PChomePay token endpoint returned no token: ${JSON.stringify(data)}`)
+    }
+    // expired_timestamp is in unix seconds. Fall back to +25 min if missing.
+    const expiresAt =
+      typeof data.expired_timestamp === "number"
+        ? data.expired_timestamp * 1000
+        : Date.now() + 25 * 60 * 1000
+    tokenCache = { value: data.token, expiresAt }
+    return data.token
+  } catch (err) {
+    tokenCache = null
+    if (axios.isAxiosError(err)) {
+      throw new Error(
+        `PChomePay token exchange failed (HTTP ${err.response?.status}): ${JSON.stringify(err.response?.data ?? err.message)}`,
+      )
+    }
+    throw err
+  }
 }
 
-// ---------------------------------------------------------------------------
-// Payment creation
-// POST to PChomePay API to create a payment request and obtain a payment URL.
-// The `sign` field is HMAC-SHA256 of the JSON body using PCHOMEPAY_SECRET.
-// ---------------------------------------------------------------------------
-
-const PCHOMEPAY_API_URL = process.env.PCHOMEPAY_SANDBOX === "true"
-  ? "https://sandbox-api.pchomepay.com.tw/v1/payment"
-  : "https://api.pchomepay.com.tw/v1/payment"
-
-export async function createPayment(params: {
+export interface CreatePaymentParams {
   orderId: string
   orderNumber: string
   amount: number
   itemName: string
   returnUrl: string
   notifyUrl: string
-}): Promise<{ paymentUrl: string }> {
-  const appId = process.env.PCHOMEPAY_APP_ID
-  const secret = process.env.PCHOMEPAY_SECRET
-  if (!appId || !secret) {
-    throw new Error("Missing PCHOMEPAY_APP_ID or PCHOMEPAY_SECRET env vars")
-  }
+  /** Required by PChomePay so they can email the buyer the e-invoice / receipt. */
+  buyerEmail?: string
+}
 
+export async function createPayment(
+  params: CreatePaymentParams,
+): Promise<{ paymentUrl: string; orderId: string }> {
+  const token = await getToken()
   const body = {
-    app_id: appId,
     order_id: params.orderNumber,
-    amount: params.amount,
+    // Offer credit card + ATM + account balance + 7-11 code + post-pay
+    pay_type: ["CARD", "ATM", "ACCT", "EACH", "PI"],
+    amount: Math.round(params.amount),
     return_url: params.returnUrl,
     notify_url: params.notifyUrl,
-    items: [{ name: params.itemName, quantity: 1, price: params.amount }],
+    items: [{ name: params.itemName, url: params.returnUrl }],
+    buyer_email: params.buyerEmail ?? "noreply@realreal.cc",
+    atm_info: { expire_days: 3 },
   }
 
-  const payload = JSON.stringify(body)
-  const sign = createHmac("sha256", secret).update(payload).digest("hex")
-
-  const response = await fetch(PCHOMEPAY_API_URL, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...body, sign }),
-  })
-
-  if (!response.ok) {
-    const text = await response.text()
-    throw new Error(`PChomePay API error (HTTP ${response.status}): ${text}`)
+  try {
+    const res = await axios.post(`${BASE_URL}/v1/payment`, body, {
+      headers: {
+        "Content-Type": "application/json",
+        "pcpay-token": token,
+      },
+      timeout: 30000,
+    })
+    const data = res.data as { order_id?: string; payment_url?: string }
+    if (!data.payment_url) {
+      throw new Error(`PChomePay create-payment returned no payment_url: ${JSON.stringify(data)}`)
+    }
+    return { paymentUrl: data.payment_url, orderId: data.order_id ?? params.orderNumber }
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      // Token might have expired between our cache check and the real call →
+      // bust cache so the next attempt re-issues. Mostly belt-and-braces.
+      if (err.response?.status === 401) tokenCache = null
+      throw new Error(
+        `PChomePay create-payment failed (HTTP ${err.response?.status}): ${JSON.stringify(err.response?.data ?? err.message)}`,
+      )
+    }
+    throw err
   }
+}
 
-  const data = (await response.json()) as Record<string, unknown>
-  const paymentUrl = data.payment_url as string | undefined
-
-  if (!paymentUrl) {
-    throw new Error(`PChomePay API did not return payment_url: ${JSON.stringify(data)}`)
+/** Server-to-server verification used by the webhook handler. */
+export async function queryPayment(orderId: string) {
+  const token = await getToken()
+  const res = await axios.get(
+    `${BASE_URL}/v1/payment/${encodeURIComponent(orderId)}`,
+    {
+      headers: { "pcpay-token": token },
+      timeout: 15000,
+    },
+  )
+  return res.data as {
+    order_id: string
+    status_code?: string
+    pay_type?: string
+    payment_info?: Record<string, unknown>
   }
-
-  return { paymentUrl }
 }
