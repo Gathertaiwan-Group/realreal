@@ -1,4 +1,5 @@
 import axios from "axios"
+import { getSettingOrEnv } from "./settings"
 
 /**
  * PChomePay 支付連 API client.
@@ -15,10 +16,27 @@ import axios from "axios"
  *   https://github.com/PChomePay/PChomePay-Cart-for-WooCommerce
  */
 
-const BASE_URL =
-  process.env.PCHOMEPAY_SANDBOX === "true"
-    ? "https://sandbox-api.pchomepay.com.tw"
-    : "https://api.pchomepay.com.tw"
+async function getCreds() {
+  const [appId, secret, sandbox, payTypesRaw] = await Promise.all([
+    getSettingOrEnv("pchomepay.app_id", "PCHOMEPAY_APP_ID"),
+    getSettingOrEnv("pchomepay.secret", "PCHOMEPAY_SECRET"),
+    getSettingOrEnv("pchomepay.sandbox", "PCHOMEPAY_SANDBOX"),
+    getSettingOrEnv("pchomepay.pay_types", "PCHOMEPAY_PAY_TYPES", "CARD"),
+  ])
+  const isSandbox = sandbox === "true"
+  return {
+    appId,
+    secret,
+    isSandbox,
+    baseUrl: isSandbox
+      ? "https://sandbox-api.pchomepay.com.tw"
+      : "https://api.pchomepay.com.tw",
+    payTypes: payTypesRaw
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+  }
+}
 
 interface CachedToken {
   value: string
@@ -33,16 +51,15 @@ async function getToken(): Promise<string> {
     return tokenCache.value
   }
 
-  const appId = process.env.PCHOMEPAY_APP_ID
-  const secret = process.env.PCHOMEPAY_SECRET
+  const { appId, secret, baseUrl } = await getCreds()
   if (!appId || !secret) {
-    throw new Error("Missing PCHOMEPAY_APP_ID / PCHOMEPAY_SECRET env vars")
+    throw new Error("Missing PChomePay APP_ID / SECRET (check /admin/settings or env)")
   }
 
   const basic = Buffer.from(`${appId}:${secret}`).toString("base64")
   try {
     const res = await axios.post(
-      `${BASE_URL}/v1/token`,
+      `${baseUrl}/v1/token`,
       {},
       {
         headers: {
@@ -88,11 +105,10 @@ export interface CreatePaymentParams {
 export async function createPayment(
   params: CreatePaymentParams,
 ): Promise<{ paymentUrl: string; orderId: string }> {
-  const token = await getToken()
+  const [token, { baseUrl, payTypes }] = await Promise.all([getToken(), getCreds()])
   const body = {
     order_id: params.orderNumber,
-    // Offer credit card + ATM + account balance + 7-11 code + post-pay
-    pay_type: ["CARD", "ATM", "ACCT", "EACH", "PI"],
+    pay_type: payTypes.length > 0 ? payTypes : ["CARD"],
     amount: Math.round(params.amount),
     return_url: params.returnUrl,
     notify_url: params.notifyUrl,
@@ -102,7 +118,7 @@ export async function createPayment(
   }
 
   try {
-    const res = await axios.post(`${BASE_URL}/v1/payment`, body, {
+    const res = await axios.post(`${baseUrl}/v1/payment`, body, {
       headers: {
         "Content-Type": "application/json",
         "pcpay-token": token,
@@ -129,9 +145,9 @@ export async function createPayment(
 
 /** Server-to-server verification used by the webhook handler. */
 export async function queryPayment(orderId: string) {
-  const token = await getToken()
+  const [token, { baseUrl }] = await Promise.all([getToken(), getCreds()])
   const res = await axios.get(
-    `${BASE_URL}/v1/payment/${encodeURIComponent(orderId)}`,
+    `${baseUrl}/v1/payment/${encodeURIComponent(orderId)}`,
     {
       headers: { "pcpay-token": token },
       timeout: 15000,

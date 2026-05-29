@@ -1,19 +1,11 @@
 import { Router } from "express"
-import { buildCheckMacValue } from "../lib/ecpay-logistics"
+import { buildCheckMacValue, getEcpayCreds } from "../lib/ecpay-logistics"
 import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
-
-const MERCHANT_ID = process.env.ECPAY_MERCHANT_ID ?? ""
-const HASH_KEY = process.env.ECPAY_HASH_KEY ?? ""
-const HASH_IV = process.env.ECPAY_HASH_IV ?? ""
-
-const MAP_URL = process.env.ECPAY_SANDBOX === "true"
-  ? "https://logistics-stage.ecpay.com.tw/Express/map"
-  : "https://logistics.ecpay.com.tw/Express/map"
 
 export const logisticsRouter = Router()
 
 // GET /logistics/map — Generate ECPay store map selection form (auto-submits)
-logisticsRouter.get("/map", (req, res) => {
+logisticsRouter.get("/map", async (req, res) => {
   // ECPay scopes credentials per channel: UNIMART = 7-11 B2C (廠商到店),
   // UNIMARTC2C = 7-11 C2C (店到店). Consumer-checkout merchants are
   // provisioned for C2C; using UNIMART triggers "找不到加密金鑰".
@@ -21,16 +13,18 @@ logisticsRouter.get("/map", (req, res) => {
   const isCollection = (req.query.isCollection as string) ?? "N"
 
   const merchantTradeNo = `MAP${Date.now()}`
+  const c = await getEcpayCreds()
+  const mapUrl = `${c.baseUrl}/Express/map`
 
   const fields: Record<string, string> = {
-    MerchantID: MERCHANT_ID,
+    MerchantID: c.merchantId,
     MerchantTradeNo: merchantTradeNo,
     LogisticsType: "CVS",
     LogisticsSubType: logisticsSubType,
     IsCollection: isCollection,
     ServerReplyURL: `${getApiBaseUrl()}/logistics/map-result`,
   }
-  fields.CheckMacValue = buildCheckMacValue(fields, HASH_KEY, HASH_IV)
+  fields.CheckMacValue = buildCheckMacValue(fields, c.hashKey, c.hashIv)
 
   // Build hidden form fields
   const hiddenInputs = Object.entries(fields)
@@ -41,7 +35,7 @@ logisticsRouter.get("/map", (req, res) => {
 <html>
   <head><meta charset="utf-8" /><title>ECPay Store Map</title></head>
   <body>
-    <form id="ecpay-map-form" method="POST" action="${escapeHtml(MAP_URL)}">
+    <form id="ecpay-map-form" method="POST" action="${escapeHtml(mapUrl)}">
       ${hiddenInputs}
     </form>
     <script>document.getElementById("ecpay-map-form").submit();</script>

@@ -1,16 +1,25 @@
 import { createHmac, timingSafeEqual } from "crypto"
 import { getApiBaseUrl, getSiteUrl } from "./urls"
+import { getSettingOrEnv } from "./settings"
 
 // JKOPay Online Payment API — https://developer.jkopay.com/
 // NOTE: JKOPay does NOT support recurring / token payments. For subscriptions, use PChomePay only.
 
-const STORE_ID = process.env.JKOPAY_STORE_ID ?? ""
-const API_KEY = process.env.JKOPAY_API_KEY ?? ""
-const SECRET_KEY = process.env.JKOPAY_SECRET_KEY ?? ""
-
-const BASE_URL = process.env.JKOPAY_SANDBOX === "true"
-  ? "https://uat-api.jkopay.com"
-  : "https://api.jkopay.com"
+async function getCreds() {
+  const [storeId, apiKey, secretKey, sandbox] = await Promise.all([
+    getSettingOrEnv("jkopay.store_id", "JKOPAY_STORE_ID"),
+    getSettingOrEnv("jkopay.api_key", "JKOPAY_API_KEY"),
+    getSettingOrEnv("jkopay.secret_key", "JKOPAY_SECRET_KEY"),
+    getSettingOrEnv("jkopay.sandbox", "JKOPAY_SANDBOX"),
+  ])
+  return {
+    storeId,
+    apiKey,
+    secretKey,
+    baseUrl:
+      sandbox === "true" ? "https://uat-api.jkopay.com" : "https://api.jkopay.com",
+  }
+}
 
 export function verifySignature(payload: string, signature: string, secret: string): boolean {
   const computed = createHmac("sha256", secret).update(payload).digest("hex")
@@ -21,6 +30,11 @@ export function verifySignature(payload: string, signature: string, secret: stri
   }
 }
 
+/** Resolve the current JKOPay secret_key for webhook signature verification. */
+export async function getJkopaySecretKey(): Promise<string> {
+  return getSettingOrEnv("jkopay.secret_key", "JKOPAY_SECRET_KEY")
+}
+
 export async function initiatePayment(
   orderId: string,
   amount: number
@@ -28,9 +42,10 @@ export async function initiatePayment(
   const merchantTradeNo = `RRJ${Date.now()}`
   const apiUrl = getApiBaseUrl()
   const siteUrl = getSiteUrl()
+  const { storeId, apiKey, secretKey, baseUrl } = await getCreds()
 
   const bodyObj = {
-    store_id: STORE_ID,
+    store_id: storeId,
     merchant_trade_no: merchantTradeNo,
     currency: "TWD",
     total_price: amount,
@@ -39,14 +54,14 @@ export async function initiatePayment(
     notify_url: `${apiUrl}/webhooks/jkopay`,
   }
   const payload = JSON.stringify(bodyObj)
-  const signature = createHmac("sha256", SECRET_KEY).update(payload).digest("hex")
+  const signature = createHmac("sha256", secretKey).update(payload).digest("hex")
 
-  const response = await fetch(`${BASE_URL}/order/create`, {
+  const response = await fetch(`${baseUrl}/order/create`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Store-ID": STORE_ID,
-      "X-Api-Key": API_KEY,
+      "X-Store-ID": storeId,
+      "X-Api-Key": apiKey,
       "X-Signature": signature,
     },
     body: payload,

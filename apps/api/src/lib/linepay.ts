@@ -1,15 +1,25 @@
 import { createHmac, randomUUID } from "crypto"
 import { getApiBaseUrl } from "./urls"
+import { getSettingOrEnv } from "./settings"
 
 // LINE Pay v3 API — https://pay.line.me/developers/apis/onlineApis
 // NOTE: LINE Pay does NOT support recurring / token payments. For subscriptions, use PChomePay only.
 
-const CHANNEL_ID = process.env.LINEPAY_CHANNEL_ID ?? ""
-const CHANNEL_SECRET = process.env.LINEPAY_CHANNEL_SECRET ?? ""
-
-const BASE_URL = process.env.LINEPAY_SANDBOX === "true"
-  ? "https://sandbox-api-pay.line.me"
-  : "https://api-pay.line.me"
+async function getCreds() {
+  const [channelId, channelSecret, sandbox] = await Promise.all([
+    getSettingOrEnv("linepay.channel_id", "LINEPAY_CHANNEL_ID"),
+    getSettingOrEnv("linepay.channel_secret", "LINEPAY_CHANNEL_SECRET"),
+    getSettingOrEnv("linepay.sandbox", "LINEPAY_SANDBOX"),
+  ])
+  return {
+    channelId,
+    channelSecret,
+    baseUrl:
+      sandbox === "true"
+        ? "https://sandbox-api-pay.line.me"
+        : "https://api-pay.line.me",
+  }
+}
 
 export function signRequest(uri: string, body: string, channelSecret: string, nonce: string): string {
   const message = channelSecret + uri + body + nonce
@@ -24,6 +34,7 @@ export async function requestPayment(
   const uri = "/v3/payments/request"
   const nonce = randomUUID()
   const apiUrl = getApiBaseUrl()
+  const { channelId, channelSecret, baseUrl } = await getCreds()
   const bodyObj = {
     amount,
     currency: "TWD",
@@ -42,13 +53,13 @@ export async function requestPayment(
     },
   }
   const body = JSON.stringify(bodyObj)
-  const signature = signRequest(uri, body, CHANNEL_SECRET, nonce)
+  const signature = signRequest(uri, body, channelSecret, nonce)
 
-  const response = await fetch(`${BASE_URL}${uri}`, {
+  const response = await fetch(`${baseUrl}${uri}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-LINE-ChannelId": CHANNEL_ID,
+      "X-LINE-ChannelId": channelId,
       "X-LINE-Authorization-Nonce": nonce,
       "X-LINE-Authorization": signature,
     },
@@ -68,13 +79,14 @@ export async function confirmPayment(transactionId: string, amount: number): Pro
   const uri = `/v3/payments/${transactionId}/confirm`
   const nonce = randomUUID()
   const body = JSON.stringify({ amount, currency: "TWD" })
-  const signature = signRequest(uri, body, CHANNEL_SECRET, nonce)
+  const { channelId, channelSecret, baseUrl } = await getCreds()
+  const signature = signRequest(uri, body, channelSecret, nonce)
 
-  const response = await fetch(`${BASE_URL}${uri}`, {
+  const response = await fetch(`${baseUrl}${uri}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-LINE-ChannelId": CHANNEL_ID,
+      "X-LINE-ChannelId": channelId,
       "X-LINE-Authorization-Nonce": nonce,
       "X-LINE-Authorization": signature,
     },

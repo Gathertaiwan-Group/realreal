@@ -1,10 +1,8 @@
 import { Router } from "express"
 import { supabase } from "../../lib/supabase"
-import { verifySignature } from "../../lib/jkopay"
+import { verifySignature, getJkopaySecretKey } from "../../lib/jkopay"
 
 export const jkopayWebhookRouter = Router()
-
-const SECRET_KEY = process.env.JKOPAY_SECRET_KEY ?? ""
 
 // POST /webhooks/jkopay — JKOPay server notification via X-Signature header
 jkopayWebhookRouter.post("/", async (req, res) => {
@@ -13,7 +11,8 @@ jkopayWebhookRouter.post("/", async (req, res) => {
   const rawBody = (req as any).rawBody as string | undefined ?? JSON.stringify(req.body)
   const signature = req.headers["x-signature"] as string
 
-  if (!signature || !verifySignature(rawBody, signature, SECRET_KEY)) {
+  const secretKey = await getJkopaySecretKey()
+  if (!signature || !verifySignature(rawBody, signature, secretKey)) {
     res.status(400).json({ error: "Invalid signature" }); return
   }
 
