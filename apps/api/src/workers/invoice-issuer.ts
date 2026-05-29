@@ -12,15 +12,16 @@ export const invoiceWorker = new Worker("invoice", async (job) => {
   let invoiceId: string | undefined = job.data.invoiceId
 
   if (!invoiceId && job.data.orderId) {
-    // Look up the invoice by orderId — the webhook handler creates the record before enqueuing
+    // Look up the invoice by orderId — the post-payment hook creates the
+    // record before enqueuing. invoices has no `created_at`, so we just
+    // pick any non-issued row for this order (in practice there's only one).
     const { data: inv } = await supabase
       .from("invoices")
       .select("id")
       .eq("order_id", job.data.orderId)
       .neq("status", "issued")
-      .order("created_at", { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     if (!inv) throw new Error(`No pending invoice found for order ${job.data.orderId}`)
     invoiceId = inv.id
@@ -28,12 +29,18 @@ export const invoiceWorker = new Worker("invoice", async (job) => {
 
   if (!invoiceId) throw new Error("Job data must include invoiceId or orderId")
 
-  const { data: invoice } = await supabase
+  // Disambiguate the orders embed — there are TWO FKs between invoices and
+  // orders (orders.invoice_id → invoices.id, and invoices.order_id → orders.id).
+  // Without the hint PostgREST returns PGRST201 and the select silently 0s.
+  const { data: invoice, error: invErr } = await supabase
     .from("invoices")
-    .select("*, orders(order_number, total, user_id, order_items(qty, unit_price, product_snapshot))")
+    .select(
+      "*, orders!invoices_order_id_fkey(order_number, total, user_id, order_items(qty, unit_price, product_snapshot))",
+    )
     .eq("id", invoiceId)
     .single()
 
+  if (invErr) throw new Error(`Invoice lookup failed: ${invErr.message}`)
   if (!invoice) throw new Error(`Invoice ${invoiceId} not found`)
   if (invoice.status === "issued") return { skipped: true }
 
