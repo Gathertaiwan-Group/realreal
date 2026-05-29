@@ -199,7 +199,11 @@ ordersRouter.post("/", async (req, res) => {
   // --- Payment initiation ---
   const siteUrl = getSiteUrl()
   const apiUrl = getApiBaseUrl()
-  const confirmUrl = `${siteUrl}/checkout/confirm`
+  // The gateways redirect the user back to confirmUrl WITHOUT appending any
+  // identifying params (PChomePay's return_url is dropped in verbatim). Embed
+  // ?order=<orderNumber> so /checkout/confirm can look up status; without it
+  // the page falls through to "no info → pending" and gets stuck.
+  const confirmUrl = `${siteUrl}/checkout/confirm?order=${encodeURIComponent(order.order_number)}`
   let paymentUrl: string
   let gatewayTxId: string | null = null
 
