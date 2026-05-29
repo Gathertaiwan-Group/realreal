@@ -191,6 +191,37 @@ postsPublicRouter.get("/:slug", async (req, res) => {
 })
 
 // POST /admin/posts — requireAuth + requireEditor
+// GET /admin/posts — list ALL posts (any status) for the admin grid
+postsAdminRouter.get("/", requireAuth, requireEditor, async (req, res) => {
+  const page = Math.max(1, Number(req.query.page) || 1)
+  const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50))
+  const from = (page - 1) * limit
+  const to = from + limit - 1
+  let query = supabase
+    .from("posts")
+    .select("id, title, slug, status, published_at, created_at, category_id, author_id, post_categories(name)", { count: "exact" })
+    .order("created_at", { ascending: false, nullsFirst: false })
+    .range(from, to)
+  const status = req.query.status as string | undefined
+  if (status && ["draft", "published", "scheduled"].includes(status)) {
+    query = query.eq("status", status)
+  }
+  const { data, error, count } = await query
+  if (error) { res.status(500).json({ error: error.message }); return }
+  res.json({ data: data ?? [], total: count ?? 0, page, limit })
+})
+
+// GET /admin/posts/:id — fetch single post (any status) for the editor
+postsAdminRouter.get("/:id", requireAuth, requireEditor, async (req, res) => {
+  const { data, error } = await supabase
+    .from("posts")
+    .select("*, post_categories(name)")
+    .eq("id", req.params.id)
+    .single()
+  if (error || !data) { res.status(404).json({ error: "Post not found" }); return }
+  res.json({ data })
+})
+
 postsAdminRouter.post("/", requireAuth, requireEditor, async (req, res) => {
   const parsed = postSchema.safeParse(req.body)
   if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return }

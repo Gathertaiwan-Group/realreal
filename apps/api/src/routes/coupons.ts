@@ -115,7 +115,7 @@ couponsRouter.get("/admin/coupons", requireAuth, requireAdmin, async (_req, res)
   const { data, error } = await supabase
     .from("coupons")
     .select("*")
-    .order("created_at", { ascending: false })
+    .order("code", { ascending: true })
 
   if (error) { res.status(500).json({ error: error.message }); return }
   res.json({ data: data ?? [] })
