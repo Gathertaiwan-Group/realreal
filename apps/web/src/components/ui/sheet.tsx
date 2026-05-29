@@ -118,7 +118,7 @@ function SheetContent({
 }
 
 function SheetHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex flex-col space-y-2 p-6 pb-0", className)} {...props} />
+  return <div className={cn("flex flex-col space-y-2 p-6 pb-0 shrink-0", className)} {...props} />
 }
 
 function SheetTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingElement>) {
@@ -126,7 +126,7 @@ function SheetTitle({ className, ...props }: React.HTMLAttributes<HTMLHeadingEle
 }
 
 function SheetFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("border-t p-6", className)} {...props} />
+  return <div className={cn("border-t p-6 shrink-0", className)} {...props} />
 }
 
 export { Sheet, SheetTrigger, SheetContent, SheetHeader, SheetTitle, SheetFooter }

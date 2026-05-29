@@ -144,9 +144,9 @@ subscriptionsRouter.patch("/:id", async (req, res) => {
 
   const { data: updated, error: updateError } = await supabase
     .from("subscriptions")
-    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .update({ status: newStatus })
     .eq("id", subscriptionId)
-    .select("id, status, updated_at")
+    .select("id, status")
     .single()
 
   if (updateError || !updated) {

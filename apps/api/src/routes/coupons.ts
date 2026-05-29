@@ -39,24 +39,32 @@ const bulkGenerateSchema = z.object({
 // POST /coupons/validate — public (but typically used by authenticated users)
 // ---------------------------------------------------------------------------
 
-couponsRouter.post("/coupons/validate", requireAuth, async (req, res) => {
+// requireAuth dropped — guest checkout needs to validate coupons too.
+// requireOptionalAuth-style: read userId from header if present, otherwise null.
+couponsRouter.post("/coupons/validate", async (req, res) => {
   const { code, order_amount } = req.body as { code?: string; order_amount?: number }
 
   if (!code) { res.status(400).json({ error: "code is required" }); return }
 
+  // Best-effort: pull userId from a Bearer header if the caller is logged in,
+  // so tier-locked coupons still work for guests AND members.
+  let userId: string | undefined
+  const authHeader = req.headers.authorization
+  if (authHeader?.startsWith("Bearer ")) {
+    const { data: { user } } = await supabase.auth.getUser(authHeader.slice(7))
+    userId = user?.id
+  }
+
   const { data: coupon, error } = await supabase
     .from("coupons")
-    .select("id, code, type, value, min_order, max_uses, used_count, expires_at, applicable_to, is_active, tier_id")
+    .select("id, code, type, value, min_order, max_uses, used_count, expires_at, applicable_to, tier_id")
     .eq("code", code)
     .single()
 
   if (error || !coupon) { res.status(404).json({ error: "Coupon not found" }); return }
 
-  if (!coupon.is_active) { res.status(400).json({ error: "Coupon is not active" }); return }
-
   // Check tier eligibility
   if (coupon.tier_id) {
-    const userId = res.locals.userId as string | undefined
     if (!userId) { res.status(403).json({ error: "Coupon requires membership tier eligibility" }); return }
 
     const { data: profile } = await supabase

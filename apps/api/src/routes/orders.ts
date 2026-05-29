@@ -14,6 +14,8 @@ const orderItemSchema = z.object({
   variantId: z.string().uuid(),
   qty: z.number().int().positive(),
   unitPrice: z.number().int().positive(),
+  productName: z.string().optional(),
+  variantName: z.string().optional(),
 })
 
 const addressSchema = z.object({
@@ -91,6 +93,11 @@ ordersRouter.post("/", async (req, res) => {
         variant_id: item.variantId,
         qty: item.qty,
         unit_price: item.unitPrice,
+        product_snapshot: {
+          name: item.productName ?? "",
+          variant_name: item.variantName ?? "",
+          unit_price: item.unitPrice,
+        },
       }))
     )
 

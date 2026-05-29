@@ -16,7 +16,10 @@ export const logisticsRouter = Router()
 
 // GET /logistics/map — Generate ECPay store map selection form (auto-submits)
 logisticsRouter.get("/map", (req, res) => {
-  const logisticsSubType = (req.query.logisticsSubType as string) ?? "UNIMART"
+  // ECPay scopes credentials per channel: UNIMART = 7-11 B2C (廠商到店),
+  // UNIMARTC2C = 7-11 C2C (店到店). Consumer-checkout merchants are
+  // provisioned for C2C; using UNIMART triggers "找不到加密金鑰".
+  const logisticsSubType = (req.query.logisticsSubType as string) ?? "UNIMARTC2C"
   const isCollection = (req.query.isCollection as string) ?? "N"
 
   const merchantTradeNo = `MAP${Date.now()}`

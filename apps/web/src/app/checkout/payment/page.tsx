@@ -158,9 +158,13 @@ export default function PaymentPage() {
     setCouponLoading(true)
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      const couponHeaders: Record<string, string> = { "Content-Type": "application/json" }
+      if (session?.access_token) couponHeaders.Authorization = `Bearer ${session.access_token}`
       const res = await fetch(`${apiUrl}/coupons/validate`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: couponHeaders,
         body: JSON.stringify({ code: couponCode.trim(), order_amount: subtotal }),
       })
       if (!res.ok) {
@@ -195,13 +199,45 @@ export default function PaymentPage() {
       if (session?.access_token) {
         headers.Authorization = `Bearer ${session.access_token}`
       }
+      // Normalize cart items and address to the shapes the API zod schema
+      // requires (it doesn't know about productName / variantName / addressLine
+      // / 711-or-family shipping shorthand the cart UI uses).
+      const apiItems = checkoutData.items.map((i) => ({
+        variantId: i.variantId,
+        qty: i.qty,
+        unitPrice: Math.round(i.price),
+        productName: i.productName,
+        variantName: i.variantName,
+      }))
+      const shippingMethodMap: Record<string, string> = {
+        "711": "cvs_711",
+        family: "cvs_family",
+        home_delivery: "home_delivery",
+      }
+      const shippingMethod =
+        shippingMethodMap[checkoutData.shippingMethod] ?? checkoutData.shippingMethod
+      const cvsTypeMap: Record<string, string> = { cvs_711: "711", cvs_family: "family" }
+      const apiAddress = {
+        type: "shipping",
+        name: checkoutData.address.name,
+        phone: checkoutData.address.phone,
+        addressType: shippingMethod === "home_delivery" ? "home" : "cvs",
+        address:
+          checkoutData.address.addressLine ||
+          checkoutData.address.cvsStoreName ||
+          undefined,
+        city: checkoutData.address.city || undefined,
+        postalCode: checkoutData.address.postalCode || undefined,
+        cvsStoreId: checkoutData.address.cvsStoreId || undefined,
+        cvsType: cvsTypeMap[shippingMethod],
+      }
       const res = await fetch(`${apiUrl}/orders`, {
         method: "POST",
         headers,
         body: JSON.stringify({
-          items: checkoutData.items,
-          address: checkoutData.address,
-          shippingMethod: checkoutData.shippingMethod,
+          items: apiItems,
+          address: apiAddress,
+          shippingMethod,
           paymentMethod,
           invoice: checkoutData.invoice,
           guestEmail: session ? undefined : checkoutData.address.email,

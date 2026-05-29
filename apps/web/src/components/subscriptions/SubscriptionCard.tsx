@@ -1,5 +1,6 @@
 "use client"
 import { useState } from "react"
+import { createClient } from "@/lib/supabase/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -39,10 +40,14 @@ export function SubscriptionCard({ sub, onAction }: { sub: Sub; onAction: () => 
   async function handleAction(action: "pause" | "resume" | "cancel") {
     setLoading(true)
     try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
       const res = await fetch(`${API_URL}/subscriptions/${sub.id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session?.access_token ?? ""}`,
+        },
         body: JSON.stringify({ action }),
       })
       if (res.ok) {

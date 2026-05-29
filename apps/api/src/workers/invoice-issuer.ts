@@ -30,7 +30,7 @@ export const invoiceWorker = new Worker("invoice", async (job) => {
 
   const { data: invoice } = await supabase
     .from("invoices")
-    .select("*, orders(order_number, total, user_id, order_items(name, quantity, unit_price))")
+    .select("*, orders(order_number, total, user_id, order_items(qty, unit_price, product_snapshot))")
     .eq("id", invoiceId)
     .single()
 
@@ -39,11 +39,11 @@ export const invoiceWorker = new Worker("invoice", async (job) => {
 
   const order = invoice.orders as any
 
-  // Build line items from the order
+  // Build line items from the order (name lives in product_snapshot JSON)
   const items: IssueInvoiceParams["items"] = Array.isArray(order?.order_items)
     ? order.order_items.map((item: any) => ({
-        name: item.name,
-        qty: Number(item.quantity),
+        name: (item.product_snapshot?.name as string) ?? "商品",
+        qty: Number(item.qty),
         unitPrice: Number(item.unit_price),
       }))
     : []
