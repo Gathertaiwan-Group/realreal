@@ -337,8 +337,13 @@ export default function CheckoutPage() {
     if (!name.trim()) errs.name = "請輸入收件人姓名"
     if (!phone.trim()) errs.phone = "請輸入手機號碼"
     else if (!/^09\d{8}$/.test(phone.trim())) errs.phone = "手機號碼格式不正確（09xxxxxxxx）"
-    if (!email.trim()) errs.email = "請輸入電子信箱"
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) errs.email = "電子信箱格式不正確"
+    // Email is OPTIONAL. Logged-in users automatically receive emails at their
+    // registered account address (resolved server-side from auth.users in
+    // enqueue-post-payment). Guests can still type an email if they want
+    // confirmation/invoice notifications. We only enforce format when filled.
+    if (email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      errs.email = "電子信箱格式不正確"
+    }
 
     if (addressType === "home") {
       if (!city.trim()) errs.city = "請選擇縣市"
@@ -447,8 +452,10 @@ export default function CheckoutPage() {
 
                 <div className="space-y-1.5">
                   <Label htmlFor="email">
-                    電子信箱 <span className="text-red-500">*</span>
-                    <span className="ml-1 text-xs text-zinc-500">(用於訂單通知與發票)</span>
+                    電子信箱
+                    <span className="ml-1 text-xs text-zinc-500">
+                      (選填；登入用戶將自動使用註冊 Email)
+                    </span>
                   </Label>
                   <Input
                     id="email"
