@@ -1,8 +1,18 @@
 import { supabase } from "../lib/supabase"
 import { createCvsLogistics, createHomeDelivery } from "../lib/ecpay-logistics"
 
+/**
+ * Create the ECPay logistics record for a paid order.
+ *
+ * Table = `logistics` (NOT `logistics_records` — old worker referenced a
+ * non-existent table and inserts silently failed).
+ * Column map per packages/db/migrations/0001_initial.sql:
+ *   - ecpay_logistics_id (not logistics_id)
+ *   - type (not shipping_method) — one of CVS / HOME
+ *   - provider defaults to 'ecpay'
+ *   - status starts at 'pending', webhook updates it later
+ */
 export async function processCreateShipment(orderId: string) {
-  // Fetch order with address
   const { data: order } = await supabase
     .from("orders")
     .select("id, order_number, shipping_method, status, payment_status")
@@ -15,9 +25,9 @@ export async function processCreateShipment(orderId: string) {
     return
   }
 
-  // Check if a logistics record already exists (idempotency)
+  // Idempotency: skip if a logistics row already exists for this order.
   const { data: existing } = await supabase
-    .from("logistics_records")
+    .from("logistics")
     .select("id")
     .eq("order_id", orderId)
     .limit(1)
@@ -32,52 +42,60 @@ export async function processCreateShipment(orderId: string) {
     .from("order_addresses")
     .select("name, phone, address, cvs_store_id, cvs_type")
     .eq("order_id", orderId)
-    .single()
+    .eq("type", "shipping")
+    .maybeSingle()
 
-  if (!address) throw new Error(`Address not found for order ${orderId}`)
+  if (!address) throw new Error(`Shipping address not found for order ${orderId}`)
 
-  let logisticsId: string
+  let ecpayLogisticsId: string
   let cvsPaymentNo: string | null = null
   let cvsValidationNo: string | null = null
+  let logisticsType: "CVS" | "HOME"
 
   if (order.shipping_method === "home_delivery") {
+    logisticsType = "HOME"
     const result = await createHomeDelivery(
       orderId,
       address.name,
       address.phone,
-      address.address ?? ""
+      address.address ?? "",
     )
-    logisticsId = result.logisticsId
+    ecpayLogisticsId = result.logisticsId
   } else {
-    // CVS: cvs_711 -> UNIMARTC2C (店到店), cvs_family -> FAMIC2C
-    const cvsType = order.shipping_method === "cvs_711" ? "UNIMARTC2C" : "FAMIC2C"
+    logisticsType = "CVS"
+    // cvs_711 -> UNIMARTC2C (店到店), cvs_family -> FAMIC2C
+    const cvsType =
+      order.shipping_method === "cvs_711" ? "UNIMARTC2C" : "FAMIC2C"
     const result = await createCvsLogistics(
       orderId,
       cvsType as "UNIMARTC2C" | "FAMIC2C",
       address.name,
-      address.cvs_store_id ?? ""
+      address.cvs_store_id ?? "",
     )
-    logisticsId = result.logisticsId
+    ecpayLogisticsId = result.logisticsId
     cvsPaymentNo = result.cvsPaymentNo ?? null
     cvsValidationNo = result.cvsValidationNo ?? null
   }
 
-  // Insert logistics record
-  const { error } = await supabase
-    .from("logistics_records")
-    .insert({
-      order_id: orderId,
-      logistics_id: logisticsId,
-      shipping_method: order.shipping_method,
-      status: "created",
-      cvs_payment_no: cvsPaymentNo,
-      cvs_validation_no: cvsValidationNo,
-    })
+  const { error } = await supabase.from("logistics").insert({
+    order_id: orderId,
+    provider: "ecpay",
+    type: logisticsType,
+    ecpay_logistics_id: ecpayLogisticsId,
+    status: "pending",
+    cvs_payment_no: cvsPaymentNo,
+    cvs_validation_no: cvsValidationNo,
+  })
 
   if (error) {
-    console.error(`[logistics-creator] failed to insert logistics record for order ${orderId}:`, error)
+    console.error(
+      `[logistics-creator] failed to insert logistics row for order ${orderId}:`,
+      error,
+    )
     throw error
   }
 
-  console.log(`[logistics-creator] shipment created for order ${orderId}, logisticsId=${logisticsId}`)
+  console.log(
+    `[logistics-creator] shipment created for order ${orderId}, ecpay_logistics_id=${ecpayLogisticsId}`,
+  )
 }

@@ -135,16 +135,26 @@ export async function enqueuePostPaymentJobs(orderId: string) {
       .maybeSingle()
 
     if (!existingInvoice) {
-      await supabase
+      // Schema enum (0001_initial.sql + 0003_invoice_extensions.sql):
+      //   type        ∈ B2C_2 / B2C_3 / B2B
+      //   carrier_type∈ phone / natural_person / love_code (or NULL)
+      // The previous "b2c" + "member" violated both check constraints, the
+      // insert silently 23514'd, and the worker logged "No pending invoice
+      // found" forever. B2C_2 = 雲端發票二聯式, no carrier = "會員載具" by
+      // default at Amego (handled in amego.ts when carrier_type is null).
+      const { error: invErr } = await supabase
         .from("invoices")
         .insert({
           order_id: orderId,
           amount: order.total,
           tax_amount: 0,
           status: "pending",
-          type: "b2c",
-          carrier_type: "member",
+          type: "B2C_2",
+          carrier_type: null,
         })
+      if (invErr) {
+        console.warn("[post-payment] invoice insert failed:", invErr.message)
+      }
     }
 
     await invoiceQueue.add(

@@ -33,25 +33,31 @@ ecpayLogisticsWebhookRouter.post("/", async (req, res) => {
   }
   const mappedStatus = statusMap[LogisticsStatus] ?? "in_transit"
 
+  // Table is `logistics`; matching column is `ecpay_logistics_id`.
+  // `booking_note`/`updated_at` columns don't exist in this schema — store the
+  // raw payload in `raw_response` instead.
   const { data: record } = await supabase
-    .from("logistics_records")
+    .from("logistics")
     .select("id, order_id")
-    .eq("logistics_id", AllPayLogisticsID)
+    .eq("ecpay_logistics_id", AllPayLogisticsID)
     .single()
 
   if (record) {
-    const updatePayload: Record<string, string | null> = {
+    const updatePayload: Record<string, unknown> = {
       status: mappedStatus,
-      booking_note: BookingNote ?? null,
-      updated_at: new Date().toISOString(),
+      raw_response: { ...params, BookingNote: BookingNote ?? null },
     }
-
-    // CVS pickup notification — update payment/validation numbers if provided
+    if (mappedStatus === "delivered") {
+      updatePayload.delivered_at = new Date().toISOString()
+    }
+    if (mappedStatus === "in_transit") {
+      updatePayload.shipped_at = new Date().toISOString()
+    }
     if (CVSPaymentNo) updatePayload.cvs_payment_no = CVSPaymentNo
     if (CVSValidationNo) updatePayload.cvs_validation_no = CVSValidationNo
 
     await supabase
-      .from("logistics_records")
+      .from("logistics")
       .update(updatePayload)
       .eq("id", record.id)
 
