@@ -1,5 +1,6 @@
 import { Router } from "express"
 import { buildCheckMacValue } from "../lib/ecpay-logistics"
+import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
 
 const MERCHANT_ID = process.env.ECPAY_MERCHANT_ID ?? ""
 const HASH_KEY = process.env.ECPAY_HASH_KEY ?? ""
@@ -8,9 +9,6 @@ const HASH_IV = process.env.ECPAY_HASH_IV ?? ""
 const MAP_URL = process.env.ECPAY_SANDBOX === "true"
   ? "https://logistics-stage.ecpay.com.tw/Express/map"
   : "https://logistics.ecpay.com.tw/Express/map"
-
-const RAILWAY_API_URL = process.env.RAILWAY_API_URL ?? "http://localhost:4000"
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://realreal.cc"
 
 export const logisticsRouter = Router()
 
@@ -30,7 +28,7 @@ logisticsRouter.get("/map", (req, res) => {
     LogisticsType: "CVS",
     LogisticsSubType: logisticsSubType,
     IsCollection: isCollection,
-    ServerReplyURL: `${RAILWAY_API_URL}/logistics/map-result`,
+    ServerReplyURL: `${getApiBaseUrl()}/logistics/map-result`,
   }
   fields.CheckMacValue = buildCheckMacValue(fields, HASH_KEY, HASH_IV)
 
@@ -70,7 +68,7 @@ logisticsRouter.post("/map-result", (req, res) => {
   if (CVSAddress) params.set("cvsAddress", CVSAddress)
   if (LogisticsSubType) params.set("logisticsSubType", LogisticsSubType)
 
-  res.redirect(`${SITE_URL}/checkout?${params.toString()}`)
+  res.redirect(`${getSiteUrl()}/checkout?${params.toString()}`)
 })
 
 function escapeHtml(str: string): string {
