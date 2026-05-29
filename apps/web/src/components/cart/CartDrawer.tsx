@@ -52,20 +52,43 @@ export function CartDrawer({
           </div>
         ) : (
           <>
-            <div className="flex-1 min-h-0 overflow-y-auto px-6 py-4">
+            <div className="flex-1 min-h-[200px] overflow-y-auto px-6 py-4">
               <ul className="space-y-4">
-                {cartItems.map((item) => (
+                {cartItems.map((item) => {
+                  const name = item.productName || "商品"
+                  const variant = item.variantName || ""
+                  // Older next/image with an off-whitelist remote URL throws
+                  // at the optimisation step and can take down the whole
+                  // <ul>. Fall back to a plain <img> for any host the
+                  // Vercel image config doesn't recognise.
+                  const safeImage =
+                    !!item.imageUrl &&
+                    (item.imageUrl.startsWith("/") ||
+                      item.imageUrl.includes("realreal-store.vercel.app") ||
+                      item.imageUrl.includes("realreal.cc"))
+                  return (
                   <li
                     key={item.variantId}
-                    className="flex gap-3 rounded-[10px] border p-3"
+                    className="flex gap-3 rounded-[10px] border p-3 bg-background"
                   >
-                    {item.imageUrl ? (
+                    {safeImage ? (
                       <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[10px] bg-zinc-100">
                         <Image
-                          src={item.imageUrl}
-                          alt={item.productName}
+                          src={item.imageUrl as string}
+                          alt={name}
                           fill
+                          sizes="64px"
                           className="object-cover"
+                          unoptimized
+                        />
+                      </div>
+                    ) : item.imageUrl ? (
+                      <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-[10px] bg-zinc-100">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={item.imageUrl}
+                          alt={name}
+                          className="absolute inset-0 h-full w-full object-cover"
                         />
                       </div>
                     ) : (
@@ -77,10 +100,10 @@ export function CartDrawer({
                     <div className="flex flex-1 flex-col justify-between">
                       <div>
                         <p className="text-sm font-medium leading-tight">
-                          {item.productName}
+                          {name}
                         </p>
                         <p className="text-xs text-muted-foreground">
-                          {item.variantName}
+                          {variant}
                         </p>
                       </div>
 
@@ -127,7 +150,8 @@ export function CartDrawer({
                       </div>
                     </div>
                   </li>
-                ))}
+                )
+                })}
               </ul>
             </div>
 
