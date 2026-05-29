@@ -3,7 +3,9 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { OrderActions, OrderTimeline } from "./_client"
+import { InvoiceCard, OrderActions, OrderTimeline } from "./_client"
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
 export const metadata = { title: "訂單詳情 | Admin" }
 
@@ -55,7 +57,8 @@ export default async function AdminOrderDetailPage({
       order_items(*),
       order_addresses(*),
       payments(*),
-      invoices!invoices_order_id_fkey(*)
+      invoices!invoices_order_id_fkey(*),
+      logistics(*)
     `
     )
     .eq("id", id)
@@ -307,30 +310,13 @@ export default async function AdminOrderDetailPage({
           </CardContent>
         </Card>
 
-        {/* Invoice Info */}
-        {order.invoices?.[0] && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">發票資訊</CardTitle>
-            </CardHeader>
-            <CardContent className="text-sm space-y-2">
-              <div className="flex justify-between">
-                <span className="text-zinc-500">發票號碼</span>
-                <span className="font-mono">{order.invoices[0].invoice_number ?? "—"}</span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-zinc-500">狀態</span>
-                <Badge variant="outline">{order.invoices[0].status}</Badge>
-              </div>
-              {order.invoices[0].issued_at && (
-                <div className="flex justify-between">
-                  <span className="text-zinc-500">開立時間</span>
-                  <span>{new Date(order.invoices[0].issued_at).toLocaleString("zh-TW")}</span>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        )}
+        {/* Invoice Info — always render; component handles empty state + actions */}
+        <InvoiceCard
+          orderId={id}
+          invoice={order.invoices?.[0] ?? null}
+          paymentStatus={order.payment_status}
+          apiUrl={API_URL}
+        />
 
         {/* Billing Address (if different) */}
         {billingAddr && (

@@ -1,8 +1,14 @@
 "use client"
 
-import { useTransition } from "react"
+import { useState, useTransition } from "react"
 import { Button } from "@/components/ui/button"
-import { updateOrderStatusAction } from "./actions"
+import { Badge } from "@/components/ui/badge"
+import { FileText, RefreshCw, Ban, ExternalLink } from "lucide-react"
+import {
+  reissueInvoiceAction,
+  updateOrderStatusAction,
+  voidInvoiceAction,
+} from "./actions"
 
 const STATUS_LABEL: Record<string, string> = {
   pending: "待付款",
@@ -121,6 +127,234 @@ export function OrderTimeline({ status, createdAt }: OrderTimelineProps) {
           <span className="text-xs whitespace-nowrap text-red-600 font-medium">
             {STATUS_LABEL[status] ?? status}
           </span>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ---------- Invoice Card ---------- */
+
+const INVOICE_STATUS_LABEL: Record<string, string> = {
+  pending: "待開立",
+  issued: "已開立",
+  voided: "已作廢",
+  failed: "開立失敗",
+}
+
+const INVOICE_STATUS_VARIANT: Record<
+  string,
+  "default" | "secondary" | "outline" | "destructive"
+> = {
+  pending: "outline",
+  issued: "default",
+  voided: "destructive",
+  failed: "destructive",
+}
+
+interface InvoiceCardProps {
+  orderId: string
+  invoice: {
+    id: string
+    invoice_number: string | null
+    status: string
+    type?: string | null
+    carrier_type?: string | null
+    amount?: number | string | null
+    issued_at?: string | null
+    error_message?: string | null
+  } | null
+  /** Optional: lets the empty state explain why there's no row yet. */
+  paymentStatus: string
+  /** Base URL of the API server, used to deep-link to the PDF endpoint. */
+  apiUrl: string
+}
+
+export function InvoiceCard({
+  orderId,
+  invoice,
+  paymentStatus,
+  apiUrl,
+}: InvoiceCardProps) {
+  const [isPending, startTransition] = useTransition()
+  const [voidReason, setVoidReason] = useState("")
+  const [showVoidForm, setShowVoidForm] = useState(false)
+
+  // No invoice row yet — explain why instead of just hiding.
+  if (!invoice) {
+    return (
+      <div className="rounded-lg border bg-white p-4 text-sm">
+        <div className="mb-2 flex items-center gap-2 text-zinc-900">
+          <FileText className="h-4 w-4" />
+          <span className="font-medium">發票資訊</span>
+        </div>
+        <p className="text-zinc-400">
+          {paymentStatus === "paid"
+            ? "尚未建立發票（系統會在付款完成後自動排程開立，若超過 5 分鐘仍未出現請聯絡技術支援）"
+            : "尚未建立發票（需付款完成後系統自動開立）"}
+        </p>
+      </div>
+    )
+  }
+
+  function handleReissue() {
+    startTransition(() => reissueInvoiceAction(orderId, invoice!.id))
+  }
+
+  function handleVoid() {
+    if (!voidReason.trim()) return
+    startTransition(async () => {
+      await voidInvoiceAction(orderId, invoice!.id, voidReason.trim())
+      setVoidReason("")
+      setShowVoidForm(false)
+    })
+  }
+
+  const canReissue =
+    invoice.status === "pending" || invoice.status === "failed"
+  const canVoid = invoice.status === "issued"
+  const canViewPdf = invoice.status === "issued" && invoice.invoice_number
+
+  return (
+    <div className="rounded-lg border bg-white p-4 text-sm">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="flex items-center gap-2 text-zinc-900">
+          <FileText className="h-4 w-4" />
+          <span className="font-medium">發票資訊</span>
+        </div>
+        <Badge variant={INVOICE_STATUS_VARIANT[invoice.status] ?? "outline"}>
+          {INVOICE_STATUS_LABEL[invoice.status] ?? invoice.status}
+        </Badge>
+      </div>
+
+      <div className="space-y-1.5">
+        <div className="flex justify-between">
+          <span className="text-zinc-500">發票號碼</span>
+          <span className="font-mono">{invoice.invoice_number ?? "—"}</span>
+        </div>
+        {invoice.amount != null && (
+          <div className="flex justify-between">
+            <span className="text-zinc-500">金額</span>
+            <span>NT$ {Number(invoice.amount).toLocaleString()}</span>
+          </div>
+        )}
+        {invoice.type && (
+          <div className="flex justify-between">
+            <span className="text-zinc-500">類型</span>
+            <span>
+              {invoice.type === "b2b"
+                ? "B2B 三聯式"
+                : invoice.type === "b2c"
+                  ? "B2C 二聯式"
+                  : invoice.type}
+            </span>
+          </div>
+        )}
+        {invoice.carrier_type && (
+          <div className="flex justify-between">
+            <span className="text-zinc-500">載具</span>
+            <span>
+              {invoice.carrier_type === "phone"
+                ? "手機條碼"
+                : invoice.carrier_type === "natural_person"
+                  ? "自然人憑證"
+                  : invoice.carrier_type === "love_code"
+                    ? "愛心碼捐贈"
+                    : invoice.carrier_type === "member"
+                      ? "會員載具"
+                      : invoice.carrier_type}
+            </span>
+          </div>
+        )}
+        {invoice.issued_at && (
+          <div className="flex justify-between">
+            <span className="text-zinc-500">開立時間</span>
+            <span>
+              {new Date(invoice.issued_at).toLocaleString("zh-TW")}
+            </span>
+          </div>
+        )}
+        {invoice.error_message && (
+          <div className="rounded-md bg-red-50 p-2 text-xs text-red-700">
+            錯誤訊息：{invoice.error_message}
+          </div>
+        )}
+      </div>
+
+      {/* Action row */}
+      {(canReissue || canVoid || canViewPdf) && (
+        <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
+          {canViewPdf && (
+            <a
+              href={`${apiUrl}/admin/invoices/${invoice.id}/pdf`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
+            >
+              <ExternalLink className="h-3.5 w-3.5" />
+              查看 PDF
+            </a>
+          )}
+          {canReissue && (
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={isPending}
+              onClick={handleReissue}
+            >
+              <RefreshCw className="mr-1 h-3.5 w-3.5" />
+              重新開立
+            </Button>
+          )}
+          {canVoid && !showVoidForm && (
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={isPending}
+              onClick={() => setShowVoidForm(true)}
+            >
+              <Ban className="mr-1 h-3.5 w-3.5" />
+              作廢
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Void confirmation form */}
+      {showVoidForm && (
+        <div className="mt-3 rounded-md border border-red-200 bg-red-50/50 p-3 space-y-2">
+          <p className="text-xs text-red-700">
+            作廢後將通知 Amego 並無法復原。請輸入作廢原因：
+          </p>
+          <input
+            type="text"
+            value={voidReason}
+            onChange={(e) => setVoidReason(e.target.value)}
+            placeholder="例：訂單取消 / 客戶要求"
+            className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-red-500 focus:outline-none"
+            autoFocus
+          />
+          <div className="flex justify-end gap-2">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setShowVoidForm(false)
+                setVoidReason("")
+              }}
+              disabled={isPending}
+            >
+              取消
+            </Button>
+            <Button
+              size="sm"
+              variant="destructive"
+              onClick={handleVoid}
+              disabled={isPending || !voidReason.trim()}
+            >
+              {isPending ? "處理中…" : "確認作廢"}
+            </Button>
+          </div>
         </div>
       )}
     </div>
