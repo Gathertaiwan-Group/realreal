@@ -1,4 +1,5 @@
 import { createHmac, randomUUID } from "crypto"
+import { getApiBaseUrl } from "./urls"
 
 // LINE Pay v3 API — https://pay.line.me/developers/apis/onlineApis
 // NOTE: LINE Pay does NOT support recurring / token payments. For subscriptions, use PChomePay only.
@@ -22,7 +23,7 @@ export async function requestPayment(
 ): Promise<{ paymentUrl: string; transactionId: string }> {
   const uri = "/v3/payments/request"
   const nonce = randomUUID()
-  const apiUrl = process.env.API_URL ?? process.env.NEXT_PUBLIC_SITE_URL ?? "https://realreal.cc"
+  const apiUrl = getApiBaseUrl()
   const bodyObj = {
     amount,
     currency: "TWD",
@@ -36,8 +37,8 @@ export async function requestPayment(
       },
     ],
     redirectUrls: {
-      confirmUrl: `${apiUrl}/api/webhooks/linepay/confirm`,
-      cancelUrl: `${apiUrl}/api/webhooks/linepay/cancel`,
+      confirmUrl: `${apiUrl}/webhooks/linepay/confirm`,
+      cancelUrl: `${apiUrl}/webhooks/linepay/cancel`,
     },
   }
   const body = JSON.stringify(bodyObj)

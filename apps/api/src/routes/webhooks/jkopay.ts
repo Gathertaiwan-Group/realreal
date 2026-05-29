@@ -8,7 +8,9 @@ const SECRET_KEY = process.env.JKOPAY_SECRET_KEY ?? ""
 
 // POST /webhooks/jkopay — JKOPay server notification via X-Signature header
 jkopayWebhookRouter.post("/", async (req, res) => {
-  const rawBody = JSON.stringify(req.body)
+  // HMAC must be verified against the EXACT bytes JKOPay signed — re-encoding
+  // via JSON.stringify(req.body) re-orders keys and rewrites Unicode escapes.
+  const rawBody = (req as any).rawBody as string | undefined ?? JSON.stringify(req.body)
   const signature = req.headers["x-signature"] as string
 
   if (!signature || !verifySignature(rawBody, signature, SECRET_KEY)) {
@@ -32,7 +34,6 @@ jkopayWebhookRouter.post("/", async (req, res) => {
 
   if (idempotencyError) {
     if (idempotencyError.code === "23505") {
-      // Duplicate webhook — already processed
       res.json({ result: "OK" }); return
     }
     console.error("[webhooks/jkopay] idempotency insert failed:", idempotencyError)
@@ -42,19 +43,17 @@ jkopayWebhookRouter.post("/", async (req, res) => {
   const success = status === "SUCCESS"
 
   const { data: tx } = await supabase
-    .from("payment_transactions")
+    .from("payments")
     .select("id, order_id")
-    .eq("merchant_trade_no", merchant_trade_no)
-    .single()
+    .eq("gateway_tx_id", merchant_trade_no)
+    .maybeSingle()
 
   if (tx) {
     await supabase
-      .from("payment_transactions")
+      .from("payments")
       .update({
         status: success ? "captured" : "failed",
-        gateway_trade_no: trade_no ?? null,
-        raw_response: rawBody,
-        updated_at: new Date().toISOString(),
+        raw_response: JSON.stringify({ ...req.body, gateway_trade_no: trade_no }),
       })
       .eq("id", tx.id)
 
@@ -68,7 +67,6 @@ jkopayWebhookRouter.post("/", async (req, res) => {
       .eq("id", tx.order_id)
 
     if (success) {
-      // Enqueue email + invoice jobs
       try {
         const { enqueuePostPaymentJobs } = await import("../../lib/enqueue-post-payment")
         await enqueuePostPaymentJobs(tx.order_id)

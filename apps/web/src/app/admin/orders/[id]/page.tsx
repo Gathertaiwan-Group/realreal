@@ -55,9 +55,7 @@ export default async function AdminOrderDetailPage({
       order_items(*),
       order_addresses(*),
       payments(*),
-      logistics(*),
-      invoices(*),
-      user_profiles(display_name, email, phone)
+      invoices(*)
     `
     )
     .eq("id", id)
@@ -65,7 +63,20 @@ export default async function AdminOrderDetailPage({
 
   if (!order) notFound()
 
-  const profile = order.user_profiles as { display_name: string | null; email: string; phone: string | null } | null
+  // user_profiles has no FK to orders, so resolve separately. Email lives in
+  // auth.users which is not reachable via PostgREST from the browser; fall
+  // back to guest_email.
+  let profile: { display_name: string | null; email: string | null; phone: string | null } | null = null
+  if (order.user_id) {
+    const { data: p } = await supabase
+      .from("user_profiles")
+      .select("display_name, phone")
+      .eq("user_id", order.user_id)
+      .maybeSingle()
+    if (p) profile = { display_name: p.display_name, email: order.guest_email ?? null, phone: p.phone }
+  } else if (order.guest_email) {
+    profile = { display_name: null, email: order.guest_email, phone: null }
+  }
   const shippingAddr = order.order_addresses?.find((a: Record<string, unknown>) => a.type === "shipping")
   const billingAddr = order.order_addresses?.find((a: Record<string, unknown>) => a.type === "billing")
 

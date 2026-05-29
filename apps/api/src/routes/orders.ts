@@ -3,9 +3,10 @@ import { z } from "zod"
 import { supabase } from "../lib/supabase"
 import { requireAuth } from "../middleware/auth"
 import { getMemberDiscountRate } from "../lib/tier"
-import { buildCheckMacValue } from "../lib/pchomepay"
+import { createPayment as pchomepayCreatePayment } from "../lib/pchomepay"
 import { requestPayment as linePayRequestPayment } from "../lib/linepay"
 import { initiatePayment as jkoPayInitiatePayment } from "../lib/jkopay"
+import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
 
 export const ordersRouter = Router()
 
@@ -67,11 +68,11 @@ ordersRouter.post("/", async (req, res) => {
       payment_status: "pending",
       shipping_method: shippingMethod,
       payment_method: paymentMethod,
-      subtotal_cents: subtotalCents,
-      shipping_fee_cents: shippingFeeCents,
+      subtotal: subtotalCents,
+      shipping_fee: shippingFeeCents,
       discount_amount: memberDiscountCents,
-      total_cents: totalCents,
-      coupon_code: couponCode ?? null,
+      total: totalCents,
+      metadata: couponCode ? { coupon_code: couponCode } : null,
     })
     .select("id, order_number")
     .single()
@@ -89,7 +90,7 @@ ordersRouter.post("/", async (req, res) => {
         order_id: order.id,
         variant_id: item.variantId,
         qty: item.qty,
-        unit_price_cents: item.unitPrice,
+        unit_price: item.unitPrice,
       }))
     )
 
@@ -151,51 +152,24 @@ ordersRouter.post("/", async (req, res) => {
   }
 
   // --- Payment initiation ---
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://realreal.cc"
+  const siteUrl = getSiteUrl()
+  const apiUrl = getApiBaseUrl()
   const confirmUrl = `${siteUrl}/checkout/confirm`
   let paymentUrl: string
   let gatewayTxId: string | null = null
 
   try {
     if (paymentMethod === "pchomepay") {
-      const appId = process.env.PCHOMEPAY_APP_ID ?? ""
-      const secret = process.env.PCHOMEPAY_SECRET ?? ""
-      const merchantTradeNo = order.order_number
-
-      const params: Record<string, string> = {
-        AppID: appId,
-        MerchantTradeNo: merchantTradeNo,
-        MerchantTradeDate: new Date().toISOString().replace("T", " ").slice(0, 19),
-        TotalAmount: String(totalCents),
-        TradeDesc: "realreal order",
-        ItemName: `realreal order #${order.order_number}`,
-        ReturnURL: `${siteUrl}/api/webhooks/pchomepay`,
-        OrderResultURL: confirmUrl,
-        PaymentType: "aio",
-        ChoosePayment: "ALL",
-        EncryptType: "1",
-      }
-      params.CheckMacValue = buildCheckMacValue(params, secret, secret)
-
-      const response = await fetch("https://api.pchomepay.com.tw/v1/payment/request", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          app_id: appId,
-          sign: params.CheckMacValue,
-          merchant_trade_no: merchantTradeNo,
-          amount: totalCents,
-          return_url: `${siteUrl}/api/webhooks/pchomepay`,
-          order_result_url: confirmUrl,
-          item_name: `realreal order #${order.order_number}`,
-        }),
+      const result = await pchomepayCreatePayment({
+        orderId: order.id,
+        orderNumber: order.order_number,
+        amount: totalCents,
+        itemName: `realreal order #${order.order_number}`,
+        returnUrl: confirmUrl,
+        notifyUrl: `${apiUrl}/webhooks/pchomepay`,
       })
-      const data = await response.json() as Record<string, any>
-      if (!data.payment_url) {
-        throw new Error(`PChomePay error: ${JSON.stringify(data)}`)
-      }
-      paymentUrl = data.payment_url as string
-      gatewayTxId = merchantTradeNo
+      paymentUrl = result.paymentUrl
+      gatewayTxId = order.order_number
 
     } else if (paymentMethod === "linepay") {
       const result = await linePayRequestPayment(
@@ -271,7 +245,7 @@ ordersRouter.get("/:id", requireAuth, async (req, res) => {
   const [{ data: items }, { data: addresses }, { data: payments }] = await Promise.all([
     supabase.from("order_items").select("*").eq("order_id", orderId),
     supabase.from("order_addresses").select("*").eq("order_id", orderId),
-    supabase.from("payment_transactions").select("*").eq("order_id", orderId).order("created_at", { ascending: false }).limit(1),
+    supabase.from("payments").select("*").eq("order_id", orderId).order("created_at", { ascending: false }).limit(1),
   ])
 
   res.json({
@@ -294,7 +268,7 @@ ordersRouter.get("/", requireAuth, async (req, res) => {
 
   const { data, error, count } = await supabase
     .from("orders")
-    .select("id, order_number, status, total_cents, payment_method, shipping_method, created_at", { count: "exact" })
+    .select("id, order_number, status, total, payment_method, shipping_method, created_at", { count: "exact" })
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .range(from, to)

@@ -17,13 +17,15 @@ amegoWebhookRouter.post("/", async (req, res) => {
     res.status(401).json({ error: "Missing X-Amego-Signature header" }); return
   }
 
-  const bodyStr = JSON.stringify(req.body)
+  const bodyStr = (req as any).rawBody as string | undefined ?? JSON.stringify(req.body)
   const expected = crypto
     .createHmac("sha256", secret)
     .update(bodyStr)
     .digest("hex")
 
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+  const sigBuf = Buffer.from(signature)
+  const expBuf = Buffer.from(expected)
+  if (sigBuf.length !== expBuf.length || !crypto.timingSafeEqual(sigBuf, expBuf)) {
     res.status(401).json({ error: "Invalid signature" }); return
   }
 

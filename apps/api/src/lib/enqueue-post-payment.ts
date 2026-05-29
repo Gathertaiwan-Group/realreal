@@ -2,6 +2,7 @@ import { supabase } from "./supabase"
 import { renderAndSendEmail } from "../workers/email-sender"
 import { incrementSpendAndUpgrade } from "./tier"
 import { inventoryQueue } from "./queue"
+import { invoiceQueue } from "../workers/invoice-issuer"
 
 /**
  * After a successful payment, send confirmation email, create invoice,
@@ -12,7 +13,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   // Fetch order details needed for the email
   const { data: order } = await supabase
     .from("orders")
-    .select("id, order_number, total, shipping_address, guest_email, user_id, order_items(*), users(email)")
+    .select("id, order_number, total, guest_email, user_id, order_items(*)")
     .eq("id", orderId)
     .single()
 
@@ -30,8 +31,15 @@ export async function enqueuePostPaymentJobs(orderId: string) {
     }
   }
 
-  // Resolve recipient: registered user email or guest checkout email
-  const userEmail = (order.users as any)?.email as string | undefined
+  // Resolve recipient: registered user email (from auth.users via admin API)
+  // or guest checkout email.
+  let userEmail: string | undefined
+  if (order.user_id) {
+    try {
+      const { data } = await supabase.auth.admin.getUserById(order.user_id)
+      userEmail = data?.user?.email ?? undefined
+    } catch { /* ignore */ }
+  }
   const recipientEmail = userEmail ?? (order as any).guest_email as string | undefined
 
   // 1) Send confirmation email directly (no queue)
@@ -53,13 +61,14 @@ export async function enqueuePostPaymentJobs(orderId: string) {
     console.warn(`[post-payment] no email for order ${orderId}, skipping email`)
   }
 
-  // 2) Create an invoice record (if not already present)
+  // 2) Create an invoice record (if not already present) and enqueue Amego
+  //    issuance via the invoice worker.
   try {
     const { data: existingInvoice } = await supabase
       .from("invoices")
       .select("id")
       .eq("order_id", orderId)
-      .single()
+      .maybeSingle()
 
     if (!existingInvoice) {
       await supabase
@@ -73,8 +82,14 @@ export async function enqueuePostPaymentJobs(orderId: string) {
           carrier_type: "member",
         })
     }
+
+    await invoiceQueue.add(
+      "issue",
+      { orderId },
+      { attempts: 5, backoff: { type: "exponential", delay: 60000 } },
+    )
   } catch (err) {
-    console.warn("[post-payment] invoice creation failed (non-fatal):", err)
+    console.warn("[post-payment] invoice creation/enqueue failed (non-fatal):", err)
   }
 
   // 3) Enqueue logistics shipment creation (processed by the inventory worker).

@@ -14,7 +14,7 @@ type Order = {
   order_number: string
   created_at: string
   status: OrderStatus
-  total_amount: number
+  total: number
 }
 
 const STATUS_LABELS: Record<OrderStatus, string> = {
@@ -41,10 +41,11 @@ export default async function OrdersPage() {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) redirect("/auth/login")
+  const { data: { session } } = await supabase.auth.getSession()
 
   let orders: Order[] = []
   try {
-    const res = await apiClient<{ data: Order[] }>("/orders", { token: user.id })
+    const res = await apiClient<{ data: Order[] }>("/orders", { token: session?.access_token ?? "" })
     orders = res.data ?? []
   } catch {
     orders = []
@@ -73,7 +74,7 @@ export default async function OrdersPage() {
                   <Badge variant={STATUS_VARIANTS[status]}>{STATUS_LABELS[status]}</Badge>
                 </div>
                 <div className="text-right space-y-2">
-                  <p className="font-semibold">NT$ {Number(order.total_amount).toLocaleString()}</p>
+                  <p className="font-semibold">NT$ {Number(order.total).toLocaleString()}</p>
                   <Link href={`/my-account/orders/${order.id}`}>
                     <Button variant="outline" size="sm">查看詳情</Button>
                   </Link>

@@ -189,15 +189,22 @@ export default function PaymentPage() {
     setError(null)
     try {
       const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      if (session?.access_token) {
+        headers.Authorization = `Bearer ${session.access_token}`
+      }
       const res = await fetch(`${apiUrl}/orders`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         body: JSON.stringify({
           items: checkoutData.items,
           address: checkoutData.address,
           shippingMethod: checkoutData.shippingMethod,
           paymentMethod,
           invoice: checkoutData.invoice,
+          guestEmail: session ? undefined : checkoutData.address.email,
           couponCode: couponApplied ? couponCode : undefined,
         }),
       })

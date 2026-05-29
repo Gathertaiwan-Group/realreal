@@ -1,4 +1,5 @@
 import { createHash } from "crypto"
+import { getApiBaseUrl } from "./urls"
 
 const MERCHANT_ID = process.env.ECPAY_MERCHANT_ID ?? ""
 const HASH_KEY = process.env.ECPAY_HASH_KEY ?? ""
@@ -33,7 +34,7 @@ export async function createCvsLogistics(
   storeId: string
 ): Promise<CvsLogisticsResult> {
   const merchantTradeNo = `RRL${Date.now()}`
-  const siteUrl = process.env.SITE_URL ?? "https://realreal.cc"
+  const apiUrl = getApiBaseUrl()
 
   const fields: Record<string, string> = {
     MerchantID: MERCHANT_ID,
@@ -55,7 +56,7 @@ export async function createCvsLogistics(
     ReceiverStoreID: storeId,
     ReceiverEmail: "",
     IsCollection: "N",
-    ServerReplyURL: `${siteUrl}/webhooks/ecpay-logistics`,
+    ServerReplyURL: `${apiUrl}/webhooks/ecpay-logistics`,
   }
   fields.CheckMacValue = buildCheckMacValue(fields, HASH_KEY, HASH_IV)
 
@@ -90,7 +91,7 @@ export async function createHomeDelivery(
   receiverAddress: string
 ): Promise<HomeDeliveryResult> {
   const merchantTradeNo = `RRH${Date.now()}`
-  const siteUrl = process.env.SITE_URL ?? "https://realreal.cc"
+  const apiUrl = getApiBaseUrl()
 
   const fields: Record<string, string> = {
     MerchantID: MERCHANT_ID,
@@ -112,7 +113,7 @@ export async function createHomeDelivery(
     ReceiverZipCode: "",
     ReceiverAddress: receiverAddress,
     IsCollection: "N",
-    ServerReplyURL: `${siteUrl}/webhooks/ecpay-logistics`,
+    ServerReplyURL: `${apiUrl}/webhooks/ecpay-logistics`,
   }
   fields.CheckMacValue = buildCheckMacValue(fields, HASH_KEY, HASH_IV)
 
