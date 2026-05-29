@@ -44,6 +44,7 @@ export function AddToCartSection({
       variantName: selected.name,
       price,
       qty,
+      stockQty: selected.stock_qty ?? undefined,
       imageUrl,
     })
     setQty(1)

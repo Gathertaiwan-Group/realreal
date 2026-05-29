@@ -8,6 +8,8 @@ export type CartItem = {
   variantName: string
   price: number
   qty: number
+  /** Latest known stock for the variant — used to clamp adds/updates. */
+  stockQty?: number
   imageUrl?: string
 }
 
@@ -24,21 +26,55 @@ export const useCart = create<CartStore>()(
   persist(
     (set, get) => ({
       items: [],
-      addItem: (item) => set(state => {
-        const existing = state.items.find(i => i.variantId === item.variantId)
-        toast.success("已加入購物車")
-        if (existing) {
-          return { items: state.items.map(i => i.variantId === item.variantId ? { ...i, qty: i.qty + item.qty } : i) }
-        }
-        return { items: [...state.items, item] }
-      }),
-      removeItem: (variantId) => set(state => ({ items: state.items.filter(i => i.variantId !== variantId) })),
-      updateQty: (variantId, qty) => set(state => ({
-        items: qty <= 0 ? state.items.filter(i => i.variantId !== variantId) : state.items.map(i => i.variantId === variantId ? { ...i, qty } : i)
-      })),
+      addItem: (item) =>
+        set((state) => {
+          const existing = state.items.find((i) => i.variantId === item.variantId)
+          // Stock cap — use the latest known stockQty from either the incoming
+          // item or the existing line (the product page snapshots it at add time).
+          const cap = item.stockQty ?? existing?.stockQty ?? Infinity
+          if (existing) {
+            const newQty = Math.min(existing.qty + item.qty, cap)
+            if (newQty === existing.qty) {
+              toast.warning(`已達庫存上限（${cap} 件）`)
+              return state
+            }
+            toast.success("已加入購物車")
+            return {
+              items: state.items.map((i) =>
+                i.variantId === item.variantId
+                  ? { ...i, qty: newQty, stockQty: item.stockQty ?? i.stockQty, price: item.price ?? i.price }
+                  : i,
+              ),
+            }
+          }
+          const newQty = Math.min(item.qty, cap)
+          if (newQty <= 0) {
+            toast.error("此商品目前缺貨")
+            return state
+          }
+          toast.success("已加入購物車")
+          return { items: [...state.items, { ...item, qty: newQty }] }
+        }),
+      removeItem: (variantId) =>
+        set((state) => ({ items: state.items.filter((i) => i.variantId !== variantId) })),
+      updateQty: (variantId, qty) =>
+        set((state) => {
+          if (qty <= 0) {
+            return { items: state.items.filter((i) => i.variantId !== variantId) }
+          }
+          return {
+            items: state.items.map((i) => {
+              if (i.variantId !== variantId) return i
+              const cap = i.stockQty ?? Infinity
+              const clamped = Math.min(qty, cap)
+              if (clamped < qty) toast.warning(`已達庫存上限（${cap} 件）`)
+              return { ...i, qty: clamped }
+            }),
+          }
+        }),
       clear: () => set({ items: [] }),
       total: () => get().items.reduce((sum, i) => sum + i.price * i.qty, 0),
     }),
-    { name: "realreal-cart", skipHydration: true }
-  )
+    { name: "realreal-cart", skipHydration: true },
+  ),
 )
