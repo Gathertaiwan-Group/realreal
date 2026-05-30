@@ -393,100 +393,38 @@ const baseCart = {
 }
 
 describe("calcPointsDiscount", () => {
-  describe("min_redeem reject", () => {
-    it("returns allowed=false when requested < min_redeem", () => {
-      const result = calcPointsDiscount(
-        baseCart,
-        5,
-        { ...baseSettings, min_redeem: 10 },
-      )
-      expect(result.allowed).toBe(false)
-      if (!result.allowed) {
-        expect(result.reason).toMatch(/最少.*10/)
-      }
-    })
+  // Spec D: min_redeem / max_redeem_pct / apply_to_shipping / apply_to_sale
+  // are now hardcoded defaults (0 / 100% / false / true). Only `ratio` is
+  // read from settings. Tests for the removed toggles deleted; behaviour
+  // verified via the consolidated tests below.
+
+  it("respects hardcoded defaults: max=100% of subtotal, shipping excluded", () => {
+    // subtotal=1000 (shipping excluded), ratio=1 → cap=1000, maxPts=1000
+    const ok = calcPointsDiscount(baseCart, 1000, { ratio: 1 })
+    expect(ok.allowed).toBe(true)
+    if (ok.allowed) expect(ok.discount).toBe(1000)
+
+    // 1001 exceeds cap
+    const overflow = calcPointsDiscount(baseCart, 1001, { ratio: 1 })
+    expect(overflow.allowed).toBe(false)
   })
 
-  describe("max_pct cap", () => {
-    it("returns allowed=false when requested > floor(subtotal * max_pct / 100 / ratio)", () => {
-      // subtotal=1000, max_pct=50 → cap=500 → maxPts=500 (ratio=1)
-      const result = calcPointsDiscount(
-        baseCart,
-        501,
-        { ...baseSettings, max_redeem_pct: 50 },
-      )
-      expect(result.allowed).toBe(false)
-      if (!result.allowed) {
-        expect(result.reason).toMatch(/最多.*500/)
-      }
-    })
-
-    it("accepts requested at the cap exactly", () => {
-      const result = calcPointsDiscount(
-        baseCart,
-        500,
-        { ...baseSettings, max_redeem_pct: 50 },
-      )
-      expect(result.allowed).toBe(true)
-      if (result.allowed) expect(result.discount).toBe(500)
-    })
+  it("ratio scales discount correctly (1 點 = NT$ 2)", () => {
+    const result = calcPointsDiscount(baseCart, 100, { ratio: 2 })
+    expect(result.allowed).toBe(true)
+    if (result.allowed) expect(result.discount).toBe(200)
   })
 
-  describe("apply_to_shipping toggle", () => {
-    it("when false (default), eligible base = subtotal (excludes shipping)", () => {
-      // subtotal=1000, max=100 → cap=1000 → maxPts=1000
-      const result = calcPointsDiscount(
-        baseCart,
-        1000,
-        { ...baseSettings, apply_to_shipping: false, apply_to_sale: true },
-      )
-      expect(result.allowed).toBe(true)
-      // 1001 exceeds (cap=1000)
-      const overflow = calcPointsDiscount(
-        baseCart,
-        1001,
-        { ...baseSettings, apply_to_shipping: false, apply_to_sale: true },
-      )
-      expect(overflow.allowed).toBe(false)
-    })
-
-    it("when true, eligible base = total (includes shipping)", () => {
-      // total=1100, max=100 → cap=1100 → maxPts=1100
-      const result = calcPointsDiscount(
-        baseCart,
-        1100,
-        { ...baseSettings, apply_to_shipping: true, apply_to_sale: true },
-      )
-      expect(result.allowed).toBe(true)
-      if (result.allowed) expect(result.discount).toBe(1100)
-    })
+  it("rejects requested > cap after ratio multiplier (cap = floor(subtotal/ratio))", () => {
+    // ratio=2, subtotal=1000 → cap=1000, maxPts=floor(1000/2)=500
+    const result = calcPointsDiscount(baseCart, 501, { ratio: 2 })
+    expect(result.allowed).toBe(false)
   })
 
-  describe("apply_to_sale toggle", () => {
-    it("when true, sale items DO contribute to eligible base", () => {
-      // subtotal=1000 (includes sale 200), apply_to_sale=true → eligible=1000
-      const result = calcPointsDiscount(
-        baseCart,
-        1000,
-        { ...baseSettings, apply_to_sale: true, apply_to_shipping: false },
-      )
-      expect(result.allowed).toBe(true)
-    })
-
-    it("when false, sale items are SUBTRACTED from eligible base", () => {
-      // subtotal=1000 - sale_item_total=200 → eligible=800 → maxPts=800
-      const okAtCap = calcPointsDiscount(
-        baseCart,
-        800,
-        { ...baseSettings, apply_to_sale: false, apply_to_shipping: false },
-      )
-      expect(okAtCap.allowed).toBe(true)
-      const overflow = calcPointsDiscount(
-        baseCart,
-        801,
-        { ...baseSettings, apply_to_sale: false, apply_to_shipping: false },
-      )
-      expect(overflow.allowed).toBe(false)
-    })
+  it("rejects zero / negative requestedPoints", () => {
+    const zero = calcPointsDiscount(baseCart, 0, { ratio: 1 })
+    expect(zero.allowed).toBe(false)
+    const neg = calcPointsDiscount(baseCart, -10, { ratio: 1 })
+    expect(neg.allowed).toBe(false)
   })
 })
