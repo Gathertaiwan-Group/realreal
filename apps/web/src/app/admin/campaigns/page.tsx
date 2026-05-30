@@ -46,25 +46,6 @@ interface MembershipTier {
 
 type StatusKey = "all" | "active" | "scheduled" | "ended" | "disabled"
 
-interface PreviewFreeItem {
-  sku?: string
-  product_id?: string
-  qty: number
-  name?: string
-}
-
-interface PreviewResult {
-  campaign_id: string
-  campaign_name: string
-  type: string
-  applied: boolean
-  reason?: string
-  discount_amount?: number
-  free_items?: PreviewFreeItem[]
-  rebate_multiplier?: number
-  zero_shipping?: boolean
-}
-
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
 /* ------------------------------------------------------------------ */
@@ -497,86 +478,6 @@ function extractConfig(fd: FormData, prefix: string, type: string): Record<strin
 }
 
 /* ------------------------------------------------------------------ */
-/*  Preview helpers                                                    */
-/* ------------------------------------------------------------------ */
-
-const DEFAULT_MOCK_CART = {
-  items: [
-    { product_id: "mock-1", variant_id: "mock-1-v", category_id: null, sku: "RR-PROTEIN-01", name: "蛋白粉", unit_price: 1000, qty: 2 },
-    { product_id: "mock-2", variant_id: "mock-2-v", category_id: null, sku: "RR-FD-01", name: "凍乾水果", unit_price: 0, qty: 0 },
-  ],
-  subtotal: 2000,
-  shipping_fee: 80,
-}
-
-const DEFAULT_MOCK_USER = { id: "preview", tier_id: null as string | null, birthday: null as string | null }
-
-async function runPreview(type: string, config: Record<string, unknown>): Promise<PreviewResult | { error: string }> {
-  try {
-    const res = await adminFetch(`${API_URL}/admin/campaigns/preview`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        type,
-        config,
-        mock_cart: DEFAULT_MOCK_CART,
-        mock_user: DEFAULT_MOCK_USER,
-      }),
-    })
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}))
-      return { error: body?.message ?? `預覽失敗 (HTTP ${res.status})` }
-    }
-    const json = await res.json()
-    return (json.result ?? json) as PreviewResult
-  } catch (err) {
-    return { error: err instanceof Error ? err.message : "預覽失敗" }
-  }
-}
-
-function PreviewBox({ result }: { result: PreviewResult | { error: string } | null }) {
-  if (!result) return null
-  if ("error" in result) {
-    return (
-      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
-        {result.error}
-      </div>
-    )
-  }
-  if (!result.applied) {
-    return (
-      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 space-y-1">
-        <p className="font-semibold">未套用</p>
-        <p>{result.reason ?? "不符合套用條件"}</p>
-      </div>
-    )
-  }
-  return (
-    <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 space-y-1">
-      <p className="font-semibold">
-        折抵 NT$ {(result.discount_amount ?? 0).toLocaleString()}
-      </p>
-      {result.zero_shipping && <p>含免運（運費歸零）</p>}
-      {result.rebate_multiplier && result.rebate_multiplier !== 1 && (
-        <p>公益存款倍率 ×{result.rebate_multiplier}</p>
-      )}
-      {result.free_items && result.free_items.length > 0 && (
-        <div>
-          <p>贈品：</p>
-          <ul className="ml-4 list-disc">
-            {result.free_items.map((f, i) => (
-              <li key={`${f.sku ?? f.product_id ?? "item"}-${i}`}>
-                {f.name ?? f.sku ?? f.product_id ?? "贈品"} × {f.qty}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ------------------------------------------------------------------ */
 /*  Page component                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -590,24 +491,6 @@ export default function AdminCampaignsPage() {
   const [editType, setEditType] = useState("discount")
   const [isPending, startTransition] = useTransition()
   const [showPresets, setShowPresets] = useState(false)
-  const [createPreview, setCreatePreview] = useState<PreviewResult | { error: string } | null>(null)
-  const [editPreview, setEditPreview] = useState<PreviewResult | { error: string } | null>(null)
-  const [previewing, setPreviewing] = useState(false)
-
-  function handlePreview(formId: string, type: string, target: "create" | "edit") {
-    const form = document.getElementById(formId) as HTMLFormElement | null
-    if (!form) return
-    const fd = new FormData(form)
-    const prefix = target === "create" ? "c" : "e"
-    const config = extractConfig(fd, prefix, type)
-    setPreviewing(true)
-    const setter = target === "create" ? setCreatePreview : setEditPreview
-    setter(null)
-    runPreview(type, config).then((res) => {
-      setter(res)
-      setPreviewing(false)
-    })
-  }
 
   /* --- Quick Import Preset --- */
 
@@ -797,7 +680,7 @@ export default function AdminCampaignsPage() {
         <form id="campaign-create-form" onSubmit={handleCreate} className="border rounded-lg bg-white p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">新增活動</h3>
-            <button type="button" onClick={() => { setShowCreate(false); setCreatePreview(null) }} className="text-zinc-400 hover:text-zinc-600">
+            <button type="button" onClick={() => setShowCreate(false)} className="text-zinc-400 hover:text-zinc-600">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -854,19 +737,9 @@ export default function AdminCampaignsPage() {
             </div>
             <ConfigFields type={createType} config={{}} prefix="c" />
           </div>
-          <PreviewBox result={createPreview} />
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={isPending}>{isPending ? "建立中..." : "建立"}</Button>
-            <Button
-              type="button"
-              size="sm"
-              variant="outline"
-              onClick={() => handlePreview("campaign-create-form", createType, "create")}
-              disabled={isPending || previewing}
-            >
-              {previewing ? "計算中..." : "預覽折抵"}
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => { setShowCreate(false); setCreatePreview(null) }} disabled={isPending}>取消</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setShowCreate(false)} disabled={isPending}>取消</Button>
           </div>
         </form>
       )}
@@ -991,7 +864,7 @@ export default function AdminCampaignsPage() {
                         <form id={editFormId} onSubmit={(e) => handleUpdate(c.id, e)} className="space-y-4">
                           <div className="flex items-center justify-between">
                             <h3 className="text-sm font-semibold">編輯活動</h3>
-                            <button type="button" onClick={() => { setEditingId(null); setEditPreview(null) }} className="text-zinc-400 hover:text-zinc-600">
+                            <button type="button" onClick={() => setEditingId(null)} className="text-zinc-400 hover:text-zinc-600">
                               <X className="w-4 h-4" />
                             </button>
                           </div>
@@ -1048,19 +921,9 @@ export default function AdminCampaignsPage() {
                             </div>
                             <ConfigFields type={editType} config={(c.config as Record<string, unknown>) ?? {}} prefix="e" />
                           </div>
-                          <PreviewBox result={editPreview} />
                           <div className="flex gap-2">
                             <Button type="submit" size="sm" disabled={isPending}>{isPending ? "儲存中..." : "儲存"}</Button>
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handlePreview(editFormId, editType, "edit")}
-                              disabled={isPending || previewing}
-                            >
-                              {previewing ? "計算中..." : "預覽折抵"}
-                            </Button>
-                            <Button type="button" size="sm" variant="ghost" onClick={() => { setEditingId(null); setEditPreview(null) }} disabled={isPending}>取消</Button>
+                            <Button type="button" size="sm" variant="ghost" onClick={() => setEditingId(null)} disabled={isPending}>取消</Button>
                           </div>
                         </form>
                       </td>
@@ -1072,7 +935,7 @@ export default function AdminCampaignsPage() {
                   <tr
                     key={c.id}
                     className="hover:bg-zinc-50 cursor-pointer"
-                    onClick={() => { setEditingId(c.id); setEditType(c.type); setEditPreview(null) }}
+                    onClick={() => { setEditingId(c.id); setEditType(c.type) }}
                   >
                     <td className="px-4 py-3 font-medium">{c.name}</td>
                     <td className="px-4 py-3">

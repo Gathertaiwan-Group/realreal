@@ -4,7 +4,6 @@ import { supabase } from "../lib/supabase"
 import { requireAuth } from "../middleware/auth"
 import { requireAdmin } from "../middleware/admin"
 import { requireEditor } from "../middleware/editor"
-import { evaluateCampaign, type EvaluatorContext } from "../lib/campaigns-evaluator"
 
 export const campaignsRouter = Router()
 
@@ -106,29 +105,6 @@ campaignsRouter.delete("/admin/campaigns/:id", requireAuth, requireAdmin, async 
 
   if (error) { res.status(500).json({ error: error.message }); return }
   res.status(204).send()
-})
-
-// ---------------------------------------------------------------------------
-// POST /admin/campaigns/preview — preview evaluator result against mock cart (admin/editor)
-// ---------------------------------------------------------------------------
-
-campaignsRouter.post("/admin/campaigns/preview", requireAuth, requireEditor, async (req, res) => {
-  const { type, config, mock_cart, mock_user } = req.body ?? {}
-
-  const fakeCampaign = {
-    id: "preview",
-    name: "Preview",
-    type,
-    config,
-  }
-
-  const ctx: EvaluatorContext = {
-    user: mock_user ?? { id: "preview", tier_id: null, birthday: null },
-    cart: mock_cart ?? { items: [], subtotal: 2000, shipping_fee: 80 },
-  }
-
-  const result = await evaluateCampaign(fakeCampaign as any, ctx)
-  res.json({ result })
 })
 
 // ---------------------------------------------------------------------------
