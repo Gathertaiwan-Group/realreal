@@ -70,7 +70,6 @@ const FIELD_META: Record<
   // Amego
   "amego.tax_id":          { label: "公司統編 (作為帳號)" },
   "amego.app_key":         { label: "App Key" },
-  "amego.webhook_secret":  { label: "Webhook 簽章密鑰" },
   "amego.sandbox":         { label: "沙箱模式", type: "switch" },
   // Resend
   "resend.api_key":       { label: "Resend API Key", placeholder: "re_…" },
