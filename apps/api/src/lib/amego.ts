@@ -160,9 +160,41 @@ export async function issueInvoice(params: IssueInvoiceParams) {
   }
 }
 
+/**
+ * 作廢發票 (Void invoice).
+ *
+ * Amego endpoint map (verified 2026-05-30):
+ *   - /json/c0701 = 註銷 (annul — used pre-MOF-upload, treated by Amego as
+ *     "never delivered to buyer"). Showed as 發票註銷 in Amego console.
+ *   - /json/f0501 = 作廢 (void — used post-delivery). Showed as 發票作廢.
+ *     New path as of 2025-01-06; legacy /json/c0501 still works.
+ *
+ * We always want 作廢 semantics for refunds/cancellations — the invoice
+ * was already delivered to the customer (digital), so a void must leave
+ * a record. Fields per MOF MIG C0501 spec: CancelInvoiceNumber +
+ * CancelDate (YYYYMMDD) + CancelTime (HH:MM:SS) + CancelReason.
+ */
 export async function voidInvoice(invoiceNumber: string, reason: string) {
-  const res = await amegoPost<{ code: number; msg?: string }>("/json/c0701", [
-    { VoidInvoiceNumber: invoiceNumber, VoidReason: reason || "訂單取消" },
+  const now = new Date()
+  const tw = new Date(now.getTime() + 8 * 60 * 60 * 1000) // UTC+8
+  const yyyymmdd =
+    tw.getUTCFullYear().toString() +
+    String(tw.getUTCMonth() + 1).padStart(2, "0") +
+    String(tw.getUTCDate()).padStart(2, "0")
+  const hhmmss =
+    String(tw.getUTCHours()).padStart(2, "0") +
+    ":" +
+    String(tw.getUTCMinutes()).padStart(2, "0") +
+    ":" +
+    String(tw.getUTCSeconds()).padStart(2, "0")
+
+  const res = await amegoPost<{ code: number; msg?: string }>("/json/f0501", [
+    {
+      CancelInvoiceNumber: invoiceNumber,
+      CancelDate: yyyymmdd,
+      CancelTime: hhmmss,
+      CancelReason: reason || "訂單取消",
+    },
   ])
   if (res.code !== 0) {
     throw new Error(`Amego void failed: ${res.msg ?? JSON.stringify(res)}`)
