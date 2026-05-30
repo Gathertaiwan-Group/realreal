@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
+import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { Plus, Trash2, GripVertical, ChevronUp, ChevronDown, X } from "lucide-react"
 import { adminFetch } from "@/lib/admin-fetch"
@@ -14,6 +15,11 @@ const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   process.env.RAILWAY_API_URL ??
   "http://localhost:4000"
+
+export interface FeatureBlock {
+  heading: string
+  body: string
+}
 
 export interface CategoryRow {
   id: string
@@ -24,7 +30,15 @@ export interface CategoryRow {
   product_count?: number
   campaign_count?: number
   created_at?: string
+  banner_url?: string | null
+  tagline?: string | null
+  subtitle?: string | null
+  feature_blocks?: FeatureBlock[] | null
+  related_post_slugs?: string[] | null
 }
+
+const MAX_FEATURE_BLOCKS = 3
+const MAX_RELATED_POSTS = 4
 
 interface CategoriesClientProps {
   initialData: CategoryRow[]
@@ -225,6 +239,47 @@ export function CategoriesClient({ initialData }: CategoriesClientProps) {
     })
   }
 
+  /* ---- Update (landing fields: banner / tagline / subtitle / features / related posts) ---- */
+
+  const saveLanding = useCallback(
+    (
+      id: string,
+      payload: {
+        banner_url: string | null
+        tagline: string | null
+        subtitle: string | null
+        feature_blocks: FeatureBlock[]
+        related_post_slugs: string[]
+      },
+    ) => {
+      return new Promise<boolean>((resolve) => {
+        startTransition(async () => {
+          try {
+            const res = await adminFetch(`${API_URL}/admin/categories/${id}`, {
+              method: "PUT",
+              body: JSON.stringify(payload),
+            })
+            if (!res.ok) {
+              const errBody = await res.json().catch(() => ({}))
+              throw new Error(
+                errBody.error?.formErrors?.[0] ??
+                  (typeof errBody.error === "string" ? errBody.error : null) ??
+                  "Landing 設定儲存失敗",
+              )
+            }
+            toast.success("Landing 設定已儲存")
+            await refresh()
+            resolve(true)
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Landing 設定儲存失敗")
+            resolve(false)
+          }
+        })
+      })
+    },
+    [refresh],
+  )
+
   /* ---- Render ---- */
 
   return (
@@ -314,6 +369,7 @@ export function CategoriesClient({ initialData }: CategoriesClientProps) {
                   onUpdateSortOrder={updateSortOrder}
                   onSwap={swapWithNeighbor}
                   onDelete={deleteCategory}
+                  onSaveLanding={saveLanding}
                   onAddChild={() => setCreateChildFor(node.id)}
                   canAddChild
                 />
@@ -331,6 +387,7 @@ export function CategoriesClient({ initialData }: CategoriesClientProps) {
                     onUpdateSortOrder={updateSortOrder}
                     onSwap={swapWithNeighbor}
                     onDelete={deleteCategory}
+                    onSaveLanding={saveLanding}
                     onAddChild={() => {
                       /* no-op: children can't have grandchildren */
                     }}
@@ -411,6 +468,16 @@ interface CategoryRowItemProps {
   onUpdateSortOrder: (id: string, original: number, next: number) => void
   onSwap: (id: string, direction: "up" | "down") => void
   onDelete: (id: string, name: string) => void
+  onSaveLanding: (
+    id: string,
+    payload: {
+      banner_url: string | null
+      tagline: string | null
+      subtitle: string | null
+      feature_blocks: FeatureBlock[]
+      related_post_slugs: string[]
+    },
+  ) => Promise<boolean>
   onAddChild: () => void
   canAddChild: boolean
 }
@@ -425,6 +492,7 @@ function CategoryRowItem({
   onUpdateSortOrder,
   onSwap,
   onDelete,
+  onSaveLanding,
   onAddChild,
   canAddChild,
 }: CategoryRowItemProps) {
@@ -443,6 +511,7 @@ function CategoryRowItem({
   const indentPx = indent === 1 ? 32 : 0
 
   return (
+    <>
     <div
       className={`px-4 py-3 grid grid-cols-[auto_1fr_auto_auto_auto_auto] gap-3 items-center hover:bg-zinc-50/60 ${
         indent === 1 ? "bg-zinc-50/30" : ""
@@ -556,5 +625,269 @@ function CategoryRowItem({
         </button>
       </div>
     </div>
+
+    <LandingSettings
+      categoryId={node.id}
+      categorySlug={node.slug}
+      indentPx={indentPx}
+      isPending={isPending}
+      onSave={onSaveLanding}
+    />
+    </>
+  )
+}
+
+/* ------------------------------------------------------------------ */
+/*  LandingSettings — collapsible per-row editor for Landing 頁設定    */
+/* ------------------------------------------------------------------ */
+
+interface LandingSettingsProps {
+  categoryId: string
+  categorySlug: string
+  indentPx: number
+  isPending: boolean
+  onSave: (
+    id: string,
+    payload: {
+      banner_url: string | null
+      tagline: string | null
+      subtitle: string | null
+      feature_blocks: FeatureBlock[]
+      related_post_slugs: string[]
+    },
+  ) => Promise<boolean>
+}
+
+function LandingSettings({
+  categoryId,
+  categorySlug,
+  indentPx,
+  isPending,
+  onSave,
+}: LandingSettingsProps) {
+  const [opened, setOpened] = useState(false)
+  const [loading, setLoading] = useState(false)
+  const [loaded, setLoaded] = useState(false)
+
+  const [bannerUrl, setBannerUrl] = useState("")
+  const [tagline, setTagline] = useState("")
+  const [subtitle, setSubtitle] = useState("")
+  const [featureBlocks, setFeatureBlocks] = useState<FeatureBlock[]>([])
+  const [relatedSlugsText, setRelatedSlugsText] = useState("")
+
+  // Lazy-load landing fields from public GET /categories/:slug the first time the section is opened
+  useEffect(() => {
+    if (!opened || loaded || loading) return
+    setLoading(true)
+    ;(async () => {
+      try {
+        const res = await fetch(`${API_URL}/categories/${categorySlug}`)
+        if (!res.ok) throw new Error("讀取 Landing 資料失敗")
+        const json = await res.json()
+        const cat = json.category ?? json.data ?? json
+        setBannerUrl(typeof cat.banner_url === "string" ? cat.banner_url : "")
+        setTagline(typeof cat.tagline === "string" ? cat.tagline : "")
+        setSubtitle(typeof cat.subtitle === "string" ? cat.subtitle : "")
+        const blocks: FeatureBlock[] = Array.isArray(cat.feature_blocks)
+          ? cat.feature_blocks
+              .slice(0, MAX_FEATURE_BLOCKS)
+              .map((b: any) => ({
+                heading: typeof b?.heading === "string" ? b.heading : "",
+                body: typeof b?.body === "string" ? b.body : "",
+              }))
+          : []
+        setFeatureBlocks(blocks)
+        const slugs: string[] = Array.isArray(cat.related_post_slugs)
+          ? cat.related_post_slugs.filter((s: any) => typeof s === "string")
+          : []
+        setRelatedSlugsText(slugs.join("\n"))
+        setLoaded(true)
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "讀取 Landing 資料失敗")
+      } finally {
+        setLoading(false)
+      }
+    })()
+  }, [opened, loaded, loading, categorySlug])
+
+  function updateBlock(idx: number, patch: Partial<FeatureBlock>) {
+    setFeatureBlocks((prev) =>
+      prev.map((b, i) => (i === idx ? { ...b, ...patch } : b)),
+    )
+  }
+
+  function addBlock() {
+    setFeatureBlocks((prev) =>
+      prev.length >= MAX_FEATURE_BLOCKS ? prev : [...prev, { heading: "", body: "" }],
+    )
+  }
+
+  function removeBlock(idx: number) {
+    setFeatureBlocks((prev) => prev.filter((_, i) => i !== idx))
+  }
+
+  async function handleSave() {
+    // Normalize related slugs: split on newline OR comma, trim, drop empties, cap at MAX_RELATED_POSTS
+    const slugs = relatedSlugsText
+      .split(/[\n,]+/)
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0)
+      .slice(0, MAX_RELATED_POSTS)
+
+    // Drop fully-empty feature blocks; cap at MAX_FEATURE_BLOCKS
+    const blocks = featureBlocks
+      .map((b) => ({ heading: b.heading.trim(), body: b.body.trim() }))
+      .filter((b) => b.heading.length > 0 || b.body.length > 0)
+      .slice(0, MAX_FEATURE_BLOCKS)
+
+    await onSave(categoryId, {
+      banner_url: bannerUrl.trim() ? bannerUrl.trim() : null,
+      tagline: tagline.trim() ? tagline.trim() : null,
+      subtitle: subtitle.trim() ? subtitle.trim() : null,
+      feature_blocks: blocks,
+      related_post_slugs: slugs,
+    })
+  }
+
+  return (
+    <details
+      className="border-t bg-zinc-50/40"
+      onToggle={(e) => setOpened((e.currentTarget as HTMLDetailsElement).open)}
+    >
+      <summary
+        className="cursor-pointer select-none px-4 py-2 text-xs text-zinc-600 hover:text-zinc-900"
+        style={{ paddingLeft: 16 + indentPx + 20 }}
+      >
+        Landing 頁設定
+      </summary>
+
+      <div
+        className="pr-4 pb-4 pt-2 space-y-4"
+        style={{ paddingLeft: 16 + indentPx + 20 }}
+      >
+        {loading && !loaded ? (
+          <p className="text-xs text-zinc-400">載入中…</p>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Banner URL</Label>
+                <Input
+                  value={bannerUrl}
+                  onChange={(e) => setBannerUrl(e.target.value)}
+                  placeholder="https://...  (建議寬度 1600px 以上)"
+                  className="h-8 text-sm"
+                  disabled={isPending}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Tagline（大字標語，一行）</Label>
+                <Input
+                  value={tagline}
+                  onChange={(e) => setTagline(e.target.value)}
+                  placeholder="例：為你的笑容，鎖住每一口純粹"
+                  className="h-8 text-sm"
+                  disabled={isPending}
+                />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label className="text-xs">Subtitle（副標，一行）</Label>
+                <Input
+                  value={subtitle}
+                  onChange={(e) => setSubtitle(e.target.value)}
+                  placeholder="例：孩子的笑容，是世界上最純粹的能量。"
+                  className="h-8 text-sm"
+                  disabled={isPending}
+                />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs">Feature Blocks（賣點區塊，最多 {MAX_FEATURE_BLOCKS} 個）</Label>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={addBlock}
+                  disabled={isPending || featureBlocks.length >= MAX_FEATURE_BLOCKS}
+                  className="h-7 text-xs"
+                >
+                  <Plus className="w-3 h-3 mr-0.5" />
+                  新增
+                </Button>
+              </div>
+              {featureBlocks.length === 0 ? (
+                <p className="text-[11px] text-zinc-400">尚無 Feature Block。點上方「新增」加入第一個。</p>
+              ) : (
+                <div className="space-y-2">
+                  {featureBlocks.map((block, idx) => (
+                    <div
+                      key={idx}
+                      className="rounded border border-zinc-200 bg-white p-3 space-y-2"
+                    >
+                      <div className="flex items-start gap-2">
+                        <div className="flex-1 space-y-2">
+                          <Input
+                            value={block.heading}
+                            onChange={(e) => updateBlock(idx, { heading: e.target.value })}
+                            placeholder={`區塊 ${idx + 1} 標題`}
+                            className="h-8 text-sm"
+                            disabled={isPending}
+                          />
+                          <Textarea
+                            value={block.body}
+                            onChange={(e) => updateBlock(idx, { body: e.target.value })}
+                            placeholder={`區塊 ${idx + 1} 內文`}
+                            className="text-sm min-h-[64px]"
+                            disabled={isPending}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeBlock(idx)}
+                          disabled={isPending}
+                          title="移除此區塊"
+                          className="p-1.5 rounded hover:bg-red-50 text-zinc-400 hover:text-red-600 disabled:opacity-30"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="space-y-1.5">
+              <Label className="text-xs">
+                相關文章 slug（每行一個，或以逗號分隔；最多 {MAX_RELATED_POSTS} 筆）
+              </Label>
+              <Textarea
+                value={relatedSlugsText}
+                onChange={(e) => setRelatedSlugsText(e.target.value)}
+                placeholder={"freeze-dried-mango\nfruit-snack-tips"}
+                className="text-sm min-h-[72px] font-mono"
+                disabled={isPending}
+              />
+              <p className="text-[10px] text-zinc-400">
+                若留空，前台會 fallback 顯示最近的 4 篇文章。
+              </p>
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                onClick={handleSave}
+                disabled={isPending || loading}
+              >
+                {isPending ? "儲存中..." : "儲存 Landing 設定"}
+              </Button>
+            </div>
+          </>
+        )}
+      </div>
+    </details>
   )
 }

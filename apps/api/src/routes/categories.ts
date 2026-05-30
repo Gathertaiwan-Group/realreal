@@ -61,6 +61,44 @@ categoriesRouter.get("/", async (_req, res) => {
   res.json({ data: buildTree(data ?? []) })
 })
 
+// GET /categories/:slug — public, full landing data (banner + tagline + features + related posts)
+categoriesRouter.get("/:slug", async (req, res) => {
+  const { data: category, error: catErr } = await supabase
+    .from("categories")
+    .select("*")
+    .eq("slug", req.params.slug)
+    .maybeSingle()
+  if (catErr) { res.status(500).json({ error: catErr.message }); return }
+  if (!category) { res.status(404).json({ error: "Category not found" }); return }
+
+  // Fetch related posts: explicit slugs if provided, else recent 4 (any post)
+  let posts: any[] = []
+  const relatedSlugs: string[] = Array.isArray((category as any).related_post_slugs)
+    ? (category as any).related_post_slugs
+    : []
+
+  if (relatedSlugs.length > 0) {
+    const { data, error: postsErr } = await supabase
+      .from("posts")
+      .select("slug, title, excerpt, cover_image, published_at")
+      .in("slug", relatedSlugs)
+      .limit(4)
+    if (postsErr) { res.status(500).json({ error: postsErr.message }); return }
+    posts = data ?? []
+  } else {
+    // Fallback: most recent 4 posts (simple v1; v2 could match by category)
+    const { data, error: postsErr } = await supabase
+      .from("posts")
+      .select("slug, title, excerpt, cover_image, published_at")
+      .order("published_at", { ascending: false })
+      .limit(4)
+    if (postsErr) { res.status(500).json({ error: postsErr.message }); return }
+    posts = data ?? []
+  }
+
+  res.json({ category, posts })
+})
+
 // POST /categories — admin only (legacy path; kept for back-compat)
 categoriesRouter.post("/", requireAuth, requireAdmin, async (req, res) => {
   const parsed = categoryCreateSchema.safeParse(req.body)

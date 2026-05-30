@@ -5,8 +5,8 @@ const FOOTER_LINKS = [
   {
     title: "商品",
     links: [
-      { href: "/shop?category=protein", label: "植物蛋白粉" },
-      { href: "/shop?category=fruit", label: "凍乾水果" },
+      { href: "/shop/protein", label: "植物蛋白粉" },
+      { href: "/shop/fruit", label: "凍乾水果" },
       { href: "/shop", label: "全部商品" },
     ],
   },

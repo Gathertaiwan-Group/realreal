@@ -55,13 +55,49 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
     res.status(400).json({ error: "Invalid request", details: parsed.error.flatten() }); return
   }
 
-  const { items, address, shippingMethod, paymentMethod, guestEmail, couponCode } = parsed.data
+  const { items, address, shippingMethod, paymentMethod, guestEmail } = parsed.data
+  let { couponCode } = parsed.data
   const userId: string | undefined = res.locals.userId
 
   const orderNumber = "RR" + Date.now()
   const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
   const shippingFees: Record<string, number> = { home_delivery: 100, cvs_711: 60, cvs_family: 60 }
   let shippingFeeCents = shippingFees[shippingMethod] ?? 100
+
+  // ---------------------------------------------------------------------------
+  // KOL affiliate attribution (Spec I §3)
+  //
+  // Read kol_ref cookie set by apps/web middleware. If KOL exists + active:
+  //   - record attributed_kol_id + attributed_kol_slug on the order
+  //   - if KOL has coupon_id linked, override user-typed coupon (KOL priority
+  //     per spec locked decision §3.2)
+  // ---------------------------------------------------------------------------
+  let attributedKolId: string | null = null
+  let attributedKolSlug: string | null = null
+  const kolRefCookie = req.cookies?.kol_ref
+  if (kolRefCookie && /^[a-z0-9-]+$/.test(kolRefCookie)) {
+    const { data: kol } = await supabase
+      .from("kols")
+      .select("id, slug, coupon_id, is_active")
+      .eq("slug", kolRefCookie)
+      .eq("is_active", true)
+      .maybeSingle()
+    if (kol) {
+      attributedKolId = kol.id as string
+      attributedKolSlug = kol.slug as string
+      if (kol.coupon_id) {
+        // KOL coupon takes priority — look up code so coupon validation block below works uniformly.
+        const { data: kolCoupon } = await supabase
+          .from("coupons")
+          .select("code")
+          .eq("id", kol.coupon_id)
+          .maybeSingle()
+        if (kolCoupon?.code) {
+          couponCode = kolCoupon.code as string
+        }
+      }
+    }
+  }
 
   // Apply member discount based on membership tier
   const discountRate = await getMemberDiscountRate(userId)
@@ -213,6 +249,8 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
       campaign_discount: campaignDiscountCents / 100,
       applied_campaign_ids: appliedCampaignIds,
       free_items: freeItems,
+      attributed_kol_id: attributedKolId,
+      attributed_kol_slug: attributedKolSlug,
       metadata: couponCode
         ? { coupon_code: couponCode, coupon_id: appliedCouponId, coupon_discount: couponDiscountCents }
         : null,

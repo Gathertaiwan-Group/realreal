@@ -559,7 +559,7 @@ export default async function HomePage() {
         title="純植物蛋白粉"
         products={proteinProducts}
         moreLabel="查看更多植物蛋白 →"
-        moreHref={`/shop${proteinSlug ? `?category=${proteinSlug}` : ""}`}
+        moreHref={proteinSlug ? `/shop/${proteinSlug}` : "/shop"}
       />
 
       {/* 4. Product section: 原相凍乾水果 */}
@@ -568,7 +568,7 @@ export default async function HomePage() {
           title="原相凍乾水果"
           products={fruitProducts}
           moreLabel="查看更多凍乾水果 →"
-          moreHref={`/shop${fruitSlug ? `?category=${fruitSlug}` : ""}`}
+          moreHref={fruitSlug ? `/shop/${fruitSlug}` : "/shop"}
         />
       </div>
 

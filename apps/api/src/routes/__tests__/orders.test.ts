@@ -44,16 +44,26 @@ const validBody = {
 }
 
 function makeMockChain(overrides: Record<string, any> = {}) {
+  // Chain that is also a thenable — awaiting it resolves to { data: [], error: null }.
+  // This lets queries terminate on any chainable method (e.g. `.in()`, `.or().or()`)
+  // without needing each call site to add a custom mock.
   const chain: Record<string, any> = {
     insert: vi.fn().mockReturnThis(),
     select: vi.fn().mockReturnThis(),
     update: vi.fn().mockReturnThis(),
     delete: vi.fn().mockReturnThis(),
     eq: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
+    or: vi.fn().mockReturnThis(),
+    lte: vi.fn().mockReturnThis(),
+    gte: vi.fn().mockReturnThis(),
     single: vi.fn().mockResolvedValue({ data: null, error: null }),
+    maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
     order: vi.fn().mockReturnThis(),
     range: vi.fn().mockResolvedValue({ data: [], error: null, count: 0 }),
     limit: vi.fn().mockReturnThis(),
+    then: (resolve: (v: { data: unknown[]; error: null; count?: number }) => void) =>
+      resolve({ data: [], error: null, count: 0 }),
     ...overrides,
   }
   return chain

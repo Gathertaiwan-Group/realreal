@@ -13,8 +13,8 @@ const NAV_LINKS = [
     href: "/shop",
     label: "了解產品",
     children: [
-      { href: "/shop?category=protein", label: "植物蛋白粉" },
-      { href: "/shop?category=fruit", label: "凍乾水果" },
+      { href: "/shop/protein", label: "植物蛋白粉" },
+      { href: "/shop/fruit", label: "凍乾水果" },
     ],
   },
   { href: "/faq", label: "常見問題" },

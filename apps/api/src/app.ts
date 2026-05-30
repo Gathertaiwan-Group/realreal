@@ -1,4 +1,5 @@
 import express, { type Request, type Response, type NextFunction } from "express"
+import cookieParser from "cookie-parser"
 
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
@@ -38,6 +39,8 @@ import { adminSettingsRouter } from "./routes/admin-settings"
 import { adminTeamRouter } from "./routes/admin-team"
 import { adminCustomersRouter } from "./routes/admin-customers"
 import { pointsRouter } from "./routes/points"
+import { kolsRouter } from "./routes/kols"
+import { adminKolsRouter } from "./routes/admin-kols"
 
 export const app = express()
 
@@ -71,6 +74,8 @@ app.use(
     },
   }),
 )
+// Cookie parser — needed for Spec I (KOL affiliate cookie `kol_ref` read in /orders POST).
+app.use(cookieParser())
 app.use("/health", healthRouter)
 app.use("/categories", categoriesRouter)
 app.use("/admin/categories", categoriesAdminRouter)
@@ -106,6 +111,8 @@ app.use("/", campaignsRouter)
 app.use("/products/:productId/reviews", reviewsPublicRouter)
 app.use("/admin/reviews", reviewsAdminRouter)
 app.use("/points", pointsRouter)
+app.use("/kols", kolsRouter)
+app.use("/admin/kols", adminKolsRouter)
 app.use((_req, res) => { res.status(404).json({ error: "Not found" }) })
 // Global error handler (must have 4 args for Express to treat it as error handler)
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

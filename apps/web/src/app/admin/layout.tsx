@@ -12,6 +12,7 @@ import {
   LayoutDashboard,
   Megaphone,
   Settings,
+  Share2,
 } from "lucide-react"
 
 type Role = "admin" | "editor" | "viewer"
@@ -35,6 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/categories", label: "分類", icon: Folders, roles: ["admin", "editor"] },
   { href: "/admin/customers", label: "客戶", icon: Users, roles: ["admin", "editor"] },
   { href: "/admin/campaigns", label: "行銷", icon: Megaphone, roles: ["admin", "editor"] },
+  { href: "/admin/kols", label: "聯盟行銷", icon: Share2, roles: ["admin"] },
   { href: "/admin/posts", label: "文章", icon: FileText, roles: ["admin", "editor"] },
   { href: "/admin/posts/categories", label: "文章分類", icon: FolderTree, roles: ["admin", "editor"] },
   { href: "/admin/settings", label: "設定", icon: Settings, roles: ["admin"] },
