@@ -9,6 +9,8 @@ import { renderOrderConfirmation } from "../emails/OrderConfirmation"
 import { renderPaymentConfirmed } from "../emails/PaymentConfirmed"
 import { renderOrderShipped } from "../emails/OrderShipped"
 import { renderTierUpgrade } from "../emails/TierUpgrade"
+import { renderTierRenewed } from "../emails/TierRenewed"
+import { renderTierDowngraded } from "../emails/TierDowngraded"
 import { renderSubscriptionBilled } from "../emails/SubscriptionBilled"
 import { renderSubscriptionFailed } from "../emails/SubscriptionFailed"
 
@@ -16,7 +18,9 @@ export type EmailJobData =
   | { template: "order-confirmation"; to: string; data: { orderNumber: string; items: any[]; total: string; address: string } }
   | { template: "payment-confirmed"; to: string; data: { orderNumber: string; amount: string; method: string } }
   | { template: "order-shipped"; to: string; data: { orderNumber: string; trackingNumber: string; carrier: string } }
-  | { template: "tier-upgrade"; to: string; data: { newTier: string; discountRate: number; benefits: string[] } }
+  | { template: "tier-upgrade"; to: string; data: { newTier: string; discountRate: number; perks: string[] } }
+  | { template: "tier-renewed"; to: string; data: { tierName: string; newExpiresAt: string; perks: string[] } }
+  | { template: "tier-downgraded"; to: string; data: { fromTier: string; toTier: string; nextRequalifyAmount: number; toPerks: string[] } }
   | { template: "subscription-billed"; to: string; data: { planName: string; amount: string; nextBillingDate: string; orderNumber: string } }
   | { template: "subscription-failed"; to: string; data: { planName: string; retryDate: string; manageUrl: string } }
 
@@ -31,6 +35,8 @@ const TEMPLATE_KEY_MAP: Record<string, string> = {
   "payment-confirmed": "email_payment_confirmed",
   "order-shipped": "email_order_shipped",
   "tier-upgrade": "email_tier_upgrade",
+  "tier-renewed": "email_tier_renewed",
+  "tier-downgraded": "email_tier_downgraded",
   "subscription-billed": "email_subscription_billed",
   "subscription-failed": "email_subscription_failed",
 }
@@ -75,11 +81,24 @@ function flattenData(template: string, data: Record<string, any>): Record<string
   if (template === "tier-upgrade" && typeof data.discountRate === "number") {
     vars.discountPercent = String(Math.round(data.discountRate * 100))
   }
-  if (template === "tier-upgrade" && Array.isArray(data.benefits)) {
-    const benefitItems = data.benefits.map((b: string) => `<li style="padding:4px 0">${b}</li>`).join("")
-    vars.benefitsSection = data.benefits.length > 0
-      ? `<h3>您的專屬權益：</h3><ul>${benefitItems}</ul>`
+  if ((template === "tier-upgrade" || template === "tier-renewed") && Array.isArray(data.perks)) {
+    const perkItems = data.perks.map((p: string) => `<li style="padding:4px 0">${p}</li>`).join("")
+    vars.perksSection = data.perks.length > 0
+      ? `<h3>您的專屬權益：</h3><ul>${perkItems}</ul>`
       : ""
+  }
+  if (template === "tier-renewed" && typeof data.newExpiresAt === "string") {
+    const d = new Date(data.newExpiresAt)
+    vars.formattedExpiresAt = `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}`
+  }
+  if (template === "tier-downgraded" && Array.isArray(data.toPerks)) {
+    const perkItems = data.toPerks.map((p: string) => `<li style="padding:4px 0">${p}</li>`).join("")
+    vars.toPerksSection = data.toPerks.length > 0
+      ? `<h3>您目前的會員權益：</h3><ul>${perkItems}</ul>`
+      : ""
+  }
+  if (template === "tier-downgraded" && typeof data.nextRequalifyAmount === "number") {
+    vars.formattedRequalifyAmount = data.nextRequalifyAmount.toLocaleString("en-US")
   }
   if (template === "order-confirmation" && Array.isArray(data.items)) {
     vars.itemRows = data.items.map((item: any) =>
@@ -126,6 +145,14 @@ export async function renderAndSendEmail(jobData: EmailJobData): Promise<void> {
     case "tier-upgrade":
       subject = `恭喜升級為${data.newTier}！`
       html = renderTierUpgrade(data)
+      break
+    case "tier-renewed":
+      subject = `恭喜續約 ${data.tierName} 等級`
+      html = renderTierRenewed(data)
+      break
+    case "tier-downgraded":
+      subject = `會員等級調整通知`
+      html = renderTierDowngraded(data)
       break
     case "subscription-billed":
       subject = `訂閱扣款成功 — ${data.planName}`

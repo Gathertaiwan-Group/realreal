@@ -2,9 +2,11 @@ import { Router } from "express"
 import { supabase } from "../lib/supabase"
 import { requireAuth } from "../middleware/auth"
 import { requireAdmin } from "../middleware/admin"
+import { requireEditor } from "../middleware/editor"
 import { z } from "zod"
 
 export const productsRouter = Router()
+export const productsAdminRouter = Router()
 
 const productSchema = z.object({
   name: z.string().min(1),
@@ -92,11 +94,14 @@ productsRouter.get("/", async (req, res) => {
 
   let query = supabase
     .from("products")
-    .select("id, name, slug, description, category_id, images, is_active, created_at", { count: "exact" })
+    .select("id, name, slug, description, category_id, images, is_active, is_featured, display_priority, created_at", { count: "exact" })
     .eq("is_active", true)
+    .order("is_featured", { ascending: false })
+    .order("display_priority", { ascending: false })
     .order("created_at", { ascending: false })
 
   if (categoryId) query = query.eq("category_id", categoryId)
+  if (req.query.featured_only === "true") query = query.eq("is_featured", true)
   if (req.query.q) {
     query = query.textSearch("search_vector", req.query.q as string, { type: "plain", config: "simple" })
   }
@@ -203,4 +208,63 @@ productsRouter.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
 
   if (error) { res.status(500).json({ error: error.message }); return }
   res.status(204).send()
+})
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Admin endpoints — display control (Spec B Section 2)
+// Mounted at /admin/products in app.ts
+// ─────────────────────────────────────────────────────────────────────────────
+
+const featureSchema = z.object({
+  is_featured: z.boolean(),
+  display_priority: z.number().int().min(0).max(99999).optional(),
+})
+
+// PATCH /admin/products/:id/feature — toggle featured flag (+ optional priority)
+productsAdminRouter.patch("/:id/feature", requireAuth, requireEditor, async (req, res) => {
+  const parsed = featureSchema.safeParse(req.body)
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return }
+
+  const update: { is_featured: boolean; display_priority?: number } = {
+    is_featured: parsed.data.is_featured,
+  }
+  if (parsed.data.display_priority !== undefined) update.display_priority = parsed.data.display_priority
+
+  const { data, error } = await supabase
+    .from("products")
+    .update(update)
+    .eq("id", req.params.id)
+    .select()
+    .single()
+
+  if (error) { res.status(500).json({ error: error.message }); return }
+  if (!data) { res.status(404).json({ error: "Product not found" }); return }
+  res.json({ data })
+})
+
+const reorderSchema = z.object({
+  items: z.array(z.object({
+    id: z.string().uuid(),
+    display_priority: z.number().int().min(0).max(99999),
+  })).min(1),
+})
+
+// POST /admin/products/reorder — batch update display_priority for many products
+productsAdminRouter.post("/reorder", requireAuth, requireEditor, async (req, res) => {
+  const parsed = reorderSchema.safeParse(req.body)
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return }
+
+  const updated: any[] = []
+  for (const item of parsed.data.items) {
+    const { data, error } = await supabase
+      .from("products")
+      .update({ display_priority: item.display_priority })
+      .eq("id", item.id)
+      .select("id, display_priority")
+      .single()
+    if (error) { res.status(500).json({ error: error.message }); return }
+    if (data) updated.push(data)
+  }
+
+  res.json({ data: updated })
 })

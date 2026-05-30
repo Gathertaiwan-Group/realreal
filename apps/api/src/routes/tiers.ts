@@ -3,6 +3,7 @@ import { z } from "zod"
 import { supabase } from "../lib/supabase"
 import { requireAuth } from "../middleware/auth"
 import { requireAdmin } from "../middleware/admin"
+import { requireEditor } from "../middleware/editor"
 import { getMemberDiscountRate } from "../lib/tier"
 
 export const tiersRouter = Router()
@@ -98,6 +99,31 @@ tiersRouter.delete("/admin/membership-tiers/:id", requireAuth, requireAdmin, asy
   if (error) { res.status(500).json({ error: error.message }); return }
   res.status(204).send()
 })
+
+// ---------------------------------------------------------------------------
+// GET /tiers/:id/linked-campaigns — list active campaigns linked to a tier
+// (editor only). Used by the tier-detail admin UI to surface where a tier's
+// rebate/discount logic is being referenced from campaigns.
+// ---------------------------------------------------------------------------
+
+tiersRouter.get(
+  "/tiers/:id/linked-campaigns",
+  requireAuth,
+  requireEditor,
+  async (req, res) => {
+    const { data, error } = await supabase
+      .from("campaigns")
+      .select("*")
+      .eq("tier_id", req.params.id)
+      .eq("is_active", true)
+
+    if (error) {
+      res.status(500).json({ error: error.message })
+      return
+    }
+    res.json({ data: data ?? [] })
+  },
+)
 
 // ---------------------------------------------------------------------------
 // GET /my-member-discount — return current user's discount rate (auth required)

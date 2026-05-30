@@ -5,6 +5,7 @@ import { inventoryWorker } from "./workers/inventory-worker"
 import { invoiceWorker } from "./workers/invoice-issuer"
 import { pointsExpireQueue, pointsExpireWorker } from "./workers/points-expire"
 import { subscriptionBillingQueue, subscriptionBillingWorker } from "./workers/subscription-billing"
+import { tierExpireQueue, tierExpireWorker } from "./workers/tier-expire"
 
 const logger = pino({
   transport: process.env.NODE_ENV !== "production" ? { target: "pino-pretty" } : undefined,
@@ -35,7 +36,14 @@ async function registerSchedulers() {
     { pattern: "0 3 * * *", tz: "Asia/Taipei" },
     { name: "expire", data: {} },
   )
-  logger.info("Job schedulers registered (daily-billing 03:00, low-stock-check 09:00, daily-points-expire 03:00 Asia/Taipei)")
+  // Daily tier expiration sweep (04:00 Asia/Taipei) — renew if requalified,
+  // otherwise downgrade. See spec C Section 3.
+  await tierExpireQueue.upsertJobScheduler(
+    "daily-tier-expire",
+    { pattern: "0 4 * * *", tz: "Asia/Taipei" },
+    { name: "expire", data: {} },
+  )
+  logger.info("Job schedulers registered (daily-billing 03:00, low-stock-check 09:00, daily-points-expire 03:00, daily-tier-expire 04:00 Asia/Taipei)")
 }
 
 const workers = [
@@ -43,6 +51,7 @@ const workers = [
   { name: "invoice", worker: invoiceWorker },
   { name: "points-expire", worker: pointsExpireWorker },
   { name: "subscription-billing", worker: subscriptionBillingWorker },
+  { name: "tier-expire", worker: tierExpireWorker },
 ]
 
 for (const { name, worker } of workers) {
@@ -69,7 +78,7 @@ const healthServer = http.createServer((req, res) => {
 healthServer.listen(Number(process.env.PORT ?? 4001), () =>
   logger.info({ port: process.env.PORT ?? 4001 }, "worker health server listening"))
 
-logger.info("Worker process started (inventory, invoice, points-expire, subscription-billing)")
+logger.info("Worker process started (inventory, invoice, points-expire, subscription-billing, tier-expire)")
 
 let shuttingDown = false
 async function shutdown(signal: string) {

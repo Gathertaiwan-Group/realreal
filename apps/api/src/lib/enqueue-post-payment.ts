@@ -1,7 +1,7 @@
 import { supabase } from "./supabase"
 import { renderAndSendEmail } from "../workers/email-sender"
 import { sendEmail } from "./email"
-import { incrementSpendAndUpgrade } from "./tier"
+import { incrementSpendAndUpgrade, incrementPeriodSpend } from "./tier"
 import { inventoryQueue } from "./queue"
 import { invoiceQueue } from "../workers/invoice-issuer"
 import { getSetting } from "./settings"
@@ -204,6 +204,14 @@ export async function enqueuePostPaymentJobs(orderId: string) {
       }
     } catch (err) {
       console.warn("[post-payment] points grant/redeem failed (non-fatal):", err)
+    }
+
+    // 5) Accumulate tier_period_spend for requalification window tracking.
+    // Independent try/catch so a failure here does not block any other step.
+    try {
+      await incrementPeriodSpend(order.user_id, Number(order.total))
+    } catch (err) {
+      console.warn("[post-payment] incrementPeriodSpend failed (non-fatal):", err)
     }
   }
 }

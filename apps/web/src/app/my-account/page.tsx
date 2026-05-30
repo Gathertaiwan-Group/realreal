@@ -45,7 +45,12 @@ export default async function MyAccountPage({
   ] = await Promise.all([
     supabase
       .from("user_profiles")
-      .select("display_name, phone, total_spend, membership_tiers(name)")
+      .select(
+        // Spec C Section 7: also need tier validity + period spend so HeroCard
+        // can render "會員效期至…" + 達標 progress bar. requalify_* /
+        // validity_months come from the joined membership_tiers row.
+        "display_name, phone, total_spend, tier_started_at, tier_expires_at, tier_period_spend, membership_tiers(name, validity_months, requalify_amount, requalify_window_months)",
+      )
       .eq("user_id", user.id)
       .single(),
     apiClient<{ data: OrderRow[] }>("/orders", { token: accessToken }).catch(
@@ -71,10 +76,25 @@ export default async function MyAccountPage({
     profile?.display_name?.trim() || user.email?.split("@")[0] || "會員"
   const totalSpend: number = profile?.total_spend ?? 0
   const rawTier = profile?.membership_tiers as unknown
-  const tierName =
-    (Array.isArray(rawTier)
-      ? (rawTier[0] as { name: string } | undefined)?.name
-      : (rawTier as { name: string } | null)?.name) ?? "初心之友"
+  type TierRow = {
+    name: string
+    validity_months?: number | null
+    requalify_amount?: number | string | null
+    requalify_window_months?: number | null
+  }
+  const tier: TierRow | null = Array.isArray(rawTier)
+    ? ((rawTier[0] as TierRow | undefined) ?? null)
+    : ((rawTier as TierRow | null) ?? null)
+  const tierName = tier?.name ?? "初心之友"
+  const tierExpiresAt =
+    (profile as { tier_expires_at?: string | null } | null)?.tier_expires_at ??
+    null
+  const tierPeriodSpend = Number(
+    (profile as { tier_period_spend?: number | string | null } | null)
+      ?.tier_period_spend ?? 0,
+  )
+  const requalifyAmount = Number(tier?.requalify_amount ?? 0)
+  const validityMonths = Number(tier?.validity_months ?? 0)
 
   const orders: OrderRow[] = ordersResult.data ?? []
   const totalOrders = orders.length
@@ -100,6 +120,10 @@ export default async function MyAccountPage({
         tierName={tierName}
         totalOrders={totalOrders}
         totalSpend={Number(totalSpend)}
+        tierExpiresAt={tierExpiresAt}
+        tierPeriodSpend={tierPeriodSpend}
+        requalifyAmount={requalifyAmount}
+        validityMonths={validityMonths}
       />
 
       <PointsCard

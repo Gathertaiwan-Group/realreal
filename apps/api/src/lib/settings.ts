@@ -167,12 +167,11 @@ export const ALLOWED_KEYS = new Set<string>([
   // Notifications
   "notifications.admin_email",
   // Points (charity rebate) — none are secrets
+  // Spec D (2026-05-30-D-points-rules-simplification): min_redeem,
+  // max_redeem_pct, allow_coupon_stack, apply_to_shipping, apply_to_sale
+  // are removed from the admin surface — only ratio + expire_days remain.
+  // Old rows in app_settings are left intact for audit; reads ignore them.
   "points.ratio",
-  "points.min_redeem",
-  "points.max_redeem_pct",
-  "points.allow_coupon_stack",
-  "points.apply_to_shipping",
-  "points.apply_to_sale",
   "points.expire_days",
 ])
 
@@ -263,11 +262,6 @@ export const SECTIONS: Record<string, { label: string; keys: string[] }> = {
     label: "公益點數規則",
     keys: [
       "points.ratio",
-      "points.min_redeem",
-      "points.max_redeem_pct",
-      "points.allow_coupon_stack",
-      "points.apply_to_shipping",
-      "points.apply_to_sale",
       "points.expire_days",
     ],
   },

@@ -8,7 +8,7 @@ const ALLOWED_ORIGINS = [
   "https://www.realreal.cc",
 ]
 import healthRouter from "./routes/health"
-import { categoriesRouter } from "./routes/categories"
+import { categoriesRouter, categoriesAdminRouter } from "./routes/categories"
 import { productsRouter } from "./routes/products"
 import { variantsRouter } from "./routes/variants"
 import { couponsRouter } from "./routes/coupons"
@@ -73,6 +73,7 @@ app.use(
 )
 app.use("/health", healthRouter)
 app.use("/categories", categoriesRouter)
+app.use("/admin/categories", categoriesAdminRouter)
 app.use("/products/:id/variants", variantsRouter)
 app.use("/products", productsRouter)
 app.use("/", couponsRouter)

@@ -44,6 +44,15 @@ interface MembershipTier {
   name: string
 }
 
+interface Category {
+  id: string
+  name: string
+  slug: string
+  parent_id: string | null
+  sort_order?: number
+  children?: Category[]
+}
+
 type StatusKey = "all" | "active" | "scheduled" | "ended" | "disabled"
 
 /* ------------------------------------------------------------------ */
@@ -204,7 +213,26 @@ function toLocalDatetime(iso: string | null): string {
 /*  Config fields per type                                             */
 /* ------------------------------------------------------------------ */
 
-function ConfigFields({ type, config, prefix }: { type: string; config: Record<string, unknown>; prefix: string }) {
+function ConfigFields({
+  type,
+  config,
+  prefix,
+  categories,
+}: {
+  type: string
+  config: Record<string, unknown>
+  prefix: string
+  categories: { slug: string; name: string }[]
+}) {
+  const categorySelect = (defaultValue: string) => (
+    <select name={`${prefix}_category_slug`} defaultValue={defaultValue} className={selectClass}>
+      <option value="">— 選擇分類 —</option>
+      {categories.map((c) => (
+        <option key={c.slug} value={c.slug}>{c.name}</option>
+      ))}
+    </select>
+  )
+
   if (type === "discount") {
     return (
       <>
@@ -249,8 +277,8 @@ function ConfigFields({ type, config, prefix }: { type: string; config: Record<s
           </select>
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs">指定分類 (slug)</Label>
-          <Input name={`${prefix}_category_slug`} defaultValue={(config.category_slug as string) ?? ""} placeholder="protein" />
+          <Label className="text-xs">指定分類</Label>
+          {categorySelect((config.category_slug as string) ?? "")}
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">限同品項</Label>
@@ -287,8 +315,8 @@ function ConfigFields({ type, config, prefix }: { type: string; config: Record<s
           </select>
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs">指定分類 (slug)</Label>
-          <Input name={`${prefix}_category_slug`} defaultValue={(config.category_slug as string) ?? ""} placeholder="protein" />
+          <Label className="text-xs">指定分類</Label>
+          {categorySelect((config.category_slug as string) ?? "")}
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">最多幾組</Label>
@@ -340,8 +368,8 @@ function ConfigFields({ type, config, prefix }: { type: string; config: Record<s
           </select>
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs">指定分類 (slug)</Label>
-          <Input name={`${prefix}_category_slug`} defaultValue={(config.category_slug as string) ?? ""} placeholder="" />
+          <Label className="text-xs">指定分類</Label>
+          {categorySelect((config.category_slug as string) ?? "")}
         </div>
       </>
     )
@@ -484,6 +512,7 @@ function extractConfig(fd: FormData, prefix: string, type: string): Record<strin
 export default function AdminCampaignsPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([])
   const [tiers, setTiers] = useState<MembershipTier[]>([])
+  const [categories, setCategories] = useState<{ slug: string; name: string }[]>([])
   const [tab, setTab] = useState<StatusKey>("all")
   const [showCreate, setShowCreate] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -569,10 +598,32 @@ export default function AdminCampaignsPage() {
     } catch { /* API unavailable */ }
   }, [])
 
+  const fetchCategories = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_URL}/categories`)
+      if (res.ok) {
+        const json = await res.json()
+        const raw: Category[] = json.data ?? json.categories ?? json ?? []
+        // /categories returns a tree (root nodes with `children`); flatten so all
+        // categories are selectable in the dropdown.
+        const flat: { slug: string; name: string }[] = []
+        const walk = (nodes: Category[]) => {
+          for (const n of nodes) {
+            if (n?.slug) flat.push({ slug: n.slug, name: n.name })
+            if (Array.isArray(n?.children) && n.children.length > 0) walk(n.children)
+          }
+        }
+        walk(raw)
+        setCategories(flat)
+      }
+    } catch { /* API unavailable */ }
+  }, [])
+
   useEffect(() => {
     fetchCampaigns()
     fetchTiers()
-  }, [fetchCampaigns, fetchTiers])
+    fetchCategories()
+  }, [fetchCampaigns, fetchTiers, fetchCategories])
 
   const filtered = tab === "all" ? campaigns : campaigns.filter((c) => campaignStatus(c).key === tab)
 
@@ -735,7 +786,7 @@ export default function AdminCampaignsPage() {
                 className={selectClass}
               />
             </div>
-            <ConfigFields type={createType} config={{}} prefix="c" />
+            <ConfigFields type={createType} config={{}} prefix="c" categories={categories} />
           </div>
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={isPending}>{isPending ? "建立中..." : "建立"}</Button>
@@ -919,7 +970,7 @@ export default function AdminCampaignsPage() {
                                 className={selectClass}
                               />
                             </div>
-                            <ConfigFields type={editType} config={(c.config as Record<string, unknown>) ?? {}} prefix="e" />
+                            <ConfigFields type={editType} config={(c.config as Record<string, unknown>) ?? {}} prefix="e" categories={categories} />
                           </div>
                           <div className="flex gap-2">
                             <Button type="submit" size="sm" disabled={isPending}>{isPending ? "儲存中..." : "儲存"}</Button>

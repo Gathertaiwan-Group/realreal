@@ -14,13 +14,17 @@ import { AdminTabs } from "../../_components/AdminTabs"
 /**
  * /admin/marketing/points — 點數規則 tab.
  *
- * Spec: docs/superpowers/specs/2026-05-30-points-tiers-customer-detail-design.md
- *   Section 3 — 行銷頁 4-tab 結構
+ * Spec: docs/superpowers/specs/2026-05-30-D-points-rules-simplification-design.md
+ *   Section 1 — admin UI 砍欄位
  *
- * Two cards:
- *   1. 點數規則 form — edit 7 `points.*` keys via PUT /admin/settings
+ * Three cards:
+ *   1. 點數規則 form — edit 2 `points.*` keys (ratio + expire_days) via
+ *      PUT /admin/settings
  *   2. 目前狀態 read-only — counts/sums pulled from v_user_points_balance
  *      view and points_ledger (expiring-soon).
+ *   3. 折抵預設行為 hint — documents the 5 hardcoded defaults that used
+ *      to be settings (min_redeem / max_redeem_pct / allow_coupon_stack /
+ *      apply_to_shipping / apply_to_sale).
  *
  * 4 sibling tabs (campaigns / coupons / tiers / points) share the same
  * AdminTabs strip so users can hop between them.
@@ -77,10 +81,6 @@ function getServerValue(fields: Field[], key: string): string {
 
 function currentValue(fields: Field[], drafts: Drafts, key: string): string {
   return drafts[key] !== undefined ? (drafts[key] as string) : getServerValue(fields, key)
-}
-
-function isOn(fields: Field[], drafts: Drafts, key: string): boolean {
-  return currentValue(fields, drafts, key) === "true"
 }
 
 // ---------------------------------------------------------------------------
@@ -214,15 +214,6 @@ export default function AdminPointsRulesPage() {
     setDrafts((d) => ({ ...d, [key]: value }))
   }
 
-  function toggleDraft(key: string) {
-    setDrafts((d) => {
-      const next: Drafts = { ...d }
-      const cur = next[key] !== undefined ? next[key] : getServerValue(fields, key)
-      next[key] = cur === "true" ? "false" : "true"
-      return next
-    })
-  }
-
   async function handleSave() {
     const dirty = Object.entries(drafts).filter(([, v]) => v !== undefined)
     if (dirty.length === 0) {
@@ -272,7 +263,7 @@ export default function AdminPointsRulesPage() {
         </p>
       </header>
 
-      {/* Card 1 — 點數規則 form */}
+      {/* Card 1 — 點數規則 form (2 fields only: ratio + expire_days) */}
       <section className="rounded-[10px] border bg-white shadow-sm">
         <div className="border-b px-5 py-4">
           <h2 className="text-base font-semibold text-[#10305a]">點數規則</h2>
@@ -307,73 +298,6 @@ export default function AdminPointsRulesPage() {
                 />
               </div>
             </div>
-
-            {/* 最少折抵 [points.min_redeem] 點 */}
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <Label className="text-sm font-medium text-zinc-900">最少折抵</Label>
-                <p className="mt-0.5 text-xs text-zinc-500">
-                  單筆結帳最少需使用多少點才能折抵
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min={0}
-                  step={1}
-                  value={currentValue(fields, drafts, "points.min_redeem")}
-                  onChange={(e) => setDraft("points.min_redeem", e.target.value)}
-                  className="w-28"
-                />
-                <span className="text-sm text-zinc-700">點</span>
-              </div>
-            </div>
-
-            {/* 單筆上限 [points.max_redeem_pct] % */}
-            <div className="flex flex-wrap items-end gap-3">
-              <div>
-                <Label className="text-sm font-medium text-zinc-900">單筆上限</Label>
-                <p className="mt-0.5 text-xs text-zinc-500">
-                  單筆訂單最多可用點數折抵的比例（金額計算依下方設定）
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min={0}
-                  max={100}
-                  step={1}
-                  value={currentValue(fields, drafts, "points.max_redeem_pct")}
-                  onChange={(e) => setDraft("points.max_redeem_pct", e.target.value)}
-                  className="w-28"
-                />
-                <span className="text-sm text-zinc-700">%</span>
-              </div>
-            </div>
-
-            {/* ☑ 可與 coupon 疊加 (points.allow_coupon_stack) */}
-            <CheckboxRow
-              label="可與 coupon 疊加"
-              hint="勾選後，使用優惠券的訂單仍可同時折抵點數"
-              checked={isOn(fields, drafts, "points.allow_coupon_stack")}
-              onToggle={() => toggleDraft("points.allow_coupon_stack")}
-            />
-
-            {/* ☐ 可折抵運費 (points.apply_to_shipping) */}
-            <CheckboxRow
-              label="可折抵運費"
-              hint="勾選後，計算「單筆上限」時將運費納入可折抵基數"
-              checked={isOn(fields, drafts, "points.apply_to_shipping")}
-              onToggle={() => toggleDraft("points.apply_to_shipping")}
-            />
-
-            {/* ☑ 可折抵特價商品 (points.apply_to_sale) */}
-            <CheckboxRow
-              label="可折抵特價商品"
-              hint="取消勾選後，特價商品金額不列入可折抵基數"
-              checked={isOn(fields, drafts, "points.apply_to_sale")}
-              onToggle={() => toggleDraft("points.apply_to_sale")}
-            />
 
             {/* 過期: [points.expire_days] 天 (0 = 永不過期) */}
             <div className="flex flex-wrap items-end gap-3">
@@ -443,6 +367,21 @@ export default function AdminPointsRulesPage() {
           )}
         </div>
       </section>
+
+      {/* Card 3 — 折抵預設行為 hint (hardcoded defaults documentation) */}
+      <section className="rounded-[10px] border border-amber-200/60 bg-amber-50/40 px-5 py-4 text-sm text-[#687279]">
+        <p className="font-medium text-[#10305a]">折抵預設行為（hardcode）</p>
+        <ul className="ml-4 mt-2 list-disc space-y-0.5">
+          <li>最少折抵：0 點起（不限）</li>
+          <li>單筆上限：訂單金額 100%（可全額折抵）</li>
+          <li>可與優惠券疊加：是</li>
+          <li>可折抵運費：否</li>
+          <li>可折抵特價商品：是</li>
+        </ul>
+        <p className="mt-2 text-xs">
+          若特定活動需不同規則，至「行銷活動」tab 設定 campaign 內的覆蓋規則（功能尚未開放）。
+        </p>
+      </section>
     </div>
   )
 }
@@ -450,42 +389,6 @@ export default function AdminPointsRulesPage() {
 // ---------------------------------------------------------------------------
 // Small presentational helpers
 // ---------------------------------------------------------------------------
-
-function CheckboxRow({
-  label,
-  hint,
-  checked,
-  onToggle,
-}: {
-  label: string
-  hint?: string
-  checked: boolean
-  onToggle: () => void
-}) {
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <Label className="text-sm font-medium text-zinc-900">{label}</Label>
-        {hint && <p className="mt-0.5 text-xs text-zinc-500">{hint}</p>}
-      </div>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={onToggle}
-        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-          checked ? "bg-[#10305a]" : "bg-zinc-300"
-        }`}
-      >
-        <span
-          className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-            checked ? "translate-x-5" : "translate-x-0.5"
-          }`}
-        />
-      </button>
-    </div>
-  )
-}
 
 function StatRow({
   label,

@@ -1,10 +1,11 @@
-export function renderTierUpgrade(data: { newTier: string; discountRate: number; perks: string[] }): string {
-  const discountPercent = Math.round(data.discountRate * 100)
+export function renderTierRenewed(data: { tierName: string; newExpiresAt: string; perks: string[] }): string {
+  const expiresDate = new Date(data.newExpiresAt)
+  const formattedDate = `${expiresDate.getFullYear()}/${String(expiresDate.getMonth() + 1).padStart(2, "0")}/${String(expiresDate.getDate()).padStart(2, "0")}`
   const perkItems = data.perks.map(p => `<li style="padding:4px 0">${p}</li>`).join("")
   return `<!DOCTYPE html><html><body style="font-family:sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px">
     <h1 style="color:#4a7c59;border-bottom:2px solid #4a7c59;padding-bottom:8px">誠真生活 RealReal</h1>
-    <h2>🎉 恭喜升級為${data.newTier}！</h2>
-    <p>感謝您的支持！您已成功升級為 <strong>${data.newTier}</strong>，享有 <strong>${discountPercent}折</strong> 會員優惠。</p>
+    <h2>🎊 恭喜續約 ${data.tierName} 等級，期滿日 ${formattedDate}</h2>
+    <p>感謝您持續支持！您已成功續約 <strong>${data.tierName}</strong> 等級，會員權益將維持至 <strong>${formattedDate}</strong>。</p>
     ${data.perks.length > 0 ? `<h3>您的專屬權益：</h3><ul>${perkItems}</ul>` : ""}
     <p><a href="https://realreal.cc/shop" style="background:#4a7c59;color:white;padding:10px 20px;border-radius:4px;text-decoration:none;display:inline-block;margin-top:8px">立即購物享優惠</a></p>
     <hr style="margin:24px 0;border:none;border-top:1px solid #eee">

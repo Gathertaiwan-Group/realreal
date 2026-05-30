@@ -58,6 +58,9 @@ export interface CustomerDetailData {
     created_at: string
     total_spend: number
     membership_tier_id: string | null
+    tier_started_at: string | null
+    tier_expires_at: string | null
+    tier_period_spend: number
     email: string | null
     last_sign_in_at: string | null
   }
@@ -69,6 +72,9 @@ export interface CustomerDetailData {
     benefits: Record<string, unknown> | null
     discount_rate: number | string
     sort_order: number
+    requalify_amount: number | string | null
+    requalify_window_months: number | null
+    validity_months: number | null
   } | null
   points: {
     balance: number
@@ -147,6 +153,23 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString("zh-TW")
 }
 
+/** Format ISO date as YYYY/MM/DD (zero-padded). */
+function formatDateSlash(iso: string | null): string {
+  if (!iso) return "—"
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, "0")
+  const day = String(d.getDate()).padStart(2, "0")
+  return `${y}/${m}/${day}`
+}
+
+/** Days from now until ISO date (rounded down, never negative). */
+function daysUntil(iso: string): number {
+  const target = new Date(iso).getTime()
+  const now = Date.now()
+  return Math.max(0, Math.floor((target - now) / (24 * 60 * 60 * 1000)))
+}
+
 function formatDateTime(iso: string | null): string {
   if (!iso) return "—"
   return new Date(iso).toLocaleString("zh-TW")
@@ -186,6 +209,9 @@ export function CustomerDetailClient({
         totalSpend={profile.total_spend}
         points={points}
         nextTier={next_tier}
+        tierStartedAt={profile.tier_started_at}
+        tierExpiresAt={profile.tier_expires_at}
+        tierPeriodSpend={profile.tier_period_spend}
       />
 
       <RecentOrdersCard customerId={profile.user_id} orders={orders} />
@@ -320,11 +346,17 @@ function MemberStatusCard({
   totalSpend,
   points,
   nextTier,
+  tierStartedAt,
+  tierExpiresAt,
+  tierPeriodSpend,
 }: {
   tier: CustomerDetailData["tier"]
   totalSpend: number
   points: CustomerDetailData["points"]
   nextTier: CustomerDetailData["next_tier"]
+  tierStartedAt: string | null
+  tierExpiresAt: string | null
+  tierPeriodSpend: number
 }) {
   // Progress bar — 0 when no current tier (treat min_spend as 0), full when at top.
   const currentMin = Number(tier?.min_spend ?? 0)
@@ -340,6 +372,19 @@ function MemberStatusCard({
   }
 
   const balanceDisplay = Math.max(0, points.balance)
+
+  // Tier validity rows (spec C Section 6)
+  const requalifyAmount = Number(tier?.requalify_amount ?? 0)
+  const hasExpiry = tierExpiresAt !== null
+  const daysLeft = hasExpiry ? daysUntil(tierExpiresAt!) : null
+  const daysLeftColor =
+    daysLeft === null
+      ? "text-[#687279]"
+      : daysLeft < 30
+        ? "text-red-600"
+        : daysLeft < 90
+          ? "text-amber-600"
+          : "text-[#687279]"
 
   return (
     <Card>
@@ -364,6 +409,37 @@ function MemberStatusCard({
               <p className="mt-2 text-xs text-[#687279]">
                 點數回饋 {Number(tier.rebate_rate)}%
               </p>
+            )}
+            {tier && (
+              <dl className="mt-3 space-y-1 text-xs">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[#687279]">升等日</dt>
+                  <dd className="text-[#10305a]">
+                    {formatDateSlash(tierStartedAt)}
+                  </dd>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[#687279]">期滿日</dt>
+                  <dd className="text-[#10305a]">
+                    {hasExpiry ? formatDateSlash(tierExpiresAt) : "永久"}
+                  </dd>
+                </div>
+                {hasExpiry && (
+                  <>
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-[#687279]">本期累積</dt>
+                      <dd className="text-[#10305a]">
+                        {formatNTD(tierPeriodSpend)} /{" "}
+                        {formatNTD(requalifyAmount)}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between gap-2">
+                      <dt className="text-[#687279]">距期滿</dt>
+                      <dd className={daysLeftColor}>{daysLeft} 天</dd>
+                    </div>
+                  </>
+                )}
+              </dl>
             )}
           </div>
 

@@ -2,11 +2,14 @@ import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { ProductCard } from "@/components/catalog/ProductCard"
 import { getProducts, getCategories } from "@/lib/catalog"
 import type { Product, Category } from "@/lib/catalog"
 import { getSiteContent, getPosts } from "@/lib/content"
 import type { Post } from "@/lib/content"
 import type { Metadata } from "next"
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
 export const dynamic = "force-dynamic"
 
@@ -40,7 +43,40 @@ async function findCategorySlug(needle: string): Promise<string | undefined> {
   )?.slug
 }
 
+async function getFeaturedProducts(): Promise<Product[]> {
+  try {
+    const res = await fetch(
+      `${API_URL}/products?featured_only=true&limit=8`,
+      { next: { revalidate: 60 } }
+    )
+    if (!res.ok) return []
+    const json = await res.json()
+    return json.data ?? []
+  } catch {
+    return []
+  }
+}
+
 /* ---------- sections ---------- */
+
+function FeaturedProductsSection({ products }: { products: Product[] }) {
+  if (products.length === 0) return null
+
+  return (
+    <section className="py-10 sm:py-12">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl mb-6">
+          精選商品
+        </h2>
+        <div className="grid grid-cols-2 gap-4 sm:gap-6 md:grid-cols-4">
+          {products.map((product) => (
+            <ProductCard key={product.id} product={product} />
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
 
 function AnnouncementBar() {
   const messages = [
@@ -495,12 +531,13 @@ export default async function HomePage() {
   ])
 
   // Fetch products, content and blog posts in parallel
-  const [proteinProducts, fruitProducts, heroContent, blogResult] =
+  const [proteinProducts, fruitProducts, heroContent, blogResult, featuredProducts] =
     await Promise.all([
       getProductsByCategory(proteinSlug ?? "protein"),
       getProductsByCategory(fruitSlug ?? "freeze-dried"),
       getSiteContent<HeroContent>("homepage_hero"),
       getPosts({ limit: 3 }),
+      getFeaturedProducts(),
     ])
 
   return (
@@ -510,6 +547,9 @@ export default async function HomePage() {
 
       {/* 1. Hero */}
       <HeroSection content={heroContent} />
+
+      {/* 1b. Featured products (精選商品) — hidden if empty */}
+      <FeaturedProductsSection products={featuredProducts} />
 
       {/* 1a. Square images (below banner) */}
       <HomeSquareImages />

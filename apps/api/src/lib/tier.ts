@@ -8,15 +8,28 @@ const TIERS = [
   { name: "一般會員", minSpend: 0 },
 ] as const
 
+/**
+ * Add `n` months to a Date, returning a new Date. Pure / sync utility, no deps.
+ * Handles end-of-month overflow the JS-standard way (e.g. Jan 31 + 1mo → Mar 3).
+ */
+export function addMonths(date: Date, n: number): Date {
+  const d = new Date(date.getTime())
+  d.setMonth(d.getMonth() + n)
+  return d
+}
+
 export async function upgradeTierIfNeeded(userId: string, newTotalSpend: number) {
-  // Fetch all tiers ordered by min_spend DESC
+  // Fetch all tiers ordered by min_spend DESC (need validity_months for expiry calc)
   const { data: tiers } = await supabase
     .from("membership_tiers")
-    .select("id, name, min_spend")
+    .select("id, name, min_spend, validity_months")
     .order("min_spend", { ascending: false })
   if (!tiers) return
 
-  const eligible = tiers.find((t: { id: string; name: string; min_spend: number }) => newTotalSpend >= Number(t.min_spend))
+  const eligible = tiers.find(
+    (t: { id: string; name: string; min_spend: number; validity_months: number | null }) =>
+      newTotalSpend >= Number(t.min_spend),
+  ) as { id: string; name: string; min_spend: number; validity_months: number | null } | undefined
   if (!eligible) return
 
   // Read existing tier BEFORE the update so we can detect a real change.
@@ -29,15 +42,33 @@ export async function upgradeTierIfNeeded(userId: string, newTotalSpend: number)
     (existingProfile as { membership_tier_id: string | null } | null)
       ?.membership_tier_id ?? null
 
+  // On no-change, just keep total_spend in sync (don't reset period/started/expires).
+  if (eligible.id === currentTierId) {
+    await supabase
+      .from("user_profiles")
+      .update({ total_spend: newTotalSpend })
+      .eq("user_id", userId)
+    return
+  }
+
+  // Tier changed → stamp tier_started_at, compute tier_expires_at, reset tier_period_spend.
+  const nowDate = new Date()
+  const now = nowDate.toISOString()
+  const validityMonths = Number(eligible.validity_months ?? 0)
+  const tierExpiresAt =
+    validityMonths > 0 ? addMonths(nowDate, validityMonths).toISOString() : null
+
   await supabase
     .from("user_profiles")
-    .update({ membership_tier_id: eligible.id, total_spend: newTotalSpend })
+    .update({
+      membership_tier_id: eligible.id,
+      total_spend: newTotalSpend,
+      tier_started_at: now,
+      tier_expires_at: tierExpiresAt,
+      tier_period_spend: 0,
+    })
     .eq("user_id", userId)
 
-  // Only fire tier_upgrade_bonus campaigns when the tier actually changed.
-  if (eligible.id === currentTierId) return
-
-  const now = new Date().toISOString()
   const { data: bonusCampaigns } = await supabase
     .from("campaigns")
     .select("id, name, config")
@@ -70,6 +101,32 @@ export async function upgradeTierIfNeeded(userId: string, newTotalSpend: number)
       )
     }
   }
+}
+
+/**
+ * Add `amount` to the user's `tier_period_spend` (re-qualification window total).
+ * Called from enqueue-post-payment after every successful order.
+ *
+ * Read-then-write rather than a Postgres RPC; race condition tolerable at current
+ * traffic (a concurrent payment from the same user could drop one increment).
+ * Migrate to `SET tier_period_spend = tier_period_spend + ?` via RPC if that ever
+ * becomes a real problem.
+ */
+export async function incrementPeriodSpend(userId: string, amount: number) {
+  if (!Number.isFinite(amount) || amount === 0) return
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("tier_period_spend")
+    .eq("user_id", userId)
+    .maybeSingle()
+  const current = Number(
+    (profile as { tier_period_spend: number | string | null } | null)
+      ?.tier_period_spend ?? 0,
+  )
+  await supabase
+    .from("user_profiles")
+    .update({ tier_period_spend: current + amount })
+    .eq("user_id", userId)
 }
 
 export async function incrementSpendAndUpgrade(userId: string, amount: number) {

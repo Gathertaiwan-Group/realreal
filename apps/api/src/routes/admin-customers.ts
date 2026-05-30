@@ -33,7 +33,9 @@ adminCustomersRouter.get("/:id", async (req, res) => {
     .from("user_profiles")
     .select(
       "user_id, display_name, phone, birthday, role, created_at, total_spend, membership_tier_id, " +
-        "membership_tiers(id, name, min_spend, rebate_rate, benefits, discount_rate, sort_order)",
+        "tier_started_at, tier_expires_at, tier_period_spend, " +
+        "membership_tiers(id, name, min_spend, rebate_rate, benefits, discount_rate, sort_order, " +
+        "requalify_amount, requalify_window_months, validity_months)",
     )
     .eq("user_id", userId)
     .single()
@@ -41,6 +43,19 @@ adminCustomersRouter.get("/:id", async (req, res) => {
   if (profileErr || !profileRaw) {
     res.status(404).json({ error: "Customer not found" })
     return
+  }
+
+  type TierRow = {
+    id: string
+    name: string
+    min_spend: number | string
+    rebate_rate: number | string
+    benefits: Record<string, unknown> | null
+    discount_rate: number | string
+    sort_order: number
+    requalify_amount: number | string | null
+    requalify_window_months: number | null
+    validity_months: number | null
   }
 
   type ProfileRow = {
@@ -52,26 +67,10 @@ adminCustomersRouter.get("/:id", async (req, res) => {
     created_at: string
     total_spend: number | string | null
     membership_tier_id: string | null
-    membership_tiers:
-      | {
-          id: string
-          name: string
-          min_spend: number | string
-          rebate_rate: number | string
-          benefits: Record<string, unknown> | null
-          discount_rate: number | string
-          sort_order: number
-        }
-      | Array<{
-          id: string
-          name: string
-          min_spend: number | string
-          rebate_rate: number | string
-          benefits: Record<string, unknown> | null
-          discount_rate: number | string
-          sort_order: number
-        }>
-      | null
+    tier_started_at: string | null
+    tier_expires_at: string | null
+    tier_period_spend: number | string | null
+    membership_tiers: TierRow | Array<TierRow> | null
   }
 
   const profile = profileRaw as unknown as ProfileRow
@@ -172,6 +171,9 @@ adminCustomersRouter.get("/:id", async (req, res) => {
         created_at: profile.created_at,
         total_spend: totalSpend,
         membership_tier_id: profile.membership_tier_id,
+        tier_started_at: profile.tier_started_at,
+        tier_expires_at: profile.tier_expires_at,
+        tier_period_spend: Number(profile.tier_period_spend ?? 0),
         email,
         last_sign_in_at: lastSignInAt,
       },

@@ -29,6 +29,10 @@ export default async function ShopPage({
     getCategories(),
     getProducts({ category, q, page: currentPage, limit: PAGE_SIZE, sort: sortOption }),
   ])
+  // NOTE: products is rendered in API order (is_featured DESC, display_priority DESC,
+  // created_at DESC by default; or the sort option chosen by the user). DO NOT add a
+  // client-side .sort() here — it would override the server's intended ordering and
+  // break the featured/priority controls. See spec B section 5.
 
   // Find current category name for section heading
   const currentCategory = categories.find(c => c.slug === category)

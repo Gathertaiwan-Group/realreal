@@ -438,16 +438,33 @@ export type PointsDiscountResult =
  * the settings snapshot, returns whether the redemption is allowed and
  * how much NT$ it discounts.
  *
- *   eligible = (apply_to_shipping ? total : subtotal)
- *            - (apply_to_sale ? 0 : sale_item_total)
- *   cap      = floor(eligible * max_pct / 100)
+ * Only `settings.ratio` is consumed from the snapshot. Per Spec D
+ * (2026-05-30-D-points-rules-simplification), the previously per-tenant
+ * tunables `min_redeem`, `max_redeem_pct`, `apply_to_shipping`,
+ * `apply_to_sale`, and `allow_coupon_stack` are now hardcoded sensible
+ * defaults — admins who need different behavior for a specific promo
+ * should configure a campaign override (future spec) rather than a
+ * global setting. `allow_coupon_stack` is not consulted here; orders.ts
+ * decides coupon+points stacking (always true under Spec D).
+ *
+ *   eligible = (APPLY_TO_SHIPPING ? total : subtotal)
+ *            - (APPLY_TO_SALE ? 0 : sale_item_total)
+ *   cap      = floor(eligible * MAX_REDEEM_PCT / 100)
  *   maxPts   = floor(cap / ratio)
  */
 export function calcPointsDiscount(
   cart: CartForPoints,
   requestedPoints: number,
-  settings: PointsSettings,
+  settings: Pick<PointsSettings, "ratio">,
 ): PointsDiscountResult {
+  // Spec D hardcoded defaults — was settings.{min_redeem,max_redeem_pct,
+  // apply_to_shipping,apply_to_sale}. Keep names in SCREAMING_SNAKE_CASE to
+  // signal they are no longer per-tenant tunables.
+  const MIN_REDEEM = 0
+  const MAX_REDEEM_PCT = 100
+  const APPLY_TO_SHIPPING = false
+  const APPLY_TO_SALE = true
+
   const requested = Math.trunc(Number(requestedPoints) || 0)
 
   if (requested <= 0) {
@@ -455,25 +472,21 @@ export function calcPointsDiscount(
   }
 
   const ratio = Number(settings.ratio)
-  const minRedeem = Number(settings.min_redeem)
-  const maxPct = Number(settings.max_redeem_pct)
 
   if (ratio <= 0) {
     return { allowed: false, reason: "點數換算比例無效", discount: 0 }
   }
 
-  if (requested < minRedeem) {
-    return { allowed: false, reason: `最少 ${minRedeem} 點`, discount: 0 }
+  if (requested < MIN_REDEEM) {
+    return { allowed: false, reason: `最少 ${MIN_REDEEM} 點`, discount: 0 }
   }
 
-  const base = settings.apply_to_shipping
-    ? Number(cart.total)
-    : Number(cart.subtotal)
+  const base = APPLY_TO_SHIPPING ? Number(cart.total) : Number(cart.subtotal)
   const eligible =
-    base - (settings.apply_to_sale ? 0 : Number(cart.sale_item_total))
+    base - (APPLY_TO_SALE ? 0 : Number(cart.sale_item_total))
   const safeEligible = Math.max(0, eligible)
 
-  const cap = Math.floor((safeEligible * maxPct) / 100)
+  const cap = Math.floor((safeEligible * MAX_REDEEM_PCT) / 100)
   const maxPoints = Math.floor(cap / ratio)
 
   if (requested > maxPoints) {
