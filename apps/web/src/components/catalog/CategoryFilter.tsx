@@ -13,19 +13,20 @@ interface CategoryFilterProps {
 export function CategoryFilter({ categories, layout = "horizontal" }: CategoryFilterProps) {
   const pathname = usePathname()
   const sp = useSearchParams()
-  // Detect current category from either /shop/<slug> path or ?category=<slug> query.
-  // The query param is kept for backward compat (per spec J §6) — old /shop?category=X
-  // URLs still work, but new tab links now point at /shop/<slug>.
-  const pathSlug = pathname?.startsWith("/shop/")
-    ? pathname.slice("/shop/".length).split("/")[0]
+  // Detect current category from /category/<slug> path or ?category=<slug> query.
+  // Query param kept for backward compat (spec J §6); tabs link to /category/<slug>
+  // (moved out of /shop/<slug> to avoid Next.js dynamic route conflict with the
+  // existing /shop/[slug] product detail page).
+  const pathSlug = pathname?.startsWith("/category/")
+    ? pathname.slice("/category/".length).split("/")[0]
     : undefined
   const querySlug = sp.get("category") ?? undefined
   const current = pathSlug || querySlug
 
   // "全部商品" returns to /shop (the all-products grid). Individual category tabs
-  // link to /shop/<slug> — the new landing page from spec J.
+  // link to /category/<slug> — the new landing page from spec J.
   const allHref = "/shop"
-  const hrefFor = (slug: string) => `/shop/${slug}`
+  const hrefFor = (slug: string) => `/category/${slug}`
 
   const isSidebar = layout === "sidebar"
 
