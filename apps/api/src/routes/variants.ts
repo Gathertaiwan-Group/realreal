@@ -15,8 +15,8 @@ const variantSchema = z.object({
   price: z.number().positive(),
   sale_price: z.number().positive().nullable().optional(),
   stock_qty: z.number().int().nonnegative().optional(),
-  weight: z.number().positive().optional(),
-  attributes: z.record(z.string(), z.unknown()).optional(),
+  weight: z.number().nonnegative().nullable().optional(),
+  attributes: z.record(z.string(), z.string()).nullable().optional(),
 })
 
 // GET /products/:id/variants — public

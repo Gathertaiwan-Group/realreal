@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label"
 import { TiptapEditor } from "@/components/editor"
 import { ProductImageUpload } from "@/components/catalog/ProductImageUpload"
 import { createClient } from "@/lib/supabase/client"
+import AttributesEditor from "./AttributesEditor"
 
 type Variant = {
   id: string
@@ -15,7 +16,11 @@ type Variant = {
   sale_price: number | null
   stock_qty: number
   sku: string | null
+  weight: number | null
+  attributes: Record<string, string> | null
 }
+
+type Category = { id: string; name: string }
 
 /** Convert plain text (with \n line breaks) to basic HTML for TiptapEditor */
 function toHtml(text: string): string {
@@ -42,9 +47,9 @@ export default function AdminProductEditClient({ product }: { product: any }) {
   )
   const [excerpt, setExcerpt] = useState(toHtml(product.excerpt ?? ""))
   const [description, setDescription] = useState(toHtml(product.description ?? ""))
-  const [shopLeft, setShopLeft] = useState(product.shop_left ?? "")
-  const [shopMiddle, setShopMiddle] = useState(product.shop_middle ?? "")
-  const [shopRight, setShopRight] = useState(product.shop_right ?? "")
+  const [isActive, setIsActive] = useState<boolean>(product.is_active ?? true)
+  const [categoryId, setCategoryId] = useState<string>(product.category_id ?? "")
+  const [categories, setCategories] = useState<Category[]>([])
   const [variants, setVariants] = useState<Variant[]>([])
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -63,7 +68,11 @@ export default function AdminProductEditClient({ product }: { product: any }) {
       .then(r => r.json())
       .then(j => setVariants(j.data ?? []))
       .catch(() => {})
-  }, [product.id])
+    fetch(`${API_URL}/categories`)
+      .then(r => r.json())
+      .then(j => setCategories(j.data ?? []))
+      .catch(() => {})
+  }, [product.id, API_URL])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -78,9 +87,8 @@ export default function AdminProductEditClient({ product }: { product: any }) {
       slug: fd.get("slug") as string,
       description,
       excerpt,
-      shop_left: shopLeft,
-      shop_middle: shopMiddle,
-      shop_right: shopRight,
+      is_active: isActive,
+      category_id: categoryId || null,
       images: imagesPayload,
     }
     try {
@@ -114,12 +122,18 @@ export default function AdminProductEditClient({ product }: { product: any }) {
         sale_price: variant.sale_price || null,
         stock_qty: variant.stock_qty,
         sku: variant.sku || undefined,
+        weight: variant.weight,
+        attributes: variant.attributes,
       }),
     })
     setVariantSaving(null)
   }
 
-  function updateVariant(id: string, field: keyof Variant, value: string | number | null) {
+  function updateVariant(
+    id: string,
+    field: keyof Variant,
+    value: string | number | null | Record<string, string>,
+  ) {
     setVariants(prev => prev.map(v => v.id === id ? { ...v, [field]: value } : v))
   }
 
@@ -131,6 +145,29 @@ export default function AdminProductEditClient({ product }: { product: any }) {
       <h1 className="text-2xl font-bold mb-6" style={{ color: "#10305a" }}>編輯商品</h1>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Status switch */}
+        <div className="flex items-center gap-3">
+          <Label>狀態</Label>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isActive}
+            onClick={() => setIsActive(v => !v)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              isActive ? "bg-[#10305a]" : "bg-zinc-300"
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                isActive ? "translate-x-5" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+          <span className={isActive ? "text-green-600 text-sm" : "text-gray-400 text-sm"}>
+            {isActive ? "✓ 上架中" : "✗ 已下架"}
+          </span>
+        </div>
+
         {/* Name & Slug */}
         <div className={fieldClass}>
           <Label htmlFor="name">商品名稱</Label>
@@ -139,6 +176,22 @@ export default function AdminProductEditClient({ product }: { product: any }) {
         <div className={fieldClass}>
           <Label htmlFor="slug">網址代碼（英文小寫＋數字＋連字號）</Label>
           <Input id="slug" name="slug" defaultValue={product.slug} pattern="[a-z0-9-]+" required className="mt-1" />
+        </div>
+
+        {/* Category */}
+        <div className={fieldClass}>
+          <Label htmlFor="category">商品分類</Label>
+          <select
+            id="category"
+            value={categoryId}
+            onChange={e => setCategoryId(e.target.value)}
+            className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">未分類</option>
+            {categories.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
         </div>
 
         {/* Images */}
@@ -159,38 +212,9 @@ export default function AdminProductEditClient({ product }: { product: any }) {
 
         {/* Description */}
         <div className={fieldClass}>
-          <Label>商品描述 <span className="text-xs text-gray-400 ml-1">僅在無三欄內容時顯示於前台</span></Label>
+          <Label>商品描述 <span className="text-xs text-gray-400 ml-1">顯示於前台商品說明圖上方</span></Label>
           <div className="mt-1">
             <TiptapEditor content={description} onChange={setDescription} placeholder="商品整體說明…" />
-          </div>
-        </div>
-
-        {/* Shop columns — main frontend content */}
-        <div className={sectionClass}>
-          <h2 className="text-base font-semibold mb-4" style={{ color: "#10305a" }}>
-            前台商品詳細內容（三欄）
-          </h2>
-          <p className="text-xs text-gray-500 mb-4">這三個欄位是前台商品頁下方的主要內容，支援超連結、標題、條列等富文字格式。</p>
-
-          <div className="space-y-6">
-            <div className={fieldClass}>
-              <Label>左欄 <span className="text-xs text-gray-400 ml-1">特色、功效、使用方式</span></Label>
-              <div className="mt-1">
-                <TiptapEditor content={shopLeft} onChange={setShopLeft} placeholder="例如：品牌故事、產品特色、使用建議…" />
-              </div>
-            </div>
-            <div className={fieldClass}>
-              <Label>中欄 <span className="text-xs text-gray-400 ml-1">成分、規格、營養標示</span></Label>
-              <div className="mt-1">
-                <TiptapEditor content={shopMiddle} onChange={setShopMiddle} placeholder="例如：全成分表、營養成分、認證標章…" />
-              </div>
-            </div>
-            <div className={fieldClass}>
-              <Label>右欄 <span className="text-xs text-gray-400 ml-1">品牌理念、公益、保存方式</span></Label>
-              <div className="mt-1">
-                <TiptapEditor content={shopRight} onChange={setShopRight} placeholder="例如：品牌故事、公益存款、保存說明…" />
-              </div>
-            </div>
           </div>
         </div>
 
@@ -224,7 +248,7 @@ export default function AdminProductEditClient({ product }: { product: any }) {
                     <Input className="mt-1" value={v.sku ?? ""} onChange={e => updateVariant(v.id, "sku", e.target.value)} />
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-4 gap-3">
                   <div>
                     <Label className="text-xs">原價 NT$</Label>
                     <Input type="number" min="0" step="1" className="mt-1" value={v.price}
@@ -241,7 +265,23 @@ export default function AdminProductEditClient({ product }: { product: any }) {
                     <Input type="number" min="0" step="1" className="mt-1" value={v.stock_qty}
                       onChange={e => updateVariant(v.id, "stock_qty", Number(e.target.value))} />
                   </div>
+                  <div>
+                    <Label className="text-xs">重量 (g)</Label>
+                    <Input type="number" min="0" step="1" className="mt-1"
+                      value={v.weight ?? ""}
+                      onChange={e => updateVariant(v.id, "weight", e.target.value ? Number(e.target.value) : null)}
+                      placeholder="例 500" />
+                  </div>
                 </div>
+                <details className="mt-2">
+                  <summary className="cursor-pointer text-xs text-[#10305a]">+ 規格屬性（口味、容量等，前台會顯示）</summary>
+                  <div className="mt-2">
+                    <AttributesEditor
+                      value={v.attributes ?? {}}
+                      onChange={(attrs: Record<string, string>) => updateVariant(v.id, "attributes", attrs)}
+                    />
+                  </div>
+                </details>
                 <Button type="button" size="sm" disabled={variantSaving === v.id}
                   onClick={() => handleVariantSave(v)}
                   style={{ backgroundColor: "#10305a", color: "#fff" }}>

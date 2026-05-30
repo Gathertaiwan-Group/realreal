@@ -94,10 +94,11 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   const product = await getProductBySlug(slug)
   if (!product) notFound()
 
+  if (!product.is_active) notFound()
+
   const images = product.images ?? []
   const mainImage = images[0]
 
-  const hasShopColumns = product.shop_left || product.shop_middle || product.shop_right
   const isHtml = (s: string | null) => (s ?? "").includes("<")
 
   return (
@@ -170,8 +171,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
               </div>
             )}
 
-            {/* Description — only when no 3-column content */}
-            {product.description && !hasShopColumns && (
+            {/* Description */}
+            {product.description && (
               <div className="mt-6 pt-6 border-t border-gray-100">
                 {isHtml(product.description)
                   ? <RichContent html={product.description} />
