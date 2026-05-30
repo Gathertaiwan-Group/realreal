@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useCart } from "@/lib/cart"
 import { Button } from "@/components/ui/button"
+import { trackPurchase } from "@/lib/analytics"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -174,6 +175,29 @@ export default function ConfirmPage() {
       // ignore — SSR or storage unavailable
     }
   }, [clearCart])
+
+  // Fire GA4 `purchase` event exactly once, after the server confirms the
+  // payment succeeded (spec L §2). We deliberately wait for paymentStatus
+  // === "success" rather than firing on mount so a forged ?status=success
+  // redirect can't inflate revenue numbers.
+  //
+  // TODO(spec-L follow-up): the /orders/by-number/:n/status endpoint only
+  // returns payment_status today. Extend it (or add a richer fetch here)
+  // so we can pass items + total + kol_slug to trackPurchase. For v1 we
+  // fire with transaction_id only — GA4 still records the conversion,
+  // just without ecommerce line items.
+  const purchaseFired = useRef(false)
+  useEffect(() => {
+    if (purchaseFired.current) return
+    if (paymentStatus !== "success") return
+    if (orderNumber === "---") return
+    purchaseFired.current = true
+    trackPurchase({
+      id: orderNumber,
+      total: 0,
+      items: [],
+    })
+  }, [paymentStatus, orderNumber])
 
   if (paymentStatus === "loading") {
     return (

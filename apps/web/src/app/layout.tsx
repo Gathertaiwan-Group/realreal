@@ -3,6 +3,7 @@ import { Suspense } from "react"
 import { Toaster } from "@/components/ui/sonner"
 import { StorefrontShell } from "@/components/layout/StorefrontShell"
 import { KolRefCapture } from "@/components/KolRefCapture"
+import { Analytics } from "@/components/Analytics"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -38,6 +39,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-TW">
       <body className="font-sans antialiased">
+        <Analytics />
         <Suspense fallback={null}>
           <KolRefCapture />
         </Suspense>

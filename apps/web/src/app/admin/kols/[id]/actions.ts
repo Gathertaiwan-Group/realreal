@@ -103,3 +103,42 @@ export async function deleteKolAction(
   revalidatePath("/admin/kols")
   return { ok: res.ok ?? true }
 }
+
+export interface KolConversionResult {
+  clicks: number
+  unique_visitors?: number
+  orders: number
+  conversion_rate: number
+  total_revenue?: number
+  avg_order_value?: number
+  est_commission?: number
+  top_products?: Array<{
+    product_id: string
+    name: string
+    qty_sold: number
+    revenue: number
+  }>
+}
+
+interface KolConversionEnvelope {
+  data?: KolConversionResult
+  conversion?: KolConversionResult
+}
+
+export async function getKolConversionAction(
+  id: string,
+  from: string,
+  to: string,
+): Promise<KolConversionResult | null> {
+  const token = await getToken()
+  const params = new URLSearchParams({ from, to })
+  const res = await apiClient<KolConversionEnvelope | KolConversionResult>(
+    `/admin/kols/${id}/conversion?${params.toString()}`,
+    { method: "GET", token },
+  )
+  // Endpoint may return either { data: {...} } or the bare result object.
+  const envelope = res as KolConversionEnvelope
+  if (envelope.data) return envelope.data
+  if (envelope.conversion) return envelope.conversion
+  return (res as KolConversionResult) ?? null
+}

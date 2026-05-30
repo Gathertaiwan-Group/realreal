@@ -166,6 +166,15 @@ export const ALLOWED_KEYS = new Set<string>([
   "resend.from_name",
   // Notifications
   "notifications.admin_email",
+  "notifications.line_notify_token",
+  // Analytics
+  "analytics.ga4_measurement_id",
+  "analytics.gtm_id",
+  "analytics.sentry_dsn_web",
+  "analytics.sentry_dsn_api",
+  // Marketing
+  "marketing.meta_pixel_id",
+  "marketing.clarity_id",
   // Points (charity rebate) — none are secrets
   // Spec D (2026-05-30-D-points-rules-simplification): min_redeem,
   // max_redeem_pct, allow_coupon_stack, apply_to_shipping, apply_to_sale
@@ -195,6 +204,7 @@ export const SECRET_KEYS = new Set<string>([
   "amego.tax_id",
   "amego.app_key",
   "resend.api_key",
+  "notifications.line_notify_token",
 ])
 
 export function maskPreview(value: string): string {
@@ -256,7 +266,20 @@ export const SECTIONS: Record<string, { label: string; keys: string[] }> = {
   },
   notifications: {
     label: "通知收件人",
-    keys: ["notifications.admin_email"],
+    keys: ["notifications.admin_email", "notifications.line_notify_token"],
+  },
+  analytics: {
+    label: "分析追蹤 (Analytics)",
+    keys: [
+      "analytics.ga4_measurement_id",
+      "analytics.gtm_id",
+      "analytics.sentry_dsn_web",
+      "analytics.sentry_dsn_api",
+    ],
+  },
+  marketing: {
+    label: "行銷像素 (Marketing)",
+    keys: ["marketing.meta_pixel_id", "marketing.clarity_id"],
   },
   points: {
     label: "公益點數規則",

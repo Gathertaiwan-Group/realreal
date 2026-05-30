@@ -18,7 +18,7 @@
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState, useTransition } from "react"
+import { useEffect, useState, useTransition } from "react"
 import { toast } from "sonner"
 import { Plus, Share2, X } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -26,7 +26,11 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { CouponPicker } from "./CouponPicker"
-import { createKolAction, updateKolAction } from "./[id]/actions"
+import {
+  createKolAction,
+  getKolConversionAction,
+  updateKolAction,
+} from "./[id]/actions"
 
 export interface KolListRow {
   id: string
@@ -68,10 +72,87 @@ function getCoupon(row: KolListRow): { code: string } | null {
   return row.coupon ?? row.coupons ?? null
 }
 
+interface ConversionCell {
+  status: "loading" | "ok" | "error"
+  rate?: number
+  clicks?: number
+}
+
+/**
+ * Color rule per spec K:
+ *   • > 2%        → green (good)
+ *   • 0–2%        → gray  (neutral)
+ *   • 0 with clicks > 0 → red (had traffic, zero orders)
+ */
+function conversionClass(cell: ConversionCell | undefined): string {
+  if (!cell || cell.status !== "ok" || cell.rate == null) {
+    return "text-zinc-300"
+  }
+  if (cell.rate > 2) return "text-green-600"
+  if (cell.rate === 0 && (cell.clicks ?? 0) > 0) return "text-red-600"
+  return "text-zinc-500"
+}
+
+function formatConversionPct(rate: number): string {
+  return `${rate.toFixed(2)}%`
+}
+
+function isoDaysAgo(days: number): string {
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString()
+}
+
 export function KolsListClient({ kols, loadError }: Props) {
   const router = useRouter()
   const [showCreate, setShowCreate] = useState(false)
   const [isPending, startTransition] = useTransition()
+  const [conversions, setConversions] = useState<Record<string, ConversionCell>>(
+    {},
+  )
+
+  // Per spec K: list page shows 7 日 default; N+1 acceptable while KOL count < 20.
+  useEffect(() => {
+    if (kols.length === 0) return
+    let cancelled = false
+
+    const from = isoDaysAgo(7)
+    const to = new Date().toISOString()
+
+    // Seed each row as loading so the cells render a placeholder immediately.
+    setConversions((prev) => {
+      const next = { ...prev }
+      for (const k of kols) next[k.id] = { status: "loading" }
+      return next
+    })
+
+    void Promise.all(
+      kols.map(async (k) => {
+        try {
+          const r = await getKolConversionAction(k.id, from, to)
+          return [
+            k.id,
+            {
+              status: "ok" as const,
+              rate: Number(r?.conversion_rate ?? 0),
+              clicks: Number(r?.clicks ?? 0),
+            },
+          ] as const
+        } catch {
+          return [k.id, { status: "error" as const }] as const
+        }
+      }),
+    ).then((entries) => {
+      if (cancelled) return
+      setConversions((prev) => {
+        const next = { ...prev }
+        for (const [id, cell] of entries) next[id] = cell
+        return next
+      })
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [kols])
 
   function handleCreate(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
@@ -302,6 +383,12 @@ export function KolsListClient({ kols, loadError }: Props) {
               <th className="px-4 py-3 text-left font-medium">Slug</th>
               <th className="px-4 py-3 text-left font-medium">Coupon</th>
               <th className="px-4 py-3 text-right font-medium">佣金 %</th>
+              <th
+                className="px-4 py-3 text-right font-medium"
+                title="近 7 日點擊 → 訂單轉換率"
+              >
+                7 日轉換率
+              </th>
               <th className="px-4 py-3 text-right font-medium">訂單數</th>
               <th className="px-4 py-3 text-right font-medium">業績</th>
               <th className="px-4 py-3 text-right font-medium">估算佣金</th>
@@ -312,7 +399,7 @@ export function KolsListClient({ kols, loadError }: Props) {
             {kols.length === 0 ? (
               <tr>
                 <td
-                  colSpan={8}
+                  colSpan={9}
                   className="px-4 py-12 text-center text-zinc-400"
                 >
                   尚無 KOL — 點擊上方「新增 KOL」開始。
@@ -377,6 +464,18 @@ export function KolsListClient({ kols, loadError }: Props) {
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums">
                       {formatCommissionPct(kol.commission_rate)}
+                    </td>
+                    <td
+                      className={`px-4 py-3 text-right tabular-nums font-medium ${conversionClass(
+                        conversions[kol.id],
+                      )}`}
+                    >
+                      {(() => {
+                        const cell = conversions[kol.id]
+                        if (!cell || cell.status === "loading") return "…"
+                        if (cell.status === "error") return "—"
+                        return formatConversionPct(cell.rate ?? 0)
+                      })()}
                     </td>
                     <td className="px-4 py-3 text-right tabular-nums">
                       {Number(kol.order_count ?? 0).toLocaleString()}

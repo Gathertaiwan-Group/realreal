@@ -16,7 +16,8 @@ import { requireAdmin } from "../middleware/admin"
  *   - POST   /admin/kols                — create
  *   - PUT    /admin/kols/:id            — partial update
  *   - DELETE /admin/kols/:id            — soft delete (hard only if no orders)
- *   - GET    /admin/kols/:id/stats?from=&to= — date-range commission summary
+ *   - GET    /admin/kols/:id/stats?from=&to=       — date-range commission summary
+ *   - GET    /admin/kols/:id/conversion?from=&to=  — click→order conversion dashboard (spec K)
  */
 export const adminKolsRouter = Router()
 
@@ -384,6 +385,184 @@ adminKolsRouter.get("/:id/stats", async (req, res) => {
       order_count: agg.order_count,
       total_revenue: agg.total_revenue,
       est_commission: estCommission,
+    },
+  })
+})
+
+// ---------------------------------------------------------------------------
+// GET /admin/kols/:id/conversion?from=&to= — click→order conversion dashboard
+// Spec K: docs/superpowers/specs/2026-05-31-K-kol-conversion-dashboard-design.md
+// ---------------------------------------------------------------------------
+
+// Accept either full ISO datetime (e.g. 2026-05-01T00:00:00.000Z) or plain
+// ISO date (e.g. 2026-05-01). The spec calls these "ISO date strings".
+const isoDateOrDatetime = z
+  .string()
+  .refine((s) => !Number.isNaN(Date.parse(s)), "must be an ISO date string")
+
+const conversionQuerySchema = z.object({
+  from: isoDateOrDatetime.optional(),
+  to: isoDateOrDatetime.optional(),
+})
+
+adminKolsRouter.get("/:id/conversion", async (req, res) => {
+  const parsed = conversionQuerySchema.safeParse(req.query)
+  if (!parsed.success) {
+    res
+      .status(400)
+      .json({ error: "Invalid query", details: parsed.error.flatten() })
+    return
+  }
+
+  const id = req.params.id
+
+  // Default range: last 30 days
+  const now = new Date()
+  const defaultFrom = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+  const from = parsed.data.from ?? defaultFrom.toISOString()
+  const to = parsed.data.to ?? now.toISOString()
+
+  // Verify KOL exists & grab commission_rate
+  const { data: kol, error: kolErr } = await supabase
+    .from("kols")
+    .select("id, slug, name, commission_rate")
+    .eq("id", id)
+    .maybeSingle()
+  if (kolErr) {
+    res.status(500).json({ error: kolErr.message })
+    return
+  }
+  if (!kol) {
+    res.status(404).json({ error: "KOL not found" })
+    return
+  }
+
+  // --- Clicks + unique_visitors --------------------------------------------
+  // Fetch click rows (user_id + ip_hash) in range; aggregate in JS because
+  // PostgREST cannot express COUNT(DISTINCT COALESCE(user_id, ip_hash)).
+  const { data: clickRows, error: clicksErr } = await supabase
+    .from("kol_clicks")
+    .select("user_id, ip_hash")
+    .eq("kol_id", id)
+    .gte("clicked_at", from)
+    .lte("clicked_at", to)
+
+  if (clicksErr) {
+    res.status(500).json({ error: clicksErr.message })
+    return
+  }
+
+  const clicks = clickRows?.length ?? 0
+  const visitorSet = new Set<string>()
+  for (const row of clickRows ?? []) {
+    const r = row as { user_id: string | null; ip_hash: string | null }
+    const key = r.user_id ?? r.ip_hash ?? `anon:${visitorSet.size}`
+    visitorSet.add(key)
+  }
+  const unique_visitors = visitorSet.size
+
+  // --- Orders + revenue (id + total for downstream item lookup) ------------
+  const { data: orderRows, error: ordersErr } = await supabase
+    .from("orders")
+    .select("id, total")
+    .eq("attributed_kol_id", id)
+    .gte("created_at", from)
+    .lte("created_at", to)
+
+  if (ordersErr) {
+    res.status(500).json({ error: ordersErr.message })
+    return
+  }
+
+  const orders = orderRows?.length ?? 0
+  const total_revenue = (orderRows ?? []).reduce(
+    (sum, r) => sum + Number((r as { total: number | string }).total ?? 0),
+    0,
+  )
+  const orderIds = (orderRows ?? []).map((r) => (r as { id: string }).id)
+
+  const conversion_rate =
+    clicks > 0 ? Math.round((orders / clicks) * 10000) / 100 : 0
+  const avg_order_value =
+    orders > 0 ? Math.round((total_revenue / orders) * 100) / 100 : 0
+  const rate = Number(kol.commission_rate ?? 0)
+  const est_commission = Math.round(total_revenue * rate) / 100
+
+  // --- Top products --------------------------------------------------------
+  // Aggregate order_items for the attributed orders. product_id lives on
+  // product_variants; name is in product_snapshot.name (set at order time).
+  type TopProductAgg = {
+    product_id: string | null
+    name: string
+    qty_sold: number
+    revenue: number
+  }
+  let top_products: TopProductAgg[] = []
+
+  if (orderIds.length > 0) {
+    const { data: itemRows, error: itemsErr } = await supabase
+      .from("order_items")
+      .select(
+        "qty, unit_price, product_snapshot, variant_id, product_variants(product_id)",
+      )
+      .in("order_id", orderIds)
+
+    if (itemsErr) {
+      res.status(500).json({ error: itemsErr.message })
+      return
+    }
+
+    const byProduct = new Map<string, TopProductAgg>()
+    for (const raw of itemRows ?? []) {
+      const it = raw as unknown as {
+        qty: number | string
+        unit_price: number | string
+        product_snapshot: { name?: string } | null
+        variant_id: string | null
+        product_variants: { product_id: string } | { product_id: string }[] | null
+      }
+      // PostgREST may return joined row as array or object depending on relation
+      const pv = Array.isArray(it.product_variants)
+        ? it.product_variants[0]
+        : it.product_variants
+      const productId = pv?.product_id ?? null
+      const key = productId ?? `variant:${it.variant_id ?? "unknown"}`
+      const name = it.product_snapshot?.name ?? "(未命名商品)"
+      const qty = Number(it.qty ?? 0)
+      const revenue = qty * Number(it.unit_price ?? 0)
+      const cur = byProduct.get(key)
+      if (cur) {
+        cur.qty_sold += qty
+        cur.revenue += revenue
+      } else {
+        byProduct.set(key, {
+          product_id: productId,
+          name,
+          qty_sold: qty,
+          revenue,
+        })
+      }
+    }
+    top_products = Array.from(byProduct.values())
+      .sort((a, b) => b.revenue - a.revenue)
+      .slice(0, 5)
+  }
+
+  res.json({
+    data: {
+      kol_id: id,
+      slug: kol.slug,
+      name: kol.name,
+      from,
+      to,
+      clicks,
+      unique_visitors,
+      orders,
+      conversion_rate,
+      total_revenue,
+      avg_order_value,
+      est_commission,
+      top_products,
     },
   })
 })

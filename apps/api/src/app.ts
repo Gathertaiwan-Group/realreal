@@ -1,5 +1,6 @@
 import express, { type Request, type Response, type NextFunction } from "express"
 import cookieParser from "cookie-parser"
+import { Sentry } from "./sentry"
 
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
@@ -114,6 +115,10 @@ app.use("/points", pointsRouter)
 app.use("/kols", kolsRouter)
 app.use("/admin/kols", adminKolsRouter)
 app.use((_req, res) => { res.status(404).json({ error: "Not found" }) })
+// Sentry error handler — must come before any other error middleware and after all controllers
+// Cast to any because @sentry/node returns its own ExpressErrorMiddleware type that doesn't
+// satisfy Express 5's stricter overload signatures, even though it's runtime-compatible.
+app.use(Sentry.expressErrorHandler() as any)
 // Global error handler (must have 4 args for Express to treat it as error handler)
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err)

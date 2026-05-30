@@ -175,6 +175,8 @@ export function KolDetailClient({
 
       <StatsCard kolId={kolId} initialStats={initialData.stats ?? null} />
 
+      <ConversionCard kolId={kolId} />
+
       <RecentOrdersCard orders={initialData.recent_orders ?? []} />
 
       <DangerZoneCard
@@ -695,6 +697,313 @@ function StatTile({
       >
         {value}
       </p>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// 3b. Conversion card — clicks → orders funnel + top products (spec K)
+// ---------------------------------------------------------------------------
+
+type ConversionRange = "today" | "7d" | "30d" | "month" | "custom"
+
+interface ConversionData {
+  clicks: number
+  unique_visitors: number
+  orders: number
+  conversion_rate: number
+  total_revenue: number | string
+  avg_order_value: number | string
+  est_commission: number | string
+  top_products: Array<{
+    product_id: string | null
+    name: string
+    qty_sold: number
+    revenue: number
+  }>
+}
+
+interface ConversionResponse {
+  data?: ConversionData
+}
+
+function daysAgo(n: number): string {
+  const d = new Date()
+  d.setDate(d.getDate() - n)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+
+function rangeToDates(range: ConversionRange): { from: string; to: string } {
+  const to = today()
+  switch (range) {
+    case "today":
+      return { from: to, to }
+    case "7d":
+      return { from: daysAgo(6), to }
+    case "30d":
+      return { from: daysAgo(29), to }
+    case "month":
+      return { from: monthStart(), to }
+    default:
+      return { from: daysAgo(29), to }
+  }
+}
+
+function ConversionCard({ kolId }: { kolId: string }) {
+  const [range, setRange] = useState<ConversionRange>("30d")
+  const initial = useMemo(() => rangeToDates("30d"), [])
+  const [from, setFrom] = useState<string>(initial.from)
+  const [to, setTo] = useState<string>(initial.to)
+  const [data, setData] = useState<ConversionData | null>(null)
+  const [loading, setLoading] = useState(false)
+
+  const fetchRange = useCallback(
+    async (rangeFrom: string, rangeTo: string) => {
+      setLoading(true)
+      try {
+        const url = new URL(`${API_URL}/admin/kols/${kolId}/conversion`)
+        if (rangeFrom) url.searchParams.set("from", rangeFrom)
+        if (rangeTo) url.searchParams.set("to", rangeTo)
+        const res = await adminFetch(url.toString())
+        if (res.ok) {
+          const json: ConversionResponse = await res.json()
+          setData(json.data ?? null)
+        } else {
+          toast.error(`載入轉換率失敗 (${res.status})`)
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "載入轉換率失敗")
+      } finally {
+        setLoading(false)
+      }
+    },
+    [kolId],
+  )
+
+  // Initial load (default = last 30 days)
+  useEffect(() => {
+    fetchRange(from, to)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function applyRange(next: ConversionRange) {
+    setRange(next)
+    if (next === "custom") return
+    const r = rangeToDates(next)
+    setFrom(r.from)
+    setTo(r.to)
+    fetchRange(r.from, r.to)
+  }
+
+  const clicks = Number(data?.clicks ?? 0)
+  const orders = Number(data?.orders ?? 0)
+  const conversion_rate = Number(data?.conversion_rate ?? 0)
+  const total_revenue = Number(data?.total_revenue ?? 0)
+  const top_products = data?.top_products ?? []
+  const isEmpty = !loading && clicks === 0 && orders === 0
+
+  // Funnel bar widths — clicks bar is full; orders bar is proportional.
+  // When clicks=0 but orders>0 (manual / direct attribution), show orders at full width.
+  const ordersWidthPct =
+    clicks > 0
+      ? Math.max(2, Math.min(100, (orders / clicks) * 100))
+      : orders > 0
+        ? 100
+        : 0
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <CardTitle className="text-sm text-[#10305a]">轉換率分析</CardTitle>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {(["today", "7d", "30d", "month", "custom"] as ConversionRange[]).map(
+              (r) => (
+                <button
+                  key={r}
+                  type="button"
+                  onClick={() => applyRange(r)}
+                  disabled={loading}
+                  className={`h-7 px-3 rounded-full text-xs border transition-colors ${
+                    range === r
+                      ? "bg-[#10305a] text-white border-[#10305a]"
+                      : "bg-white text-[#10305a] border-zinc-200 hover:border-[#10305a]"
+                  }`}
+                >
+                  {r === "today"
+                    ? "今日"
+                    : r === "7d"
+                      ? "7 日"
+                      : r === "30d"
+                        ? "30 日"
+                        : r === "month"
+                          ? "本月"
+                          : "自訂"}
+                </button>
+              ),
+            )}
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {range === "custom" && (
+          <div className="flex items-end gap-3 flex-wrap">
+            <div className="space-y-1.5">
+              <Label htmlFor="conv-from" className="text-xs">
+                起
+              </Label>
+              <Input
+                id="conv-from"
+                type="date"
+                value={from}
+                onChange={(e) => setFrom(e.target.value)}
+                className="h-9"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="conv-to" className="text-xs">
+                迄
+              </Label>
+              <Input
+                id="conv-to"
+                type="date"
+                value={to}
+                onChange={(e) => setTo(e.target.value)}
+                className="h-9"
+              />
+            </div>
+            <Button
+              size="sm"
+              onClick={() => fetchRange(from, to)}
+              disabled={loading}
+            >
+              {loading ? "查詢中…" : "查詢"}
+            </Button>
+          </div>
+        )}
+
+        {/* 4 KPI tiles */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <StatTile label="點擊" value={clicks.toLocaleString()} />
+          <StatTile label="訂單" value={orders.toLocaleString()} />
+          <StatTile
+            label="轉換率"
+            value={`${conversion_rate.toFixed(2)}%`}
+            valueClass={
+              conversion_rate >= 1
+                ? "text-green-700"
+                : conversion_rate > 0
+                  ? "text-amber-700"
+                  : "text-zinc-400"
+            }
+          />
+          <StatTile
+            label="業績"
+            value={formatNTD(total_revenue)}
+            valueClass="text-[#10305a]"
+          />
+        </div>
+
+        {/* Funnel */}
+        <div className="space-y-2">
+          <p className="text-xs text-[#687279]">漏斗：點擊 → 訂單</p>
+          {isEmpty ? (
+            <p className="text-sm text-zinc-400 py-3">此期間無點擊也無訂單。</p>
+          ) : (
+            <div className="space-y-2.5">
+              <FunnelBar
+                label="點擊"
+                value={clicks.toLocaleString()}
+                widthPct={clicks > 0 ? 100 : 0}
+                color="bg-[#10305a]"
+              />
+              <FunnelBar
+                label="訂單"
+                value={orders.toLocaleString()}
+                widthPct={ordersWidthPct}
+                color="bg-amber-500"
+                trailing={
+                  clicks > 0 ? (
+                    <span className="text-xs text-[#687279] ml-2 tabular-nums">
+                      轉換 {conversion_rate.toFixed(2)}%
+                    </span>
+                  ) : null
+                }
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Top 5 products */}
+        <div className="space-y-2">
+          <p className="text-xs text-[#687279]">Top 5 帶單商品</p>
+          {top_products.length === 0 ? (
+            <p className="text-sm text-zinc-400 py-3">此期間尚無商品銷售。</p>
+          ) : (
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-[#10305a]/5 text-[#10305a] text-xs">
+                  <tr>
+                    <th className="px-4 py-2 text-left font-medium">商品名</th>
+                    <th className="px-4 py-2 text-right font-medium">數量</th>
+                    <th className="px-4 py-2 text-right font-medium">業績</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-zinc-100">
+                  {top_products.map((p, idx) => (
+                    <tr
+                      key={p.product_id ?? `row-${idx}`}
+                      className="hover:bg-[#fffeee]/50"
+                    >
+                      <td className="px-4 py-2 text-[#10305a] truncate max-w-[260px]">
+                        {p.name}
+                      </td>
+                      <td className="px-4 py-2 text-right text-[#687279] tabular-nums">
+                        {Number(p.qty_sold).toLocaleString()}
+                      </td>
+                      <td className="px-4 py-2 text-right font-medium text-[#10305a] tabular-nums">
+                        {formatNTD(p.revenue)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+function FunnelBar({
+  label,
+  value,
+  widthPct,
+  color,
+  trailing,
+}: {
+  label: string
+  value: string
+  widthPct: number
+  color: string
+  trailing?: React.ReactNode
+}) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs mb-1">
+        <span className="text-[#687279]">{label}</span>
+        <span className="text-[#10305a] tabular-nums font-medium">
+          {value}
+          {trailing}
+        </span>
+      </div>
+      <div className="h-6 bg-zinc-100 rounded overflow-hidden">
+        <div
+          className={`h-full ${color} transition-all duration-300`}
+          style={{ width: `${widthPct}%` }}
+        />
+      </div>
     </div>
   )
 }

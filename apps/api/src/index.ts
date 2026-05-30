@@ -1,3 +1,4 @@
+import "./sentry"
 import pino from "pino"
 import { app } from "./app"
 

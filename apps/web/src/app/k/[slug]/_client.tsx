@@ -7,6 +7,7 @@ import Image from "next/image"
 import { Camera as Instagram, Video as Youtube } from "lucide-react"
 import { ProductCard } from "@/components/catalog/ProductCard"
 import type { Product } from "@/lib/catalog"
+import { trackKolView } from "@/lib/analytics"
 import type { Kol } from "./page"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
@@ -68,6 +69,9 @@ export function KolLandingClient({
     }).catch(() => {
       // Analytics failure must never surface to the user.
     })
+    // GA4 view_promotion via GTM dataLayer (spec L §2).
+    // No-op in dev / when GTM_ID unset; safe to call unconditionally.
+    trackKolView(kol.slug)
     return () => controller.abort()
   }, [kol.slug])
 

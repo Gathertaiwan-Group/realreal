@@ -81,6 +81,43 @@ const FIELD_META: Record<
     hint: "新訂單成立時系統會寄一封通知信到這個地址",
     placeholder: "orders@realreal.cc",
   },
+  "notifications.line_notify_token": {
+    label: "LINE Notify Token",
+    hint: "用於新訂單通知 + 線上錯誤即時提醒",
+    placeholder: "xxxxxxxxxxxx",
+  },
+  // Analytics
+  "analytics.ga4_measurement_id": {
+    label: "GA4 Measurement ID",
+    hint: "改完後須 Vercel + Railway re-deploy 才生效",
+    placeholder: "G-XXXXXXXXXX",
+  },
+  "analytics.gtm_id": {
+    label: "GTM Container ID",
+    hint: "改完後須 Vercel + Railway re-deploy 才生效",
+    placeholder: "GTM-XXXXXX",
+  },
+  "analytics.sentry_dsn_web": {
+    label: "Sentry DSN (Web)",
+    hint: "改完後須 Vercel + Railway re-deploy 才生效",
+    placeholder: "https://...@...ingest.sentry.io/...",
+  },
+  "analytics.sentry_dsn_api": {
+    label: "Sentry DSN (API)",
+    hint: "改完後須 Vercel + Railway re-deploy 才生效",
+    placeholder: "https://...@...ingest.sentry.io/...",
+  },
+  // Marketing
+  "marketing.meta_pixel_id": {
+    label: "Meta Pixel ID",
+    hint: "實際 tag 配置在 GTM workspace；此處僅供記錄",
+    placeholder: "16-digit number",
+  },
+  "marketing.clarity_id": {
+    label: "Microsoft Clarity ID",
+    hint: "實際 tag 配置在 GTM workspace；此處僅供記錄",
+    placeholder: "10-char alphanumeric",
+  },
 }
 
 function fieldLabel(key: string): string {

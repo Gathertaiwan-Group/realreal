@@ -6,6 +6,7 @@ import { inventoryQueue } from "./queue"
 import { invoiceQueue } from "../workers/invoice-issuer"
 import { getSetting } from "./settings"
 import { grantPoints, redeemPoints } from "./points"
+import { sendLineNotify } from "./line-notify"
 
 /**
  * After a successful payment, send confirmation email, create invoice,
@@ -16,7 +17,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   // Fetch order details needed for the email
   const { data: order } = await supabase
     .from("orders")
-    .select("id, order_number, total, guest_email, user_id, points_used, order_items(*)")
+    .select("id, order_number, total, guest_email, user_id, points_used, attributed_kol_slug, order_items(*)")
     .eq("id", orderId)
     .single()
 
@@ -125,6 +126,18 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   } catch (err) {
     console.warn("[post-payment] admin notification failed (non-fatal):", err)
   }
+
+  // 1c) LINE Notify push — spec M Section 2. Goes to whoever holds the
+  // configured access token (typically the admin's personal LINE via 1-on-1
+  // Notify). Fire-and-forget semantics live inside sendLineNotify itself.
+  const kolSlug = (order as { attributed_kol_slug?: string | null })
+    .attributed_kol_slug ?? null
+  await sendLineNotify(
+    `🛒 新訂單 #${order.order_number}\n` +
+      `顧客：${userEmail ?? "guest"}\n` +
+      `金額：NT$ ${order.total}` +
+      (kolSlug ? `\n來自 KOL：${kolSlug}` : ""),
+  )
 
   // 2) Create an invoice record (if not already present) and enqueue Amego
   //    issuance via the invoice worker.
