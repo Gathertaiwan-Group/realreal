@@ -56,3 +56,22 @@ export async function retryShipmentAction(orderId: string) {
   })
   revalidatePath(`/admin/orders/${orderId}`)
 }
+
+// ---------------------------------------------------------------------------
+// Cancel order — atomic four-step server action that voids the invoice,
+// cancels the ECPay logistics shipment, flags the payment for refund, and
+// flips order.status to cancelled. The API returns per-step results in
+// `actions` so the UI can render success/warning per side-effect.
+// ---------------------------------------------------------------------------
+
+export async function cancelOrderAction(orderId: string, reason: string) {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  const data = await apiClient(`/admin/orders/${orderId}/cancel`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+    token: session?.access_token,
+  })
+  revalidatePath(`/admin/orders/${orderId}`)
+  return data
+}

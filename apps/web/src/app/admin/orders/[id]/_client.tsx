@@ -11,97 +11,380 @@ import {
   Truck,
   Copy,
   Check,
+  X,
+  CheckCircle2,
+  XCircle,
 } from "lucide-react"
 import { toast } from "sonner"
 import {
+  cancelOrderAction,
   reissueInvoiceAction,
   retryShipmentAction,
   updateOrderStatusAction,
   voidInvoiceAction,
 } from "./actions"
-
-const STATUS_LABEL: Record<string, string> = {
-  pending: "待付款",
-  processing: "處理中",
-  shipped: "已出貨",
-  completed: "已完成",
-  cancelled: "已取消",
-  failed: "失敗",
-}
+import { getOrderDisplayStatus } from "@/lib/order-display-status"
 
 /* ---------- Action Buttons ---------- */
+
+const CANCELLABLE_STATUSES = ["pending", "processing", "shipped"]
+
+interface CancelActionResult {
+  ok: boolean | null
+  message: string
+}
+
+interface CancelResponse {
+  ok?: boolean
+  actions?: {
+    invoice_void?: CancelActionResult
+    logistics_cancel?: CancelActionResult
+    payment_refund?: CancelActionResult
+    status_update?: CancelActionResult
+  }
+  error?: string
+}
+
+const CANCEL_STEP_LABELS: Record<string, string> = {
+  invoice_void: "發票作廢",
+  logistics_cancel: "綠界物流取消",
+  payment_refund: "退款",
+  status_update: "訂單狀態",
+}
 
 interface OrderActionsProps {
   orderId: string
   status: string
   paymentStatus: string
+  logistics?: { status: string; type: string } | null
 }
 
-export function OrderActions({ orderId, status, paymentStatus }: OrderActionsProps) {
+export function OrderActions({
+  orderId,
+  status,
+  paymentStatus,
+  logistics: _logistics,
+}: OrderActionsProps) {
+  // logistics is accepted so page.tsx can pass it for parity with the
+  // other components; OrderActions itself only branches on order.status.
+  void _logistics
   const [isPending, startTransition] = useTransition()
+  const [showCancelModal, setShowCancelModal] = useState(false)
+  const [cancelReason, setCancelReason] = useState("")
+  const [cancelResult, setCancelResult] = useState<CancelResponse | null>(null)
 
   function handleAction(newStatus: string) {
     startTransition(() => updateOrderStatusAction(orderId, newStatus))
   }
 
+  function handleConfirmCancel() {
+    const reason = cancelReason.trim()
+    if (!reason) return
+    startTransition(async () => {
+      try {
+        const data = (await cancelOrderAction(orderId, reason)) as CancelResponse
+        setCancelResult(data)
+        if (data?.actions?.status_update?.ok) {
+          toast.success("訂單已標記取消")
+        }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "取消訂單失敗"
+        toast.error(msg)
+        setCancelResult({ ok: false, error: msg })
+      }
+    })
+  }
+
+  function closeModal() {
+    if (isPending) return
+    setShowCancelModal(false)
+    setCancelReason("")
+    setCancelResult(null)
+  }
+
   const showConfirmPayment = status === "pending" && paymentStatus !== "paid"
   const showShip = status === "processing"
+  // Spec section 2: 「完成訂單」manual fallback only when shipped.
   const showComplete = status === "shipped"
-  const showCancel = status === "pending" || status === "processing"
+  // Spec section 3: cancellation only allowed in pending / processing / shipped.
+  const showCancel = CANCELLABLE_STATUSES.includes(status)
 
   if (!showConfirmPayment && !showShip && !showComplete && !showCancel) return null
 
   return (
-    <div className="flex items-center gap-2 flex-wrap">
-      {showConfirmPayment && (
-        <Button size="sm" disabled={isPending} onClick={() => handleAction("processing")}>
-          確認付款
-        </Button>
+    <>
+      <div className="flex items-center gap-2 flex-wrap">
+        {showConfirmPayment && (
+          <Button size="sm" disabled={isPending} onClick={() => handleAction("processing")}>
+            確認付款
+          </Button>
+        )}
+        {showShip && (
+          <Button size="sm" disabled={isPending} onClick={() => handleAction("shipped")}>
+            出貨
+          </Button>
+        )}
+        {showComplete && (
+          <Button size="sm" variant="secondary" disabled={isPending} onClick={() => handleAction("completed")}>
+            完成訂單
+          </Button>
+        )}
+        {showCancel && (
+          <Button
+            size="sm"
+            variant="destructive"
+            disabled={isPending}
+            onClick={() => {
+              setCancelResult(null)
+              setCancelReason("")
+              setShowCancelModal(true)
+            }}
+          >
+            取消訂單
+          </Button>
+        )}
+      </div>
+
+      {showCancelModal && (
+        <CancelOrderModal
+          isPending={isPending}
+          reason={cancelReason}
+          onReasonChange={setCancelReason}
+          result={cancelResult}
+          onConfirm={handleConfirmCancel}
+          onClose={closeModal}
+        />
       )}
-      {showShip && (
-        <Button size="sm" disabled={isPending} onClick={() => handleAction("shipped")}>
-          出貨
-        </Button>
-      )}
-      {showComplete && (
-        <Button size="sm" variant="secondary" disabled={isPending} onClick={() => handleAction("completed")}>
-          完成訂單
-        </Button>
-      )}
-      {showCancel && (
-        <Button size="sm" variant="destructive" disabled={isPending} onClick={() => handleAction("cancelled")}>
-          取消訂單
-        </Button>
-      )}
+    </>
+  )
+}
+
+/* ---------- Cancel Order Modal ---------- */
+
+interface CancelOrderModalProps {
+  isPending: boolean
+  reason: string
+  onReasonChange: (v: string) => void
+  result: CancelResponse | null
+  onConfirm: () => void
+  onClose: () => void
+}
+
+function CancelOrderModal({
+  isPending,
+  reason,
+  onReasonChange,
+  result,
+  onConfirm,
+  onClose,
+}: CancelOrderModalProps) {
+  const remaining = 200 - reason.length
+  const hasResult = result !== null
+  const actions = result?.actions ?? null
+  // Render the four steps in a stable order with friendly labels.
+  const stepKeys = [
+    "invoice_void",
+    "logistics_cancel",
+    "payment_refund",
+    "status_update",
+  ] as const
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="cancel-order-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="w-full max-w-md rounded-lg bg-white shadow-lg">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h2 id="cancel-order-title" className="text-sm font-semibold">
+            取消訂單
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isPending}
+            aria-label="關閉"
+            className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-3 p-4">
+          {!hasResult && (
+            <>
+              <p className="text-sm text-zinc-600">
+                取消訂單會嘗試作廢發票、取消綠界物流、退款，並翻訂單狀態。請輸入取消原因：
+              </p>
+              <div>
+                <textarea
+                  value={reason}
+                  onChange={(e) => onReasonChange(e.target.value.slice(0, 200))}
+                  placeholder="例：客戶要求取消 / 缺貨 / 重複下單"
+                  maxLength={200}
+                  rows={3}
+                  className="w-full rounded-md border border-zinc-300 px-2 py-1.5 text-sm focus:border-red-500 focus:outline-none"
+                  autoFocus
+                  disabled={isPending}
+                />
+                <p className="mt-1 text-xs text-zinc-400">
+                  剩餘 {remaining} 字
+                </p>
+              </div>
+            </>
+          )}
+
+          {hasResult && result?.error && !actions && (
+            <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+              {result.error}
+            </div>
+          )}
+
+          {hasResult && actions && (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-zinc-900">取消結果</p>
+              <ul className="space-y-1.5">
+                {stepKeys.map((k) => {
+                  const step = actions[k]
+                  if (!step) return null
+                  const isOk = step.ok === true
+                  return (
+                    <li
+                      key={k}
+                      className={`flex items-start gap-2 rounded-md p-2 text-xs ${
+                        isOk
+                          ? "bg-green-50 text-green-800"
+                          : "bg-red-50 text-red-800"
+                      }`}
+                    >
+                      {isOk ? (
+                        <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      ) : (
+                        <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="font-medium">{CANCEL_STEP_LABELS[k]}</div>
+                        <div className="text-xs opacity-90">{step.message}</div>
+                      </div>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t px-4 py-3">
+          {!hasResult ? (
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={onClose}
+                disabled={isPending}
+              >
+                返回
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={onConfirm}
+                disabled={isPending || !reason.trim()}
+              >
+                {isPending ? "處理中…" : "確認取消"}
+              </Button>
+            </>
+          ) : (
+            <Button size="sm" variant="secondary" onClick={onClose} disabled={isPending}>
+              關閉
+            </Button>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
 
 /* ---------- Order Timeline ---------- */
 
-const TIMELINE_STEPS = [
-  { key: "pending", label: "訂單建立" },
-  { key: "processing", label: "確認付款" },
-  { key: "shipped", label: "已出貨" },
-  { key: "completed", label: "已完成" },
-] as const
+// Two timeline variants per spec section 1:
+//   HOME: 建單 → 已派工 → 運送中 → 已配達 (4 steps)
+//   CVS:  建單 → 已派工 → 運送中 → 已到店待取 → 已取貨 (5 steps)
+// Each step's `keys` is the set of getOrderDisplayStatus keys at or past
+// that point. The active step is the highest-index step whose keys
+// contain the current display status.
+type TimelineStep = {
+  label: string
+  // display status keys that mean "this step is the active one"
+  matches: string[]
+}
+
+const HOME_TIMELINE: TimelineStep[] = [
+  { label: "建單", matches: ["awaiting_payment", "awaiting_shipment"] },
+  { label: "已派工", matches: ["dispatched"] },
+  { label: "運送中", matches: ["in_transit"] },
+  { label: "已配達", matches: ["delivered"] },
+]
+
+const CVS_TIMELINE: TimelineStep[] = [
+  { label: "建單", matches: ["awaiting_payment", "awaiting_shipment"] },
+  { label: "已派工", matches: ["dispatched"] },
+  { label: "運送中", matches: ["in_transit"] },
+  { label: "已到店待取", matches: ["arrived_cvs"] },
+  { label: "已取貨", matches: ["picked_up"] },
+]
 
 interface OrderTimelineProps {
   status: string
   createdAt: string
+  logistics?: { status: string; type: string } | null
 }
 
-export function OrderTimeline({ status, createdAt }: OrderTimelineProps) {
-  const isCancelled = status === "cancelled" || status === "failed"
-  const currentIndex = TIMELINE_STEPS.findIndex((s) => s.key === status)
+export function OrderTimeline({ status, createdAt, logistics }: OrderTimelineProps) {
+  void createdAt
+  const display = getOrderDisplayStatus({ status }, logistics ?? null)
+
+  // Collapsed banner for cancelled / failed / returned-unclaimed:
+  // the multi-step bar isn't meaningful, so collapse to a single
+  // red call-out per spec section 1.
+  const isTerminalBad =
+    display.key === "cancelled" ||
+    display.key === "failed" ||
+    display.key === "returned_unclaimed"
+
+  if (isTerminalBad) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-red-600 text-xs font-bold text-white">
+          ✕
+        </span>
+        <span className="font-medium">{display.label}</span>
+      </div>
+    )
+  }
+
+  // Pick timeline shape from logistics.type. Default to HOME when
+  // unknown so we don't show a phantom 5th "CVS 取貨" step on宅配 orders.
+  const steps = logistics?.type === "CVS" ? CVS_TIMELINE : HOME_TIMELINE
+
+  // Highest-index step whose `matches` array contains the display key.
+  // If none matches (e.g. very early state with no logistics row yet)
+  // we land on step 0 ("建單") which is the correct default.
+  let activeIndex = steps.findIndex((s) => s.matches.includes(display.key))
+  if (activeIndex < 0) activeIndex = 0
 
   return (
     <div className="flex items-center gap-0 w-full overflow-x-auto py-2">
-      {TIMELINE_STEPS.map((step, i) => {
-        const isReached = !isCancelled && i <= currentIndex
-        const isCurrent = !isCancelled && step.key === status
+      {steps.map((step, i) => {
+        const isReached = i <= activeIndex
+        const isCurrent = i === activeIndex
         return (
-          <div key={step.key} className="flex items-center flex-1 min-w-0">
+          <div key={step.label} className="flex items-center flex-1 min-w-0">
             <div className="flex flex-col items-center gap-1">
               <div
                 className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
@@ -118,27 +401,16 @@ export function OrderTimeline({ status, createdAt }: OrderTimelineProps) {
                 {step.label}
               </span>
             </div>
-            {i < TIMELINE_STEPS.length - 1 && (
+            {i < steps.length - 1 && (
               <div
                 className={`flex-1 h-0.5 mx-2 ${
-                  !isCancelled && i < currentIndex ? "bg-zinc-900" : "bg-zinc-200"
+                  i < activeIndex ? "bg-zinc-900" : "bg-zinc-200"
                 }`}
               />
             )}
           </div>
         )
       })}
-
-      {isCancelled && (
-        <div className="flex flex-col items-center gap-1 ml-4">
-          <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 bg-red-600 text-white">
-            ✕
-          </div>
-          <span className="text-xs whitespace-nowrap text-red-600 font-medium">
-            {STATUS_LABEL[status] ?? status}
-          </span>
-        </div>
-      )}
     </div>
   )
 }

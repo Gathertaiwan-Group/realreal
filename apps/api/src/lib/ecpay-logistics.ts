@@ -191,3 +191,39 @@ export async function createHomeDelivery(
     bookingNote: result.BookingNote,
   }
 }
+
+export async function cancelEcpayLogistics(
+  logistics: { ecpay_logistics_id: string; type: string; raw_response: any }
+): Promise<{ ok: boolean; message: string; raw: string }> {
+  const c = await getEcpayCreds()
+  const merchantTradeNo = logistics.raw_response?.MerchantTradeNo
+  if (!merchantTradeNo) return { ok: false, message: "缺 MerchantTradeNo", raw: "" }
+
+  // ECPay endpoint: POST {base}/Helper/LogisticsTradeCancel
+  // Fields: MerchantID, MerchantTradeNo, AllPayLogisticsID, LogisticsType,
+  //         LogisticsSubType, CheckMacValue
+  // NOTE: endpoint path flagged uncertain in spec — verify against ECPay
+  //       全站宅配技術文件 v2.0.16+ in sandbox before production rollout.
+  const fields: Record<string, string> = {
+    MerchantID: c.merchantId,
+    MerchantTradeNo: merchantTradeNo,
+    AllPayLogisticsID: logistics.ecpay_logistics_id,
+    // type=CVS/HOME 推回 LogisticsType (CVS/HOME) and LogisticsSubType (UNIMARTC2C/FAMIC2C/TCAT)
+    LogisticsType: logistics.type === "HOME" ? "HOME" : "CVS",
+    LogisticsSubType: logistics.raw_response?.LogisticsSubType ?? "",
+  }
+  fields.CheckMacValue = buildCheckMacValue(fields, c.hashKey, c.hashIv)
+
+  const resp = await fetch(`${c.baseUrl}/Helper/LogisticsTradeCancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams(fields).toString(),
+  })
+  const text = await resp.text()
+  const [code, ...msgParts] = text.split("|")
+  return {
+    ok: code === "1",
+    message: msgParts.join("|") || `RtnCode=${code}`,
+    raw: text,
+  }
+}

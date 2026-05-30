@@ -110,7 +110,12 @@ export default async function AdminOrderDetailPage({
       </div>
 
       {/* Action Buttons */}
-      <OrderActions orderId={id} status={order.status} paymentStatus={order.payment_status} />
+      <OrderActions
+        orderId={id}
+        status={order.status}
+        paymentStatus={order.payment_status}
+        logistics={order.logistics?.[0] ?? null}
+      />
 
       {/* Timeline */}
       <Card>
@@ -118,7 +123,11 @@ export default async function AdminOrderDetailPage({
           <CardTitle className="text-sm">訂單進度</CardTitle>
         </CardHeader>
         <CardContent>
-          <OrderTimeline status={order.status} createdAt={order.created_at} />
+          <OrderTimeline
+            status={order.status}
+            createdAt={order.created_at}
+            logistics={order.logistics?.[0] ?? null}
+          />
         </CardContent>
       </Card>
 

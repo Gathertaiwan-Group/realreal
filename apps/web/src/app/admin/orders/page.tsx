@@ -2,6 +2,10 @@ import { createClient } from "@/lib/supabase/server"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { AdminTabs } from "../_components/AdminTabs"
+import {
+  getOrderDisplayStatus,
+  type DisplayStatus,
+} from "@/lib/order-display-status"
 
 const ORDER_TABS = [
   { href: "/admin/orders", label: "訂單" },
@@ -19,22 +23,12 @@ const STATUS_TABS = [
   { label: "已取消", value: "cancelled" },
 ]
 
-const STATUS_BADGE_CLASSES: Record<string, string> = {
-  pending: "bg-[#10305a]/10 text-[#10305a] border-[#10305a]/20",
-  processing: "bg-[#10305a]/20 text-[#10305a] border-[#10305a]/30",
-  shipped: "bg-[#10305a] text-white border-[#10305a]",
-  completed: "bg-[#10305a] text-white border-[#10305a]",
-  cancelled: "bg-red-100 text-red-700 border-red-200",
-  failed: "bg-red-100 text-red-700 border-red-200",
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  pending: "待付款",
-  processing: "處理中",
-  shipped: "已出貨",
-  completed: "已完成",
-  cancelled: "已取消",
-  failed: "失敗",
+const DISPLAY_BADGE_CLASSES: Record<DisplayStatus["color"], string> = {
+  gray: "bg-gray-100 text-gray-700",
+  blue: "bg-blue-100 text-blue-700",
+  amber: "bg-amber-100 text-amber-700",
+  green: "bg-green-100 text-green-700",
+  red: "bg-red-100 text-red-700",
 }
 
 export default async function AdminOrdersPage({
@@ -48,7 +42,7 @@ export default async function AdminOrdersPage({
   let query = supabase
     .from("orders")
     .select(
-      "id, order_number, status, payment_status, payment_method, total, created_at, user_id, guest_email"
+      "id, order_number, status, payment_status, payment_method, total, created_at, user_id, guest_email, logistics(status, type)"
     )
     .order("created_at", { ascending: false })
     .limit(200)
@@ -121,6 +115,10 @@ export default async function AdminOrdersPage({
             ) : (
               orders.map((order) => {
                 const displayName = order.user_id ? nameByUser.get(order.user_id) : null
+                const display = getOrderDisplayStatus(
+                  order,
+                  order.logistics?.[0] ?? null,
+                )
                 return (
                   <tr key={order.id} className="hover:bg-zinc-50">
                     <td className="px-4 py-3 font-mono text-xs">{order.order_number}</td>
@@ -129,8 +127,8 @@ export default async function AdminOrdersPage({
                       <p className="text-zinc-400 text-xs">{order.guest_email ?? "—"}</p>
                     </td>
                     <td className="px-4 py-3">
-                      <Badge className={STATUS_BADGE_CLASSES[order.status] ?? "bg-[#10305a]/10 text-[#10305a] border-[#10305a]/20"}>
-                        {STATUS_LABEL[order.status] ?? order.status}
+                      <Badge className={DISPLAY_BADGE_CLASSES[display.color]}>
+                        {display.label}
                       </Badge>
                     </td>
                     <td className="px-4 py-3 text-right">
