@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { toast } from "sonner"
-import { Trash2, Plus, X } from "lucide-react"
+import { Trash2, Plus, X, Tag, Gift, Truck, Package, Star, Coins, Cake, TrendingUp } from "lucide-react"
 import { adminFetch } from "@/lib/admin-fetch"
 import { AdminTabs } from "../_components/AdminTabs"
 
@@ -34,7 +34,9 @@ interface Campaign {
   ends_at: string | null
   created_at: string
   coupon?: { code: string } | null
+  coupons?: { code: string } | null
   tier?: { name: string } | null
+  membership_tiers?: { name: string } | null
 }
 
 interface MembershipTier {
@@ -43,6 +45,25 @@ interface MembershipTier {
 }
 
 type StatusKey = "all" | "active" | "scheduled" | "ended" | "disabled"
+
+interface PreviewFreeItem {
+  sku?: string
+  product_id?: string
+  qty: number
+  name?: string
+}
+
+interface PreviewResult {
+  campaign_id: string
+  campaign_name: string
+  type: string
+  applied: boolean
+  reason?: string
+  discount_amount?: number
+  free_items?: PreviewFreeItem[]
+  rebate_multiplier?: number
+  zero_shipping?: boolean
+}
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -69,6 +90,7 @@ const TYPE_LABEL: Record<string, string> = {
   spend_threshold: "滿額折扣",
   tier_upgrade_bonus: "升等加碼",
   combo_discount: "任選N件折扣",
+  birthday_bonus: "生日當月優惠",
 }
 
 /* ---- Quick-import preset templates ---- */
@@ -80,20 +102,89 @@ interface PresetTemplate {
   config: Record<string, unknown>
 }
 
-const PRESET_TEMPLATES: PresetTemplate[] = [
-  { name: "買一送一 — 蛋白粉", description: "蛋白粉系列買一送一", type: "buy_x_get_y", config: { buy_quantity: 1, get_quantity: 1, scope: "specific_categories", category_slug: "protein", same_item_only: true, max_uses_per_order: 1 } },
-  { name: "買三送二 — 凍乾水果", description: "凍乾水果買三送兩包", type: "buy_x_get_y", config: { buy_quantity: 3, get_quantity: 2, scope: "specific_categories", category_slug: "freeze-dried", same_item_only: false, free_item_rule: "lowest_price", max_uses_per_order: 1 } },
-  { name: "第二件半價", description: "全館第二件半價", type: "second_half_price", config: { discount_percent: 50, scope: "all", applies_to: "cheapest", max_pairs: 1 } },
-  { name: "第二件6折", description: "蛋白粉第二件6折", type: "second_half_price", config: { discount_percent: 40, scope: "specific_categories", category_slug: "protein", applies_to: "cheapest", max_pairs: 1 } },
-  { name: "滿千折百", description: "訂單滿 $1,000 折 $100", type: "spend_threshold", config: { min_amount: 1000, discount_amount: 100, stackable: false } },
-  { name: "滿 $2,000 折 $300", description: "滿兩千折三百，可疊加", type: "spend_threshold", config: { min_amount: 2000, discount_amount: 300, stackable: true } },
-  { name: "全館95折", description: "全站商品95折", type: "discount", config: { discount_method: "percent", discount_value: 5, scope: "all" } },
-  { name: "任選3件88折", description: "全館任選3件88折", type: "combo_discount", config: { min_items: 3, discount_percent: 12, scope: "all", mix_match: true } },
-  { name: "任選5件8折", description: "凍乾水果任選5件8折", type: "combo_discount", config: { min_items: 5, discount_percent: 20, scope: "specific_categories", category_slug: "freeze-dried", mix_match: true } },
-  { name: "免運 — 滿$800", description: "滿800免運", type: "free_shipping", config: { min_order_amount: 800 } },
-  { name: "公益存款雙倍", description: "公益存款雙倍累積", type: "points_multiplier", config: { multiplier: 2, scope: "all" } },
-  { name: "滿額贈品 — 凍乾試吃包", description: "滿$1,500送試吃包", type: "freebie", config: { min_order_amount: 1500, gift_name: "凍乾水果試吃包", gift_sku: "RR-FD-SAMPLE", gift_qty: 1 } },
+interface PresetCategory {
+  key: string
+  label: string
+  Icon: typeof Tag
+  templates: PresetTemplate[]
+}
+
+const PRESET_CATEGORIES: PresetCategory[] = [
+  {
+    key: "discount",
+    label: "折扣",
+    Icon: Tag,
+    templates: [
+      { name: "全館95折", description: "全站商品95折", type: "discount", config: { discount_method: "percent", discount_value: 5, scope: "all" } },
+      { name: "任選3件88折", description: "全館任選3件88折", type: "combo_discount", config: { min_items: 3, discount_percent: 12, scope: "all", mix_match: true } },
+      { name: "任選5件8折", description: "凍乾水果任選5件8折", type: "combo_discount", config: { min_items: 5, discount_percent: 20, scope: "specific_categories", category_slug: "freeze-dried", mix_match: true } },
+      { name: "第二件半價", description: "全館第二件半價", type: "second_half_price", config: { discount_percent: 50, scope: "all", applies_to: "cheapest", max_pairs: 1 } },
+      { name: "第二件6折", description: "蛋白粉第二件6折", type: "second_half_price", config: { discount_percent: 40, scope: "specific_categories", category_slug: "protein", applies_to: "cheapest", max_pairs: 1 } },
+    ],
+  },
+  {
+    key: "freebie",
+    label: "贈品",
+    Icon: Gift,
+    templates: [
+      { name: "滿額贈品 — 凍乾試吃包", description: "滿$1,500送試吃包", type: "freebie", config: { min_order_amount: 1500, gift_name: "凍乾水果試吃包", gift_sku: "RR-FD-SAMPLE", gift_qty: 1 } },
+    ],
+  },
+  {
+    key: "shipping",
+    label: "運費",
+    Icon: Truck,
+    templates: [
+      { name: "免運 — 滿$800", description: "滿800免運", type: "free_shipping", config: { min_order_amount: 800 } },
+    ],
+  },
+  {
+    key: "bundle",
+    label: "組合",
+    Icon: Package,
+    templates: [
+      { name: "買一送一 — 蛋白粉", description: "蛋白粉系列買一送一", type: "buy_x_get_y", config: { buy_quantity: 1, get_quantity: 1, scope: "specific_categories", category_slug: "protein", same_item_only: true, max_uses_per_order: 1 } },
+      { name: "買三送二 — 凍乾水果", description: "凍乾水果買三送兩包", type: "buy_x_get_y", config: { buy_quantity: 3, get_quantity: 2, scope: "specific_categories", category_slug: "freeze-dried", same_item_only: false, free_item_rule: "lowest_price", max_uses_per_order: 1 } },
+    ],
+  },
+  {
+    key: "threshold",
+    label: "滿額",
+    Icon: Star,
+    templates: [
+      { name: "滿千折百", description: "訂單滿 $1,000 折 $100", type: "spend_threshold", config: { min_amount: 1000, discount_amount: 100, stackable: false } },
+      { name: "滿 $2,000 折 $300", description: "滿兩千折三百，可疊加", type: "spend_threshold", config: { min_amount: 2000, discount_amount: 300, stackable: true } },
+    ],
+  },
+  {
+    key: "points",
+    label: "點數",
+    Icon: Coins,
+    templates: [
+      { name: "公益存款雙倍", description: "公益存款雙倍累積", type: "points_multiplier", config: { multiplier: 2, scope: "all" } },
+    ],
+  },
+  {
+    key: "birthday",
+    label: "生日",
+    Icon: Cake,
+    templates: [
+      { name: "生日當月 9 折 + 雙倍", description: "生日當月全館 9 折，公益存款 ×2", type: "birthday_bonus", config: { discount_method: "percent", discount_value: 10, rebate_multiplier: 2, birthday_window_days: 31 } },
+      { name: "生日當月 95 折 + 1.5 倍", description: "生日當月全館 95 折，公益存款 ×1.5", type: "birthday_bonus", config: { discount_method: "percent", discount_value: 5, rebate_multiplier: 1.5, birthday_window_days: 31 } },
+    ],
+  },
+  {
+    key: "tier_upgrade",
+    label: "升等",
+    Icon: TrendingUp,
+    templates: [
+      { name: "升金卡贈 500 點", description: "升級至金卡會員贈送 500 公益存款", type: "tier_upgrade_bonus", config: { tier_slug: "gold", bonus_points: 500 } },
+      { name: "升鑽石贈 1000 點", description: "升級至鑽石會員贈送 1000 公益存款", type: "tier_upgrade_bonus", config: { tier_slug: "diamond", bonus_points: 1000 } },
+    ],
+  },
 ]
+
+const PRESET_TEMPLATES: PresetTemplate[] = PRESET_CATEGORIES.flatMap((g) => g.templates)
 
 const TYPE_OPTIONS = Object.entries(TYPE_LABEL).map(([value, label]) => ({ value, label }))
 
@@ -406,6 +497,86 @@ function extractConfig(fd: FormData, prefix: string, type: string): Record<strin
 }
 
 /* ------------------------------------------------------------------ */
+/*  Preview helpers                                                    */
+/* ------------------------------------------------------------------ */
+
+const DEFAULT_MOCK_CART = {
+  items: [
+    { product_id: "mock-1", variant_id: "mock-1-v", category_id: null, sku: "RR-PROTEIN-01", name: "蛋白粉", unit_price: 1000, qty: 2 },
+    { product_id: "mock-2", variant_id: "mock-2-v", category_id: null, sku: "RR-FD-01", name: "凍乾水果", unit_price: 0, qty: 0 },
+  ],
+  subtotal: 2000,
+  shipping_fee: 80,
+}
+
+const DEFAULT_MOCK_USER = { id: "preview", tier_id: null as string | null, birthday: null as string | null }
+
+async function runPreview(type: string, config: Record<string, unknown>): Promise<PreviewResult | { error: string }> {
+  try {
+    const res = await adminFetch(`${API_URL}/admin/campaigns/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type,
+        config,
+        mock_cart: DEFAULT_MOCK_CART,
+        mock_user: DEFAULT_MOCK_USER,
+      }),
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      return { error: body?.message ?? `預覽失敗 (HTTP ${res.status})` }
+    }
+    const json = await res.json()
+    return (json.result ?? json) as PreviewResult
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : "預覽失敗" }
+  }
+}
+
+function PreviewBox({ result }: { result: PreviewResult | { error: string } | null }) {
+  if (!result) return null
+  if ("error" in result) {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700">
+        {result.error}
+      </div>
+    )
+  }
+  if (!result.applied) {
+    return (
+      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-700 space-y-1">
+        <p className="font-semibold">未套用</p>
+        <p>{result.reason ?? "不符合套用條件"}</p>
+      </div>
+    )
+  }
+  return (
+    <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-700 space-y-1">
+      <p className="font-semibold">
+        折抵 NT$ {(result.discount_amount ?? 0).toLocaleString()}
+      </p>
+      {result.zero_shipping && <p>含免運（運費歸零）</p>}
+      {result.rebate_multiplier && result.rebate_multiplier !== 1 && (
+        <p>公益存款倍率 ×{result.rebate_multiplier}</p>
+      )}
+      {result.free_items && result.free_items.length > 0 && (
+        <div>
+          <p>贈品：</p>
+          <ul className="ml-4 list-disc">
+            {result.free_items.map((f, i) => (
+              <li key={`${f.sku ?? f.product_id ?? "item"}-${i}`}>
+                {f.name ?? f.sku ?? f.product_id ?? "贈品"} × {f.qty}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ */
 /*  Page component                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -419,6 +590,24 @@ export default function AdminCampaignsPage() {
   const [editType, setEditType] = useState("discount")
   const [isPending, startTransition] = useTransition()
   const [showPresets, setShowPresets] = useState(false)
+  const [createPreview, setCreatePreview] = useState<PreviewResult | { error: string } | null>(null)
+  const [editPreview, setEditPreview] = useState<PreviewResult | { error: string } | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+
+  function handlePreview(formId: string, type: string, target: "create" | "edit") {
+    const form = document.getElementById(formId) as HTMLFormElement | null
+    if (!form) return
+    const fd = new FormData(form)
+    const prefix = target === "create" ? "c" : "e"
+    const config = extractConfig(fd, prefix, type)
+    setPreviewing(true)
+    const setter = target === "create" ? setCreatePreview : setEditPreview
+    setter(null)
+    runPreview(type, config).then((res) => {
+      setter(res)
+      setPreviewing(false)
+    })
+  }
 
   /* --- Quick Import Preset --- */
 
@@ -605,10 +794,10 @@ export default function AdminCampaignsPage() {
           新增活動
         </Button>
       ) : (
-        <form onSubmit={handleCreate} className="border rounded-lg bg-white p-4 space-y-4">
+        <form id="campaign-create-form" onSubmit={handleCreate} className="border rounded-lg bg-white p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">新增活動</h3>
-            <button type="button" onClick={() => setShowCreate(false)} className="text-zinc-400 hover:text-zinc-600">
+            <button type="button" onClick={() => { setShowCreate(false); setCreatePreview(null) }} className="text-zinc-400 hover:text-zinc-600">
               <X className="w-4 h-4" />
             </button>
           </div>
@@ -665,9 +854,19 @@ export default function AdminCampaignsPage() {
             </div>
             <ConfigFields type={createType} config={{}} prefix="c" />
           </div>
+          <PreviewBox result={createPreview} />
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={isPending}>{isPending ? "建立中..." : "建立"}</Button>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setShowCreate(false)} disabled={isPending}>取消</Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={() => handlePreview("campaign-create-form", createType, "create")}
+              disabled={isPending || previewing}
+            >
+              {previewing ? "計算中..." : "預覽折抵"}
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => { setShowCreate(false); setCreatePreview(null) }} disabled={isPending}>取消</Button>
           </div>
         </form>
       )}
@@ -690,28 +889,42 @@ export default function AdminCampaignsPage() {
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {PRESET_TEMPLATES.map((preset) => (
-              <div key={preset.name} className="border rounded-lg p-3 hover:bg-zinc-50 transition-colors">
-                <div className="flex items-start justify-between">
-                  <div>
-                    <p className="text-sm font-medium">{preset.name}</p>
-                    <p className="text-xs text-zinc-500 mt-0.5">{preset.description}</p>
-                    <Badge variant="outline" className="mt-1.5 text-[10px]">{TYPE_LABEL[preset.type] ?? preset.type}</Badge>
+          <div className="space-y-5">
+            {PRESET_CATEGORIES.map((group) => {
+              const Icon = group.Icon
+              return (
+                <section key={group.key} className="space-y-2">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-[#10305a]">
+                    <Icon className="w-4 h-4" />
+                    <span>{group.label}</span>
+                    <span className="text-xs font-normal text-zinc-400">（{group.templates.length}）</span>
                   </div>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="text-xs shrink-0"
-                    onClick={() => handleImportPreset(preset)}
-                    disabled={isPending}
-                  >
-                    <Plus className="w-3 h-3 mr-1" />
-                    匯入
-                  </Button>
-                </div>
-              </div>
-            ))}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {group.templates.map((preset) => (
+                      <div key={preset.name} className="border rounded-lg p-3 hover:bg-zinc-50 transition-colors">
+                        <div className="flex items-start justify-between">
+                          <div>
+                            <p className="text-sm font-medium">{preset.name}</p>
+                            <p className="text-xs text-zinc-500 mt-0.5">{preset.description}</p>
+                            <Badge variant="outline" className="mt-1.5 text-[10px]">{TYPE_LABEL[preset.type] ?? preset.type}</Badge>
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-xs shrink-0"
+                            onClick={() => handleImportPreset(preset)}
+                            disabled={isPending}
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            匯入
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </section>
+              )
+            })}
           </div>
         </div>
       )}
@@ -771,13 +984,14 @@ export default function AdminCampaignsPage() {
                 const isEditing = editingId === c.id
 
                 if (isEditing) {
+                  const editFormId = `campaign-edit-form-${c.id}`
                   return (
                     <tr key={c.id}>
                       <td colSpan={6} className="p-4 bg-zinc-50">
-                        <form onSubmit={(e) => handleUpdate(c.id, e)} className="space-y-4">
+                        <form id={editFormId} onSubmit={(e) => handleUpdate(c.id, e)} className="space-y-4">
                           <div className="flex items-center justify-between">
                             <h3 className="text-sm font-semibold">編輯活動</h3>
-                            <button type="button" onClick={() => setEditingId(null)} className="text-zinc-400 hover:text-zinc-600">
+                            <button type="button" onClick={() => { setEditingId(null); setEditPreview(null) }} className="text-zinc-400 hover:text-zinc-600">
                               <X className="w-4 h-4" />
                             </button>
                           </div>
@@ -834,9 +1048,19 @@ export default function AdminCampaignsPage() {
                             </div>
                             <ConfigFields type={editType} config={(c.config as Record<string, unknown>) ?? {}} prefix="e" />
                           </div>
+                          <PreviewBox result={editPreview} />
                           <div className="flex gap-2">
                             <Button type="submit" size="sm" disabled={isPending}>{isPending ? "儲存中..." : "儲存"}</Button>
-                            <Button type="button" size="sm" variant="ghost" onClick={() => setEditingId(null)} disabled={isPending}>取消</Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handlePreview(editFormId, editType, "edit")}
+                              disabled={isPending || previewing}
+                            >
+                              {previewing ? "計算中..." : "預覽折抵"}
+                            </Button>
+                            <Button type="button" size="sm" variant="ghost" onClick={() => { setEditingId(null); setEditPreview(null) }} disabled={isPending}>取消</Button>
                           </div>
                         </form>
                       </td>
@@ -848,15 +1072,15 @@ export default function AdminCampaignsPage() {
                   <tr
                     key={c.id}
                     className="hover:bg-zinc-50 cursor-pointer"
-                    onClick={() => { setEditingId(c.id); setEditType(c.type) }}
+                    onClick={() => { setEditingId(c.id); setEditType(c.type); setEditPreview(null) }}
                   >
                     <td className="px-4 py-3 font-medium">{c.name}</td>
                     <td className="px-4 py-3">
                       <Badge variant="outline">{TYPE_LABEL[c.type] ?? c.type}</Badge>
                     </td>
                     <td className="px-4 py-3 text-xs">
-                      {c.tier?.name ? (
-                        <Badge variant="outline">{c.tier.name}</Badge>
+                      {c.membership_tiers?.name ? (
+                        <Badge variant="outline">{c.membership_tiers.name}</Badge>
                       ) : (
                         <span className="text-zinc-400">全部等級</span>
                       )}

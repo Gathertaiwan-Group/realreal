@@ -1,5 +1,9 @@
 import { supabase } from "./supabase"
 import { getSettingOrEnv } from "./settings"
+import {
+  evaluateAllCampaigns,
+  type EvaluatorContext,
+} from "./campaigns-evaluator"
 
 /**
  * Points ledger lifecycle.
@@ -77,9 +81,50 @@ export async function loadPointsSettings(): Promise<PointsSettings> {
 // ---------------------------------------------------------------------------
 
 /**
+ * Build a minimal EvaluatorContext for grantPoints. Looks up the user's
+ * membership_tier_id and birthday from user_profiles; cart is left empty
+ * (no items, subtotal=0, shipping_fee=0).
+ *
+ * Known limitation: with an empty cart, points_multiplier campaigns whose
+ * scope=specific_categories cannot fire (resolveScopeItems will return []).
+ * Acceptable for v1 — production code can be enhanced later to pass real
+ * cart items into this helper.
+ */
+async function buildPointsContext(userId: string): Promise<EvaluatorContext> {
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("membership_tier_id, birthday")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  const p = profile as {
+    membership_tier_id: string | null
+    birthday: string | null
+  } | null
+
+  return {
+    user: {
+      id: userId,
+      tier_id: p?.membership_tier_id ?? null,
+      birthday: p?.birthday ?? null,
+    },
+    cart: {
+      items: [],
+      subtotal: 0,
+      shipping_fee: 0,
+    },
+  }
+}
+
+/**
  * Grant rebate points for an order. Looks up tier.rebate_rate (column, NOT
  * the JSON benefits field) and computes
  *   earned = floor(orderAmount * rebate_rate / 100)
+ *
+ * Then runs the campaigns evaluator and multiplies `earned` by the product
+ * of every applied campaign's `rebate_multiplier` > 1 (e.g. points_multiplier
+ * 2x + birthday_bonus 2x = 4x). Evaluator failures do NOT block the grant —
+ * we log and continue with the base earned.
  *
  * Writes a single ledger row with source='earn'. Expiry is computed from
  * the `points.expire_days` setting (0 = never expire → NULL).
@@ -104,8 +149,34 @@ export async function grantPoints(
   const rebateRate = Number((tier as { rebate_rate?: number } | null)?.rebate_rate ?? 0)
   if (rebateRate <= 0) return 0
 
-  const earned = Math.floor((Number(orderAmount) * rebateRate) / 100)
+  let earned = Math.floor((Number(orderAmount) * rebateRate) / 100)
   if (earned <= 0) return 0
+
+  // Apply rebate multipliers from active campaigns (points_multiplier,
+  // birthday_bonus). Evaluator failures are non-fatal: we still grant the
+  // base rebate.
+  let note: string | null = null
+  try {
+    const ctx = await buildPointsContext(userId)
+    const results = await evaluateAllCampaigns(ctx)
+    const multiplierResults = results.filter(
+      (r) => (r.rebate_multiplier ?? 0) > 1,
+    )
+    const effectiveMultiplier = multiplierResults.reduce(
+      (m, r) => m * (r.rebate_multiplier ?? 1),
+      1,
+    )
+    if (effectiveMultiplier > 1) {
+      earned = Math.round(earned * effectiveMultiplier)
+      const ids = multiplierResults.map((r) => r.campaign_id).join(", ")
+      note = ` × ${effectiveMultiplier} via campaigns [${ids}]`
+    }
+  } catch (err) {
+    console.warn(
+      `[grantPoints] campaign multiplier evaluation failed for user=${userId} order=${orderId}; continuing with base earned`,
+      err,
+    )
+  }
 
   const expireDaysStr = await getSettingOrEnv(
     "points.expire_days",
@@ -124,6 +195,7 @@ export async function grantPoints(
     source: "earn",
     source_ref_id: orderId,
     expires_at: expiresAt,
+    ...(note ? { note } : {}),
   })
 
   return earned
@@ -291,15 +363,22 @@ export async function refundOrderPoints(
 // ---------------------------------------------------------------------------
 
 /**
- * Admin grants or revokes points manually. The note is required (audit) and
+ * Admin grants or revokes points manually, or system-initiated promo grants
+ * (e.g. tier upgrade bonus, birthday bonus). The note is required (audit) and
  * must be a non-empty string after trim. expires_at is always NULL — manual
  * adjustments do not participate in the expiry sweep.
+ *
+ * `source` defaults to "manual_adjust" (admin path). System callers should
+ * pass "promo" along with a `sourceRefId` (e.g. campaign id) for audit.
+ * `actorId` may be null when the grant is system-initiated.
  */
 export async function adjustPoints(
   userId: string,
   delta: number,
   note: string,
-  actorId: string,
+  actorId: string | null,
+  source: "manual_adjust" | "promo" = "manual_adjust",
+  sourceRefId: string | null = null,
 ): Promise<void> {
   if (typeof note !== "string" || note.trim() === "") {
     throw new Error("note is required for manual point adjustment")
@@ -310,7 +389,8 @@ export async function adjustPoints(
   await supabase.from("points_ledger").insert({
     user_id: userId,
     delta: Math.trunc(delta),
-    source: "manual_adjust",
+    source,
+    source_ref_id: sourceRefId,
     note: note.trim(),
     actor_id: actorId,
     expires_at: null,

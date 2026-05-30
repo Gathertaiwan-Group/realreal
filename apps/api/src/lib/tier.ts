@@ -1,4 +1,5 @@
 import { supabase } from "./supabase"
+import { adjustPoints } from "./points"
 
 const TIERS = [
   { name: "鑽石會員", minSpend: 30000 },
@@ -18,10 +19,57 @@ export async function upgradeTierIfNeeded(userId: string, newTotalSpend: number)
   const eligible = tiers.find((t: { id: string; name: string; min_spend: number }) => newTotalSpend >= Number(t.min_spend))
   if (!eligible) return
 
+  // Read existing tier BEFORE the update so we can detect a real change.
+  const { data: existingProfile } = await supabase
+    .from("user_profiles")
+    .select("membership_tier_id")
+    .eq("user_id", userId)
+    .maybeSingle()
+  const currentTierId =
+    (existingProfile as { membership_tier_id: string | null } | null)
+      ?.membership_tier_id ?? null
+
   await supabase
     .from("user_profiles")
     .update({ membership_tier_id: eligible.id, total_spend: newTotalSpend })
     .eq("user_id", userId)
+
+  // Only fire tier_upgrade_bonus campaigns when the tier actually changed.
+  if (eligible.id === currentTierId) return
+
+  const now = new Date().toISOString()
+  const { data: bonusCampaigns } = await supabase
+    .from("campaigns")
+    .select("id, name, config")
+    .eq("type", "tier_upgrade_bonus")
+    .eq("is_active", true)
+    .lte("starts_at", now)
+    .or(`ends_at.is.null,ends_at.gt.${now}`)
+
+  for (const c of (bonusCampaigns ?? []) as Array<{
+    id: string
+    name: string
+    config: { tier_id?: string; bonus_points?: number | string } | null
+  }>) {
+    if (c.config?.tier_id !== eligible.id) continue
+    const bonus = Number(c.config?.bonus_points ?? 0)
+    if (!Number.isFinite(bonus) || bonus <= 0) continue
+    try {
+      await adjustPoints(
+        userId,
+        bonus,
+        `升等獎勵：${c.name}`,
+        null,
+        "promo",
+        c.id,
+      )
+    } catch (err) {
+      console.warn(
+        `[tier_upgrade_bonus] failed to grant ${bonus} pts to ${userId} for campaign ${c.id}:`,
+        err,
+      )
+    }
+  }
 }
 
 export async function incrementSpendAndUpgrade(userId: string, amount: number) {

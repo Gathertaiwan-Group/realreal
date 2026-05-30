@@ -3,6 +3,12 @@ import { z } from "zod"
 import { supabase } from "../lib/supabase"
 import { requireAuth, optionalAuth } from "../middleware/auth"
 import { getMemberDiscountRate } from "../lib/tier"
+import {
+  evaluateAllCampaigns,
+  type CartItem,
+  type EvaluatorContext,
+  type FreeItem,
+} from "../lib/campaigns-evaluator"
 import { createPayment as pchomepayCreatePayment } from "../lib/pchomepay"
 import { requestPayment as linePayRequestPayment } from "../lib/linepay"
 import { initiatePayment as jkoPayInitiatePayment } from "../lib/jkopay"
@@ -61,6 +67,90 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
   const discountRate = await getMemberDiscountRate(userId)
   const memberDiscountCents = Math.round(subtotalCents * discountRate)
 
+  // ---------------------------------------------------------------------------
+  // Marketing campaign evaluation (precedence: subtotal → tier → campaigns → coupon → points)
+  //
+  // Spec: docs/superpowers/specs/2026-05-30-campaigns-evaluator-engine-design.md §3 / Path 1.
+  // Cart items need category_id (sourced via product_variants → products join) so
+  // category-scoped campaigns (e.g. "凍乾類 9 折") can target them. Profile fetch
+  // pulls tier_id + birthday for the EvaluatorContext.
+  // ---------------------------------------------------------------------------
+  let profileTierId: string | null = null
+  let profileBirthday: string | null = null
+  if (userId) {
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("membership_tier_id, birthday")
+      .eq("user_id", userId)
+      .maybeSingle()
+    profileTierId = (profile?.membership_tier_id as string | null) ?? null
+    profileBirthday = (profile?.birthday as string | null) ?? null
+  }
+
+  // Fetch variant → product → category mapping for cart items in a single round-trip.
+  // The evaluator's CartItem expects unit_price as dollars (not cents).
+  const variantIds = items.map((i) => i.variantId)
+  const { data: variantRows } = await supabase
+    .from("product_variants")
+    .select("id, sku, name, product_id, products(category_id, name)")
+    .in("id", variantIds)
+  type VariantRow = {
+    id: string
+    sku: string | null
+    name: string
+    product_id: string
+    products: { category_id: string | null; name: string | null } | null
+  }
+  const variantMap = new Map<string, VariantRow>()
+  for (const row of (variantRows ?? []) as unknown as VariantRow[]) {
+    variantMap.set(row.id, row)
+  }
+  const cartItems: CartItem[] = items.map((item) => {
+    const v = variantMap.get(item.variantId)
+    return {
+      product_id: v?.product_id ?? "",
+      variant_id: item.variantId,
+      category_id: v?.products?.category_id ?? null,
+      sku: v?.sku ?? null,
+      name: item.productName ?? v?.products?.name ?? v?.name ?? "",
+      unit_price: item.unitPrice / 100,
+      qty: item.qty,
+    }
+  })
+
+  const evaluatorCtx: EvaluatorContext = {
+    user: {
+      id: userId ?? "",
+      tier_id: profileTierId,
+      birthday: profileBirthday,
+    },
+    cart: {
+      items: cartItems,
+      subtotal: subtotalCents / 100,
+      shipping_fee: shippingFeeCents / 100,
+    },
+  }
+  const campaignResults = await evaluateAllCampaigns(evaluatorCtx)
+
+  let campaignDiscountCents = 0
+  const freeItems: FreeItem[] = []
+  for (const r of campaignResults) {
+    if (r.discount_amount) {
+      campaignDiscountCents += Math.round(r.discount_amount * 100)
+    }
+    if (r.free_items && r.free_items.length > 0) {
+      freeItems.push(...r.free_items)
+    }
+    if (r.zero_shipping) {
+      shippingFeeCents = 0
+    }
+  }
+  // "preview" sentinel comes from POST /admin/campaigns/preview; real
+  // checkout results never carry it, but skip defensively.
+  const appliedCampaignIds = campaignResults
+    .map((r) => r.campaign_id)
+    .filter((id) => id !== "preview")
+
   // Optionally apply a coupon — server-side validation + computation so the
   // client can't forge a discount. Silent skip if invalid (status_code-equivalent
   // detection happens via /coupons/validate before the user reaches checkout).
@@ -79,11 +169,14 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
       (coupon.max_uses == null || coupon.used_count < coupon.max_uses) &&
       (coupon.min_order == null || subtotalCents >= coupon.min_order)
     if (valid && coupon) {
-      const baseAfterMember = Math.max(0, subtotalCents - memberDiscountCents)
+      const baseAfterCampaigns = Math.max(
+        0,
+        subtotalCents - memberDiscountCents - campaignDiscountCents,
+      )
       if (coupon.type === "percentage") {
-        couponDiscountCents = Math.round(baseAfterMember * (Number(coupon.value) / 100))
+        couponDiscountCents = Math.round(baseAfterCampaigns * (Number(coupon.value) / 100))
       } else if (coupon.type === "fixed") {
-        couponDiscountCents = Math.min(baseAfterMember, Math.round(Number(coupon.value)))
+        couponDiscountCents = Math.min(baseAfterCampaigns, Math.round(Number(coupon.value)))
       } else if (coupon.type === "free_shipping") {
         // Don't deduct from items; zero the shipping fee instead.
         shippingFeeCents = 0
@@ -94,9 +187,13 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
 
   const totalCents = Math.max(
     0,
-    subtotalCents - memberDiscountCents - couponDiscountCents + shippingFeeCents,
+    subtotalCents
+      - memberDiscountCents
+      - campaignDiscountCents
+      - couponDiscountCents
+      + shippingFeeCents,
   )
-  const totalDiscount = memberDiscountCents + couponDiscountCents
+  const totalDiscount = memberDiscountCents + campaignDiscountCents + couponDiscountCents
 
   // Insert order
   const { data: order, error: orderError } = await supabase
@@ -113,6 +210,9 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
       shipping_fee: shippingFeeCents,
       discount_amount: totalDiscount,
       total: totalCents,
+      campaign_discount: campaignDiscountCents / 100,
+      applied_campaign_ids: appliedCampaignIds,
+      free_items: freeItems,
       metadata: couponCode
         ? { coupon_code: couponCode, coupon_id: appliedCouponId, coupon_discount: couponDiscountCents }
         : null,
