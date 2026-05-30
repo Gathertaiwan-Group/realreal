@@ -17,17 +17,191 @@ import {
   Image,
   Undo,
   Redo,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  Palette,
+  Highlighter,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { useCallback } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
+import { toast } from "sonner";
+import { uploadImage } from "./uploadImage";
 
 interface EditorToolbarProps {
   editor: Editor | null;
 }
 
+const TEXT_COLOR_PRESETS = [
+  "#000000",
+  "#10305a",
+  "#687279",
+  "#dd4444",
+  "#ee6600",
+  "#44aa88",
+  "#4488bb",
+  "#aa44dd",
+];
+
+const HIGHLIGHT_COLOR_PRESETS = [
+  "#fef08a", // yellow
+  "#bbf7d0", // green
+  "#bfdbfe", // blue
+  "#fbcfe8", // pink
+];
+
+const FONT_SIZES = ["12px", "14px", "16px", "18px", "20px", "24px", "32px"];
+
 function ToolbarDivider() {
   return <div className="mx-1 h-6 w-px bg-gray-200" />;
+}
+
+interface ColorPickerProps {
+  editor: Editor;
+}
+
+function ColorPicker({ editor }: ColorPickerProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={() => setOpen((v) => !v)}
+        title="Text Color"
+        className="h-8 w-8 rounded-md text-[#687279] hover:bg-gray-100 hover:text-[#687279]"
+      >
+        <Palette className="h-4 w-4" />
+      </Button>
+      {open && (
+        <div className="absolute left-0 top-9 z-20 flex flex-col gap-2 rounded-md border border-gray-200 bg-white p-2 shadow-md">
+          <div className="grid grid-cols-4 gap-1">
+            {TEXT_COLOR_PRESETS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => {
+                  editor.chain().focus().setColor(c).run();
+                  setOpen(false);
+                }}
+                className="h-6 w-6 rounded border border-gray-200 hover:scale-110 transition-transform"
+                style={{ backgroundColor: c }}
+                title={c}
+              />
+            ))}
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-[#687279]">自訂</label>
+            <input
+              type="color"
+              onChange={(e) => {
+                editor.chain().focus().setColor(e.target.value).run();
+              }}
+              className="h-6 w-12 cursor-pointer rounded border border-gray-200"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                editor.chain().focus().unsetColor().run();
+                setOpen(false);
+              }}
+              className="ml-auto flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-[#687279] hover:bg-gray-100"
+              title="Clear color"
+            >
+              <X className="h-3 w-3" />
+              清除
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+interface HighlightPickerProps {
+  editor: Editor;
+}
+
+function HighlightPicker({ editor }: HighlightPickerProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon"
+        onClick={() => setOpen((v) => !v)}
+        title="Highlight"
+        className={cn(
+          "h-8 w-8 rounded-md",
+          editor.isActive("highlight")
+            ? "bg-[#10305a] text-white hover:bg-[#10305a] hover:text-white"
+            : "text-[#687279] hover:bg-gray-100 hover:text-[#687279]"
+        )}
+      >
+        <Highlighter className="h-4 w-4" />
+      </Button>
+      {open && (
+        <div className="absolute left-0 top-9 z-20 flex flex-col gap-2 rounded-md border border-gray-200 bg-white p-2 shadow-md">
+          <div className="flex gap-1">
+            {HIGHLIGHT_COLOR_PRESETS.map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => {
+                  editor.chain().focus().toggleHighlight({ color: c }).run();
+                  setOpen(false);
+                }}
+                className="h-6 w-6 rounded border border-gray-200 hover:scale-110 transition-transform"
+                style={{ backgroundColor: c }}
+                title={c}
+              />
+            ))}
+            <button
+              type="button"
+              onClick={() => {
+                editor.chain().focus().unsetHighlight().run();
+                setOpen(false);
+              }}
+              className="flex h-6 w-6 items-center justify-center rounded border border-gray-200 text-[#687279] hover:bg-gray-100"
+              title="Clear highlight"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
 }
 
 interface ToolbarButtonProps {
@@ -66,6 +240,8 @@ function ToolbarButton({
 }
 
 export function EditorToolbar({ editor }: EditorToolbarProps) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   const setLink = useCallback(() => {
     if (!editor) return;
     const previousUrl = editor.getAttributes("link").href as string | undefined;
@@ -78,13 +254,35 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
     editor.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
   }, [editor]);
 
-  const addImage = useCallback(() => {
-    if (!editor) return;
-    const url = window.prompt("Enter image URL");
-    if (url) {
-      editor.chain().focus().setImage({ src: url }).run();
-    }
-  }, [editor]);
+  const handleImageFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (!editor) return;
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const url = await uploadImage(file);
+        editor.chain().focus().setImage({ src: url, alt: file.name }).run();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "上傳失敗");
+      } finally {
+        e.target.value = "";
+      }
+    },
+    [editor]
+  );
+
+  const handleFontSizeChange = useCallback(
+    (e: React.ChangeEvent<HTMLSelectElement>) => {
+      if (!editor) return;
+      const size = e.target.value;
+      if (!size) {
+        editor.chain().focus().unsetFontSize().run();
+        return;
+      }
+      editor.chain().focus().setFontSize(size).run();
+    },
+    [editor]
+  );
 
   if (!editor) return null;
 
@@ -191,9 +389,19 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
       >
         <Link className="h-4 w-4" />
       </ToolbarButton>
-      <ToolbarButton onClick={addImage} title="Image">
+      <ToolbarButton
+        onClick={() => fileInputRef.current?.click()}
+        title="Image"
+      >
         <Image className="h-4 w-4" />
       </ToolbarButton>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageFileChange}
+      />
 
       <ToolbarDivider />
 
@@ -211,6 +419,54 @@ export function EditorToolbar({ editor }: EditorToolbarProps) {
         title="Redo"
       >
         <Redo className="h-4 w-4" />
+      </ToolbarButton>
+
+      <ToolbarDivider />
+
+      {/* Font size */}
+      <select
+        onChange={handleFontSizeChange}
+        value=""
+        title="Font Size"
+        className="h-8 rounded-md border border-gray-200 bg-white px-1.5 text-xs text-[#10305a] hover:bg-gray-50 focus:outline-none focus:ring-1 focus:ring-[#10305a]"
+      >
+        <option value="">字級</option>
+        {FONT_SIZES.map((s) => (
+          <option key={s} value={s}>
+            {s.replace("px", "")}
+          </option>
+        ))}
+      </select>
+
+      {/* Text color */}
+      <ColorPicker editor={editor} />
+
+      {/* Highlight */}
+      <HighlightPicker editor={editor} />
+
+      <ToolbarDivider />
+
+      {/* Text align */}
+      <ToolbarButton
+        onClick={() => editor.chain().focus().setTextAlign("left").run()}
+        isActive={editor.isActive({ textAlign: "left" })}
+        title="Align Left"
+      >
+        <AlignLeft className="h-4 w-4" />
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().setTextAlign("center").run()}
+        isActive={editor.isActive({ textAlign: "center" })}
+        title="Align Center"
+      >
+        <AlignCenter className="h-4 w-4" />
+      </ToolbarButton>
+      <ToolbarButton
+        onClick={() => editor.chain().focus().setTextAlign("right").run()}
+        isActive={editor.isActive({ textAlign: "right" })}
+        title="Align Right"
+      >
+        <AlignRight className="h-4 w-4" />
       </ToolbarButton>
     </div>
   );

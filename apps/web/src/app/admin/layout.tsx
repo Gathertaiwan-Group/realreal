@@ -8,6 +8,7 @@ import {
   Folders,
   Users,
   FileText,
+  FolderTree,
   LayoutDashboard,
   Megaphone,
   Settings,
@@ -35,6 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin/customers", label: "客戶", icon: Users, roles: ["admin", "editor"] },
   { href: "/admin/campaigns", label: "行銷", icon: Megaphone, roles: ["admin", "editor"] },
   { href: "/admin/posts", label: "文章", icon: FileText, roles: ["admin", "editor"] },
+  { href: "/admin/posts/categories", label: "文章分類", icon: FolderTree, roles: ["admin", "editor"] },
   { href: "/admin/settings", label: "設定", icon: Settings, roles: ["admin"] },
 ]
 

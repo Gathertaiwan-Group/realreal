@@ -58,12 +58,15 @@ async function enrichProducts(products: any[]) {
         images = sorted.map((img: any) => img.url).filter(Boolean)
       }
     }
+    // Remap product_variants -> variants for frontend compatibility (Spec E: ProductPicker)
+    const { product_variants, ...rest } = p as typeof p & { product_variants?: unknown[] }
     return {
-      ...p,
+      ...rest,
       images,
       min_price: stats?.min_price ?? null,
       max_price: stats?.max_price ?? null,
       total_stock: stats?.total_stock ?? 0,
+      variants: product_variants ?? [],
     }
   })
 }
@@ -94,7 +97,7 @@ productsRouter.get("/", async (req, res) => {
 
   let query = supabase
     .from("products")
-    .select("id, name, slug, description, category_id, images, is_active, is_featured, display_priority, created_at", { count: "exact" })
+    .select("id, name, slug, description, category_id, images, is_active, is_featured, display_priority, created_at, product_variants(sku, name)", { count: "exact" })
     .eq("is_active", true)
     .order("is_featured", { ascending: false })
     .order("display_priority", { ascending: false })
@@ -104,6 +107,11 @@ productsRouter.get("/", async (req, res) => {
   if (req.query.featured_only === "true") query = query.eq("is_featured", true)
   if (req.query.q) {
     query = query.textSearch("search_vector", req.query.q as string, { type: "plain", config: "simple" })
+  }
+  // Spec E Section 5 — substring match on name for ProductPicker autocomplete
+  if (typeof req.query.search === "string") {
+    const s = req.query.search.trim()
+    if (s) query = query.ilike("name", `%${s}%`)
   }
 
   const sort = req.query.sort as string | undefined

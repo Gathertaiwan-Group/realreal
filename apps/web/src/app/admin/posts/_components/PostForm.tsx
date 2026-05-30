@@ -222,7 +222,7 @@ export function PostForm({ initialData, mode }: PostFormProps) {
               onChange={(e) => setCategoryId(e.target.value)}
               className="flex h-9 w-full rounded-[10px] border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
-              <option value="">選擇分類</option>
+              <option value="">— 未分類 —</option>
               {categories.map((cat) => (
                 <option key={cat.id} value={cat.id}>
                   {cat.name}

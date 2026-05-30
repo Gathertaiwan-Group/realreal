@@ -10,10 +10,17 @@ type Post = {
   id: string
   title: string
   status: "draft" | "published" | "scheduled"
-  category?: { name: string } | null
+  category?: { name: string; slug?: string } | null
+  post_category?: { name: string; slug?: string } | null
   author?: { display_name: string } | null
   published_at: string | null
   created_at: string
+}
+
+type PostCategory = {
+  id: string
+  name: string
+  slug: string
 }
 
 const STATUS_TABS = [
@@ -40,10 +47,17 @@ function formatDate(dateStr: string | null) {
   })
 }
 
+function buildQuery(status: string, category: string) {
+  const parts: string[] = []
+  if (status && status !== "all") parts.push(`status=${encodeURIComponent(status)}`)
+  if (category && category !== "all") parts.push(`category=${encodeURIComponent(category)}`)
+  return parts.length ? `?${parts.join("&")}` : ""
+}
+
 export default async function AdminPostsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>
+  searchParams: Promise<{ status?: string; category?: string }>
 }) {
   const supabase = await createClient()
   const {
@@ -64,6 +78,7 @@ export default async function AdminPostsPage({
 
   const params = await searchParams
   const activeTab = params.status ?? "all"
+  const activeCategory = params.category ?? "all"
 
   const url = new URL(`${process.env.NEXT_PUBLIC_API_URL}/admin/posts`)
   if (activeTab !== "all") url.searchParams.set("status", activeTab)
@@ -82,6 +97,29 @@ export default async function AdminPostsPage({
     // API unavailable — show empty state
   }
 
+  // Fetch post categories for filter chips
+  let categories: PostCategory[] = []
+  try {
+    const catRes = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/post-categories`, {
+      cache: "no-store",
+    })
+    if (catRes.ok) {
+      const json = await catRes.json()
+      categories = json.data ?? json
+    }
+  } catch {
+    // API unavailable — no chips
+  }
+
+  // Client-side filter posts by selected category slug
+  const filteredPosts =
+    activeCategory === "all"
+      ? posts
+      : posts.filter((p) => {
+          const slug = p.post_category?.slug ?? p.category?.slug
+          return slug === activeCategory
+        })
+
   return (
     <div className="container mx-auto px-4 py-8">
       <div className="flex items-center justify-between mb-6">
@@ -94,11 +132,11 @@ export default async function AdminPostsPage({
       </div>
 
       {/* Status Tabs */}
-      <div className="flex gap-1 mb-6 border-b border-gray-200">
+      <div className="flex gap-1 mb-4 border-b border-gray-200">
         {STATUS_TABS.map((tab) => (
           <Link
             key={tab.key}
-            href={tab.key === "all" ? "/admin/posts" : `/admin/posts?status=${tab.key}`}
+            href={`/admin/posts${buildQuery(tab.key, activeCategory)}`}
             className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
               activeTab === tab.key
                 ? "border-[#10305a] text-[#10305a]"
@@ -109,6 +147,35 @@ export default async function AdminPostsPage({
           </Link>
         ))}
       </div>
+
+      {/* Category Filter Chips */}
+      {categories.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-6 overflow-x-auto">
+          <Link
+            href={`/admin/posts${buildQuery(activeTab, "all")}`}
+            className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+              activeCategory === "all"
+                ? "bg-[#10305a] text-white border-[#10305a]"
+                : "bg-white text-[#687279] border-gray-200 hover:border-[#10305a] hover:text-[#10305a]"
+            }`}
+          >
+            全部
+          </Link>
+          {categories.map((cat) => (
+            <Link
+              key={cat.id}
+              href={`/admin/posts${buildQuery(activeTab, cat.slug)}`}
+              className={`px-3 py-1.5 text-sm rounded-full border transition-colors ${
+                activeCategory === cat.slug
+                  ? "bg-[#10305a] text-white border-[#10305a]"
+                  : "bg-white text-[#687279] border-gray-200 hover:border-[#10305a] hover:text-[#10305a]"
+              }`}
+            >
+              {cat.name}
+            </Link>
+          ))}
+        </div>
+      )}
 
       {/* Posts Table */}
       <div className="border rounded-[10px] overflow-hidden">
@@ -123,11 +190,13 @@ export default async function AdminPostsPage({
         </div>
 
         <div className="divide-y">
-          {posts.length === 0 && (
+          {filteredPosts.length === 0 && (
             <p className="p-8 text-center text-[#687279]">尚無文章</p>
           )}
-          {posts.map((post) => {
+          {filteredPosts.map((post) => {
             const cfg = STATUS_CONFIG[post.status] ?? STATUS_CONFIG.draft
+            const categoryName =
+              post.post_category?.name ?? post.category?.name ?? "—"
             return (
               <div
                 key={post.id}
@@ -145,7 +214,7 @@ export default async function AdminPostsPage({
                   <Badge variant={cfg.variant}>{cfg.label}</Badge>
                 </div>
                 <span className="text-sm text-[#687279] truncate">
-                  {post.category?.name ?? "-"}
+                  {categoryName}
                 </span>
                 <span className="text-sm text-[#687279] truncate">
                   {post.author?.display_name ?? "-"}

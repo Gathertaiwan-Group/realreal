@@ -5,6 +5,10 @@ import StarterKit from "@tiptap/starter-kit";
 import ImageExtension from "@tiptap/extension-image";
 import LinkExtension from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
+import { TextStyle, FontSize } from "@tiptap/extension-text-style";
+import { Color } from "@tiptap/extension-color";
+import Highlight from "@tiptap/extension-highlight";
+import TextAlign from "@tiptap/extension-text-align";
 import { EditorToolbar } from "./EditorToolbar";
 
 interface TiptapEditorProps {
@@ -29,6 +33,11 @@ export function TiptapEditor({
       Placeholder.configure({
         placeholder,
       }),
+      TextStyle,
+      Color,
+      Highlight.configure({ multicolor: true }),
+      TextAlign.configure({ types: ["heading", "paragraph"] }),
+      FontSize,
     ],
     content,
     onUpdate: ({ editor: currentEditor }) => {

@@ -9,6 +9,9 @@ import { toast } from "sonner"
 import { Trash2, Plus, X, Tag, Gift, Truck, Package, Star, Coins, Cake, TrendingUp } from "lucide-react"
 import { adminFetch } from "@/lib/admin-fetch"
 import { AdminTabs } from "../_components/AdminTabs"
+import { CategoryPicker } from "./_pickers/CategoryPicker"
+import { ProductPicker } from "./_pickers/ProductPicker"
+import { TierPicker } from "./_pickers/TierPicker"
 
 const MARKETING_TABS = [
   { href: "/admin/campaigns", label: "行銷活動" },
@@ -217,22 +220,11 @@ function ConfigFields({
   type,
   config,
   prefix,
-  categories,
 }: {
   type: string
   config: Record<string, unknown>
   prefix: string
-  categories: { slug: string; name: string }[]
 }) {
-  const categorySelect = (defaultValue: string) => (
-    <select name={`${prefix}_category_slug`} defaultValue={defaultValue} className={selectClass}>
-      <option value="">— 選擇分類 —</option>
-      {categories.map((c) => (
-        <option key={c.slug} value={c.slug}>{c.name}</option>
-      ))}
-    </select>
-  )
-
   if (type === "discount") {
     return (
       <>
@@ -278,7 +270,7 @@ function ConfigFields({
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">指定分類</Label>
-          {categorySelect((config.category_slug as string) ?? "")}
+          <CategoryPicker name={`${prefix}_category_slug`} defaultValue={(config.category_slug as string) ?? ""} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">限同品項</Label>
@@ -316,7 +308,7 @@ function ConfigFields({
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">指定分類</Label>
-          {categorySelect((config.category_slug as string) ?? "")}
+          <CategoryPicker name={`${prefix}_category_slug`} defaultValue={(config.category_slug as string) ?? ""} />
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">最多幾組</Label>
@@ -369,7 +361,7 @@ function ConfigFields({
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">指定分類</Label>
-          {categorySelect((config.category_slug as string) ?? "")}
+          <CategoryPicker name={`${prefix}_category_slug`} defaultValue={(config.category_slug as string) ?? ""} />
         </div>
       </>
     )
@@ -382,13 +374,14 @@ function ConfigFields({
           <Label className="text-xs">最低訂單金額 (NT$)</Label>
           <Input name={`${prefix}_min_order_amount`} type="number" min={0} defaultValue={(config.min_order_amount as number) ?? ""} placeholder="1500" />
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">贈品名稱</Label>
-          <Input name={`${prefix}_gift_name`} defaultValue={(config.gift_name as string) ?? ""} placeholder="凍乾水果試吃包" />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">贈品 SKU</Label>
-          <Input name={`${prefix}_gift_sku`} defaultValue={(config.gift_sku as string) ?? ""} placeholder="RR-FD-SAMPLE" />
+        <div className="space-y-1.5 sm:col-span-2">
+          <Label className="text-xs">贈品商品</Label>
+          <ProductPicker
+            skuName={`${prefix}_gift_sku`}
+            nameFieldName={`${prefix}_gift_name`}
+            defaultSku={(config.gift_sku as string) ?? ""}
+            defaultName={(config.gift_name as string) ?? ""}
+          />
         </div>
         <div className="space-y-1.5">
           <Label className="text-xs">贈送數量</Label>
@@ -420,6 +413,21 @@ function ConfigFields({
             <option value="all">全部商品</option>
             <option value="specific_categories">指定分類</option>
           </select>
+        </div>
+      </>
+    )
+  }
+
+  if (type === "tier_upgrade_bonus") {
+    return (
+      <>
+        <div className="space-y-1.5">
+          <Label className="text-xs">升等至</Label>
+          <TierPicker name={`${prefix}_tier_slug`} defaultValue={(config.tier_slug as string) ?? ""} />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">贈送點數</Label>
+          <Input name={`${prefix}_bonus_points`} type="number" min={0} defaultValue={(config.bonus_points as number) ?? ""} placeholder="500" />
         </div>
       </>
     )
@@ -496,6 +504,12 @@ function extractConfig(fd: FormData, prefix: string, type: string): Record<strin
     return {
       multiplier: Number(fd.get(`${prefix}_multiplier`)) || 2,
       scope: fd.get(`${prefix}_scope`) as string,
+    }
+  }
+  if (type === "tier_upgrade_bonus") {
+    return {
+      tier_slug: (fd.get(`${prefix}_tier_slug`) as string) || "",
+      bonus_points: Number(fd.get(`${prefix}_bonus_points`)) || 0,
     }
   }
   try {
@@ -786,7 +800,7 @@ export default function AdminCampaignsPage() {
                 className={selectClass}
               />
             </div>
-            <ConfigFields type={createType} config={{}} prefix="c" categories={categories} />
+            <ConfigFields type={createType} config={{}} prefix="c" />
           </div>
           <div className="flex gap-2">
             <Button type="submit" size="sm" disabled={isPending}>{isPending ? "建立中..." : "建立"}</Button>
@@ -970,7 +984,7 @@ export default function AdminCampaignsPage() {
                                 className={selectClass}
                               />
                             </div>
-                            <ConfigFields type={editType} config={(c.config as Record<string, unknown>) ?? {}} prefix="e" categories={categories} />
+                            <ConfigFields type={editType} config={(c.config as Record<string, unknown>) ?? {}} prefix="e" />
                           </div>
                           <div className="flex gap-2">
                             <Button type="submit" size="sm" disabled={isPending}>{isPending ? "儲存中..." : "儲存"}</Button>
