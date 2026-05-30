@@ -94,14 +94,17 @@ export async function createCvsLogistics(
     GoodsWeight: "1",
     GoodsName: "realreal.cc 訂單",
     SenderName: c.senderName,
-    SenderPhone: c.senderPhone,
+    // ECPay C2C (UNIMARTC2C/FAMIC2C) requires SenderCellPhone (mobile);
+    // SenderPhone (landline) is for B2C only and gets rejected with
+    // 10500047 if used on C2C. ZipCode + Address are still required.
+    SenderCellPhone: c.senderPhone,
     SenderZipCode: c.senderZip,
     SenderAddress: c.senderAddress,
     // ReceiverName / Phone are the END CUSTOMER's — not the store.
-    // ECPay sends SMS pickup notifications to ReceiverPhone, so this must
-    // be the buyer's mobile or the customer never gets the pickup code.
+    // ECPay sends SMS pickup notifications to ReceiverCellPhone, so this
+    // must be the buyer's mobile or the customer never gets the pickup code.
     ReceiverName: receiverName,
-    ReceiverPhone: receiverPhone,
+    ReceiverCellPhone: receiverPhone,
     ReceiverStoreID: storeId,
     ReceiverEmail: receiverEmail,
     IsCollection: "N",
