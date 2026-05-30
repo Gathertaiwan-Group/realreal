@@ -5,7 +5,18 @@ vi.mock("../../lib/supabase", () => ({
   supabase: {
     from: vi.fn(),
     auth: { getUser: vi.fn() },
+    rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
   },
+}))
+
+vi.mock("../../lib/pchomepay", () => ({
+  createPayment: vi.fn().mockResolvedValue({ paymentUrl: "https://sandbox.pchomepay.example/pay" }),
+}))
+vi.mock("../../lib/linepay", () => ({
+  requestPayment: vi.fn().mockResolvedValue({ paymentUrl: "https://sandbox.linepay.example/pay", transactionId: "linepay-tx-1" }),
+}))
+vi.mock("../../lib/jkopay", () => ({
+  initiatePayment: vi.fn().mockResolvedValue({ paymentUrl: "https://sandbox.jkopay.example/pay", merchantTradeNo: "jko-tx-1" }),
 }))
 
 import { app } from "../../app"

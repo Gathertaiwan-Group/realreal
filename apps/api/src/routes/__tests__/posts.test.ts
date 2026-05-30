@@ -99,11 +99,8 @@ describe("GET /posts", () => {
     const res = await request(app).get("/posts?page=1&limit=10")
     expect(res.status).toBe(200)
     expect(res.body).toHaveProperty("data")
-    expect(res.body).toHaveProperty("pagination")
-    expect(res.body.pagination).toHaveProperty("page")
-    expect(res.body.pagination).toHaveProperty("limit")
-    expect(res.body.pagination).toHaveProperty("total")
-    expect(res.body.pagination).toHaveProperty("pages")
+    expect(res.body).toHaveProperty("total")
+    expect(res.body.total).toBe(1)
   })
 
   it("returns empty list when no posts", async () => {
@@ -121,7 +118,7 @@ describe("GET /posts", () => {
     const res = await request(app).get("/posts")
     expect(res.status).toBe(200)
     expect(res.body.data).toEqual([])
-    expect(res.body.pagination.total).toBe(0)
+    expect(res.body.total).toBe(0)
   })
 
   it("returns 500 on supabase error", async () => {

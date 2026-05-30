@@ -135,9 +135,12 @@ describe("PUT /admin/site-contents/:key", () => {
     expect(res.status).toBe(400)
   })
 
-  it("returns 400 when key does not exist", async () => {
+  it("creates the key when it does not exist (upsert)", async () => {
+    // Route uses upsert (changed in c6c60bc) — unknown keys are created,
+    // not rejected. This test guards that behavior.
     mockEditorAuth()
 
+    const created = { id: "sc-new", key: "newly_created_key", value: { title: "Oops" } }
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === "user_profiles") {
         return {
@@ -148,27 +151,26 @@ describe("PUT /admin/site-contents/:key", () => {
       }
       if (table === "site_contents") {
         return {
+          upsert: vi.fn().mockReturnThis(),
           select: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockReturnThis(),
-          single: vi.fn().mockResolvedValue({ data: null, error: { code: "PGRST116" } }),
+          single: vi.fn().mockResolvedValue({ data: created, error: null }),
         } as any
       }
       return {} as any
     })
 
     const res = await request(app)
-      .put("/admin/site-contents/nonexistent_key")
+      .put("/admin/site-contents/newly_created_key")
       .set("Authorization", "Bearer valid-token")
       .send({ value: { title: "Oops" } })
-    expect(res.status).toBe(400)
-    expect(res.body.error).toBe("Key does not exist")
+    expect(res.status).toBe(200)
+    expect(res.body.data).toEqual(created)
   })
 
   it("updates site content for editor", async () => {
     mockEditorAuth()
 
     const updated = { ...mockSiteContent, value: { title: "Updated" } }
-    let callCount = 0
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === "user_profiles") {
         return {
@@ -178,20 +180,9 @@ describe("PUT /admin/site-contents/:key", () => {
         } as any
       }
       if (table === "site_contents") {
-        callCount++
-        if (callCount === 1) {
-          // First call: lookup existing
-          return {
-            select: vi.fn().mockReturnThis(),
-            eq: vi.fn().mockReturnThis(),
-            single: vi.fn().mockResolvedValue({ data: { id: "sc-1" }, error: null }),
-          } as any
-        }
-        // Second call: update
         return {
-          update: vi.fn().mockReturnThis(),
+          upsert: vi.fn().mockReturnThis(),
           select: vi.fn().mockReturnThis(),
-          eq: vi.fn().mockReturnThis(),
           single: vi.fn().mockResolvedValue({ data: updated, error: null }),
         } as any
       }
