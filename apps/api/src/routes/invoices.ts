@@ -81,7 +81,11 @@ invoicesRouter.post("/:id/void", async (req, res) => {
 
   const { data: updated, error: updateError } = await supabase
     .from("invoices")
-    .update({ status: "voided" })
+    .update({
+      status: "voided",
+      voided_at: new Date().toISOString(),
+      error_message: null,
+    })
     .eq("id", id)
     .select()
     .single()

@@ -284,11 +284,16 @@ export function InvoiceCard({
             </span>
           </div>
         )}
-        {invoice.error_message && (
-          <div className="rounded-md bg-red-50 p-2 text-xs text-red-700">
-            錯誤訊息：{invoice.error_message}
-          </div>
-        )}
+        {/* error_message belongs to FAILED attempts only — for issued/voided
+            rows it's almost always stale (leftover from a pre-success
+            retry) so hide it. */}
+        {invoice.error_message &&
+          invoice.status !== "issued" &&
+          invoice.status !== "voided" && (
+            <div className="rounded-md bg-red-50 p-2 text-xs text-red-700">
+              錯誤訊息：{invoice.error_message}
+            </div>
+          )}
       </div>
 
       {/* Action row */}

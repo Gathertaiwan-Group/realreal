@@ -76,6 +76,10 @@ export const invoiceWorker = new Worker("invoice", async (job) => {
       random_code: result.randomCode,
       amego_id: result.amegoId,
       issued_at: new Date().toISOString(),
+      // Clear any error from earlier failed attempts so a successful retry
+      // doesn't leave a stale timeout/error message behind on the row.
+      error_message: null,
+      retry_count: 0,
     }).eq("id", invoiceId)
 
   } catch (err: any) {
