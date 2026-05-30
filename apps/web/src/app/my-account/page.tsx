@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server"
 import { apiClient } from "@/lib/api-client"
 import { AccountHeader } from "./_components/AccountHeader"
 import { HeroCard } from "./_components/HeroCard"
+import { PointsCard, type PointsLedgerRow } from "./_components/PointsCard"
 import { RecentOrdersSection, type OrderRow } from "./_components/RecentOrdersSection"
 import {
   SubscriptionsSection,
@@ -32,8 +33,16 @@ export default async function MyAccountPage({
   } = await supabase.auth.getSession()
   const accessToken = session?.access_token ?? ""
 
-  // Fetch profile, orders, subscriptions in parallel.
-  const [profileResult, ordersResult, subscriptionsResult] = await Promise.all([
+  // Fetch profile, orders, subscriptions, points balance + ledger in parallel.
+  // Points endpoints may 404 / 500 against an older API deploy — fall back to
+  // empty state so the page stays usable.
+  const [
+    profileResult,
+    ordersResult,
+    subscriptionsResult,
+    balanceResult,
+    ledgerResult,
+  ] = await Promise.all([
     supabase
       .from("user_profiles")
       .select("display_name, phone, total_spend, membership_tiers(name)")
@@ -48,6 +57,13 @@ export default async function MyAccountPage({
       .eq("user_id", user.id)
       .eq("status", "active")
       .order("created_at", { ascending: false }),
+    apiClient<{ balance: number; expiring_soon: number }>("/points/balance", {
+      token: accessToken,
+    }).catch(() => ({ balance: 0, expiring_soon: 0 })),
+    apiClient<{ rows: PointsLedgerRow[]; total: number }>(
+      "/points/ledger?limit=20",
+      { token: accessToken },
+    ).catch(() => ({ rows: [] as PointsLedgerRow[], total: 0 })),
   ])
 
   const profile = profileResult.data
@@ -67,6 +83,10 @@ export default async function MyAccountPage({
   const subs: SubscriptionRow[] =
     (subscriptionsResult.data as unknown as SubscriptionRow[]) ?? []
 
+  const pointsBalance = Number(balanceResult.balance ?? 0)
+  const pointsExpiringSoon = Number(balanceResult.expiring_soon ?? 0)
+  const pointsLedger: PointsLedgerRow[] = ledgerResult.rows ?? []
+
   // Old deep links redirect here with ?section=account-settings so the
   // accordion opens automatically.
   const sp = await searchParams
@@ -80,6 +100,12 @@ export default async function MyAccountPage({
         tierName={tierName}
         totalOrders={totalOrders}
         totalSpend={Number(totalSpend)}
+      />
+
+      <PointsCard
+        balance={pointsBalance}
+        expiringSoon={pointsExpiringSoon}
+        ledger={pointsLedger}
       />
 
       <RecentOrdersSection orders={recentOrders} />

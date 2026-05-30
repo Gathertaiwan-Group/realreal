@@ -103,6 +103,17 @@ export default function PaymentPage() {
   const [error, setError] = useState<string | null>(null)
   const [memberDiscount, setMemberDiscount] = useState<{ discountRate: number; tierName: string | null }>({ discountRate: 0, tierName: null })
 
+  // Points redemption state
+  const [pointsBalance, setPointsBalance] = useState(0)
+  const [pointsInput, setPointsInput] = useState<string>("")
+  const [pointsUsed, setPointsUsed] = useState(0)
+  const [pointsDiscount, setPointsDiscount] = useState(0)
+  const [pointsAllowed, setPointsAllowed] = useState(true)
+  const [pointsReason, setPointsReason] = useState<string>("")
+  const [pointsRatio, setPointsRatio] = useState(1)
+  const [allowCouponStack, setAllowCouponStack] = useState(true)
+  const [pointsApplying, setPointsApplying] = useState(false)
+
   useEffect(() => {
     const raw = localStorage.getItem("realreal-checkout")
     if (!raw) {
@@ -140,12 +151,124 @@ export default function PaymentPage() {
     fetchMemberDiscount()
   }, [])
 
+  // Fetch points balance + settings (logged-in users only)
+  useEffect(() => {
+    async function fetchPointsBalance() {
+      try {
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) return
+
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+        const res = await fetch(`${apiUrl}/points/balance`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        })
+        if (!res.ok) return
+        const body = await res.json() as {
+          data?: {
+            balance?: number
+            ratio?: number
+            allow_coupon_stack?: boolean
+          }
+        }
+        const balance = body?.data?.balance ?? 0
+        setPointsBalance(Math.max(0, balance))
+        if (typeof body?.data?.ratio === "number") setPointsRatio(body.data.ratio)
+        if (typeof body?.data?.allow_coupon_stack === "boolean") {
+          setAllowCouponStack(body.data.allow_coupon_stack)
+        }
+      } catch {
+        // Silently fail — points are optional
+      }
+    }
+    fetchPointsBalance()
+  }, [])
+
   const subtotal = checkoutData
     ? checkoutData.items.reduce((sum, i) => sum + i.price * i.qty, 0)
     : 0
   const shippingFee = checkoutData?.shippingFee ?? 0
   const memberDiscountAmount = Math.round(subtotal * memberDiscount.discountRate)
-  const grandTotal = subtotal - memberDiscountAmount + shippingFee - discount
+  const grandTotal = subtotal - memberDiscountAmount + shippingFee - discount - pointsDiscount
+
+  // Determine if points input is blocked by coupon stacking rule
+  const pointsBlockedByCoupon = couponApplied && !allowCouponStack
+  const pointsBlockReason = pointsBlockedByCoupon ? "已使用優惠券，無法同時用點數" : ""
+
+  // Debounced apply: POST /points/apply on input change
+  useEffect(() => {
+    if (!checkoutData) return
+    if (pointsBalance === 0) return
+    if (pointsBlockedByCoupon) {
+      setPointsUsed(0)
+      setPointsDiscount(0)
+      setPointsAllowed(true)
+      setPointsReason("")
+      return
+    }
+    const requested = Number.parseInt(pointsInput, 10)
+    if (!Number.isFinite(requested) || requested <= 0) {
+      setPointsUsed(0)
+      setPointsDiscount(0)
+      setPointsAllowed(true)
+      setPointsReason("")
+      return
+    }
+    const handle = setTimeout(async () => {
+      setPointsApplying(true)
+      try {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+        const supabase = createClient()
+        const { data: { session } } = await supabase.auth.getSession()
+        if (!session?.access_token) return
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        }
+        const cart = {
+          subtotal,
+          shipping: shippingFee,
+          total: subtotal + shippingFee,
+          sale_item_total: 0,
+        }
+        const res = await fetch(`${apiUrl}/points/apply`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ requested, cart }),
+        })
+        if (!res.ok) {
+          setPointsAllowed(false)
+          setPointsReason("無法套用點數")
+          setPointsUsed(0)
+          setPointsDiscount(0)
+          return
+        }
+        const body = await res.json() as {
+          data?: { discount?: number; allowed?: boolean; reason?: string }
+        }
+        const allowed = body?.data?.allowed ?? false
+        const d = body?.data?.discount ?? 0
+        const reason = body?.data?.reason ?? ""
+        setPointsAllowed(allowed)
+        setPointsReason(reason)
+        if (allowed) {
+          setPointsUsed(requested)
+          setPointsDiscount(d)
+        } else {
+          setPointsUsed(0)
+          setPointsDiscount(0)
+        }
+      } catch {
+        setPointsAllowed(false)
+        setPointsReason("套用點數時發生錯誤")
+        setPointsUsed(0)
+        setPointsDiscount(0)
+      } finally {
+        setPointsApplying(false)
+      }
+    }, 300)
+    return () => clearTimeout(handle)
+  }, [pointsInput, pointsBalance, pointsBlockedByCoupon, checkoutData, subtotal, shippingFee])
 
   const [couponLoading, setCouponLoading] = useState(false)
 
@@ -242,6 +365,7 @@ export default function PaymentPage() {
           invoice: checkoutData.invoice,
           guestEmail: session ? undefined : checkoutData.address.email,
           couponCode: couponApplied ? couponCode : undefined,
+          points_used: pointsUsed > 0 && pointsAllowed ? pointsUsed : 0,
         }),
       })
 
@@ -369,6 +493,64 @@ export default function PaymentPage() {
             )}
           </section>
 
+          {/* Points Redemption — hidden when balance is 0 */}
+          {pointsBalance > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold border-b pb-2">公益點折抵</h2>
+              <p className="text-sm text-zinc-600">
+                你目前有 <span className="font-semibold">{pointsBalance.toLocaleString()}</span> 點（= NT$ {Math.floor(pointsBalance * pointsRatio).toLocaleString()}）
+              </p>
+              <div className="flex gap-2 items-center">
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={0}
+                  max={pointsBalance}
+                  placeholder="使用點數"
+                  value={pointsInput}
+                  onChange={e => {
+                    const raw = e.target.value
+                    if (raw === "") {
+                      setPointsInput("")
+                      return
+                    }
+                    const n = Number.parseInt(raw, 10)
+                    if (!Number.isFinite(n)) {
+                      setPointsInput("")
+                      return
+                    }
+                    const clamped = Math.max(0, Math.min(pointsBalance, n))
+                    setPointsInput(String(clamped))
+                  }}
+                  disabled={pointsBlockedByCoupon}
+                  className="max-w-xs"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => setPointsInput(String(pointsBalance))}
+                  disabled={pointsBlockedByCoupon}
+                >
+                  全部使用
+                </Button>
+                <span className="text-sm text-zinc-500">點</span>
+              </div>
+              {pointsBlockReason && (
+                <p className="text-sm text-zinc-500">{pointsBlockReason}</p>
+              )}
+              {!pointsBlockedByCoupon && pointsApplying && (
+                <p className="text-sm text-zinc-400">計算中…</p>
+              )}
+              {!pointsBlockedByCoupon && !pointsApplying && pointsInput !== "" && Number.parseInt(pointsInput, 10) > 0 && (
+                pointsAllowed ? (
+                  <p className="text-sm text-green-600">已折抵 -NT$ {pointsDiscount.toLocaleString()}</p>
+                ) : (
+                  <p className="text-sm text-red-500">{pointsReason || "無法套用"}</p>
+                )
+              )}
+            </section>
+          )}
+
           {/* Mobile Order Total */}
           <div className="lg:hidden rounded-lg border bg-zinc-50/50 p-4">
             <div className="space-y-1.5 text-sm">
@@ -390,6 +572,12 @@ export default function PaymentPage() {
                 <div className="flex justify-between text-green-600">
                   <span>優惠折抵</span>
                   <span>-NT$ {discount.toLocaleString()}</span>
+                </div>
+              )}
+              {pointsDiscount > 0 && pointsAllowed && (
+                <div className="flex justify-between text-green-600">
+                  <span>公益點折抵 ({pointsUsed.toLocaleString()} 點)</span>
+                  <span>-NT$ {pointsDiscount.toLocaleString()}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold text-lg pt-2 border-t">
@@ -458,6 +646,12 @@ export default function PaymentPage() {
                 <div className="flex justify-between text-green-600">
                   <span>優惠折抵</span>
                   <span>-NT$ {discount.toLocaleString()}</span>
+                </div>
+              )}
+              {pointsDiscount > 0 && pointsAllowed && (
+                <div className="flex justify-between text-green-600">
+                  <span>公益點折抵 ({pointsUsed.toLocaleString()} 點)</span>
+                  <span>-NT$ {pointsDiscount.toLocaleString()}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold text-lg pt-2 border-t">

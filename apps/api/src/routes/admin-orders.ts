@@ -8,6 +8,7 @@ import { inventoryQueue } from "../lib/queue"
 import { voidInvoice } from "../lib/amego"
 import { cancelEcpayLogistics } from "../lib/ecpay-logistics"
 import { refundPayment } from "../lib/refund-payment"
+import { refundOrderPoints } from "../lib/points"
 
 export const adminOrdersRouter = Router()
 
@@ -220,6 +221,7 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
   // so we disambiguate per CLAUDE memory.
   type OrderRow = {
     id: string
+    user_id: string | null
     status: string
     payment_status: string | null
     payment_method: string | null
@@ -252,7 +254,7 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
   const { data: orderRaw, error: fetchError } = await supabase
     .from("orders")
     .select(
-      "id, status, payment_status, payment_method, total, gateway_tx_id, " +
+      "id, user_id, status, payment_status, payment_method, total, gateway_tx_id, " +
         "invoices!invoices_order_id_fkey(id, status, amego_id), " +
         "logistics(id, status, type, ecpay_logistics_id, delivered_at, raw_response)",
     )
@@ -273,6 +275,7 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
     invoice_void: { ok: false, message: "" },
     logistics_cancel: { ok: false, message: "" },
     payment_refund: { ok: false, message: "" },
+    points_refund: { ok: false, message: "" },
     status_update: { ok: false, message: "" },
   }
 
@@ -362,6 +365,24 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
     }
   } else {
     actions.payment_refund = { ok: true, message: "未付款，無需退款" }
+  }
+
+  // Step 4.5 — refund points (earned reverted + redeemed returned)
+  if (order.user_id) {
+    try {
+      const r = await refundOrderPoints(orderId, order.user_id)
+      actions.points_refund = {
+        ok: true,
+        message: `返還 ${r.redeemed_returned} 點、扣除 ${r.earned_reverted} 點回饋`,
+      }
+    } catch (err) {
+      actions.points_refund = {
+        ok: false,
+        message: err instanceof Error ? err.message : String(err),
+      }
+    }
+  } else {
+    actions.points_refund = { ok: true, message: "無會員，無點數需返還" }
   }
 
   // Step 4 — 翻 status（always runs, even if every previous step failed,

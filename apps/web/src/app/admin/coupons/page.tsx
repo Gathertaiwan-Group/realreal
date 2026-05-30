@@ -6,6 +6,8 @@ import { AdminTabs } from "../_components/AdminTabs"
 const MARKETING_TABS = [
   { href: "/admin/campaigns", label: "行銷活動" },
   { href: "/admin/coupons", label: "優惠券" },
+  { href: "/admin/marketing/tiers", label: "會員等級" },
+  { href: "/admin/marketing/points", label: "點數規則" },
 ]
 
 export const metadata = { title: "優惠券管理 | Admin" }

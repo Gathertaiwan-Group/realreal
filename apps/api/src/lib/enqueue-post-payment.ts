@@ -5,6 +5,7 @@ import { incrementSpendAndUpgrade } from "./tier"
 import { inventoryQueue } from "./queue"
 import { invoiceQueue } from "../workers/invoice-issuer"
 import { getSetting } from "./settings"
+import { grantPoints, redeemPoints } from "./points"
 
 /**
  * After a successful payment, send confirmation email, create invoice,
@@ -15,7 +16,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   // Fetch order details needed for the email
   const { data: order } = await supabase
     .from("orders")
-    .select("id, order_number, total, guest_email, user_id, order_items(*)")
+    .select("id, order_number, total, guest_email, user_id, points_used, order_items(*)")
     .eq("id", orderId)
     .single()
 
@@ -177,5 +178,32 @@ export async function enqueuePostPaymentJobs(orderId: string) {
     )
   } catch (err) {
     console.warn("[post-payment] logistics enqueue failed (non-fatal):", err)
+  }
+
+  // 4) Points lifecycle — direct DB writes (no BullMQ). Must be transactional
+  // with the post-payment flow but should not block the other steps on error.
+  // tier_id is read *after* incrementSpendAndUpgrade so we credit the upgraded
+  // tier's rebate_rate when this order is the one that bumps them up.
+  if (order.user_id) {
+    try {
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("membership_tier_id")
+        .eq("user_id", order.user_id)
+        .single()
+      const tierId = (profile as { membership_tier_id?: string | null } | null)
+        ?.membership_tier_id ?? null
+
+      // Grant earned points based on tier rebate_rate
+      await grantPoints(orderId, order.user_id, Number(order.total), tierId)
+
+      // Redeem points if order.points_used > 0
+      const pointsUsed = Number((order as { points_used?: number }).points_used ?? 0)
+      if (pointsUsed > 0) {
+        await redeemPoints(orderId, order.user_id, pointsUsed)
+      }
+    } catch (err) {
+      console.warn("[post-payment] points grant/redeem failed (non-fatal):", err)
+    }
   }
 }

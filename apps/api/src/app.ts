@@ -36,6 +36,8 @@ import { reviewsPublicRouter, reviewsAdminRouter } from "./routes/reviews"
 import { adminOrdersRouter } from "./routes/admin-orders"
 import { adminSettingsRouter } from "./routes/admin-settings"
 import { adminTeamRouter } from "./routes/admin-team"
+import { adminCustomersRouter } from "./routes/admin-customers"
+import { pointsRouter } from "./routes/points"
 
 export const app = express()
 
@@ -80,6 +82,7 @@ app.use("/webhooks/amego", amegoWebhookRouter)
 app.use("/admin/orders", adminOrdersRouter)
 app.use("/admin/settings", adminSettingsRouter)
 app.use("/admin/team", adminTeamRouter)
+app.use("/admin/customers", adminCustomersRouter)
 app.use("/orders", ordersRouter)
 app.use("/webhooks/pchomepay", pchomepayWebhookRouter)
 app.use("/webhooks/linepay", linepayWebhookRouter)
@@ -101,6 +104,7 @@ app.use("/", tiersRouter)
 app.use("/", campaignsRouter)
 app.use("/products/:productId/reviews", reviewsPublicRouter)
 app.use("/admin/reviews", reviewsAdminRouter)
+app.use("/points", pointsRouter)
 app.use((_req, res) => { res.status(404).json({ error: "Not found" }) })
 // Global error handler (must have 4 args for Express to treat it as error handler)
 app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {

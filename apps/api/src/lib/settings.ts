@@ -166,6 +166,14 @@ export const ALLOWED_KEYS = new Set<string>([
   "resend.from_name",
   // Notifications
   "notifications.admin_email",
+  // Points (charity rebate) — none are secrets
+  "points.ratio",
+  "points.min_redeem",
+  "points.max_redeem_pct",
+  "points.allow_coupon_stack",
+  "points.apply_to_shipping",
+  "points.apply_to_sale",
+  "points.expire_days",
 ])
 
 /**
@@ -251,4 +259,33 @@ export const SECTIONS: Record<string, { label: string; keys: string[] }> = {
     label: "通知收件人",
     keys: ["notifications.admin_email"],
   },
+  points: {
+    label: "公益點數規則",
+    keys: [
+      "points.ratio",
+      "points.min_redeem",
+      "points.max_redeem_pct",
+      "points.allow_coupon_stack",
+      "points.apply_to_shipping",
+      "points.apply_to_sale",
+      "points.expire_days",
+    ],
+  },
+}
+
+/**
+ * Default values for runtime settings. The PUT /admin/settings handler can
+ * seed these when a key is unset; the points lib also falls back to these
+ * defaults via getSettingOrEnv when neither DB nor env supplies a value.
+ *
+ * Stored as strings because app_settings.value_enc is a TEXT column.
+ */
+export const SETTING_DEFAULTS: Record<string, string> = {
+  "points.ratio": "1",
+  "points.min_redeem": "0",
+  "points.max_redeem_pct": "100",
+  "points.allow_coupon_stack": "true",
+  "points.apply_to_shipping": "false",
+  "points.apply_to_sale": "true",
+  "points.expire_days": "365",
 }

@@ -3,6 +3,7 @@ import pino from "pino"
 import { inventoryQueue } from "./lib/queue"
 import { inventoryWorker } from "./workers/inventory-worker"
 import { invoiceWorker } from "./workers/invoice-issuer"
+import { pointsExpireQueue, pointsExpireWorker } from "./workers/points-expire"
 import { subscriptionBillingQueue, subscriptionBillingWorker } from "./workers/subscription-billing"
 
 const logger = pino({
@@ -28,12 +29,19 @@ async function registerSchedulers() {
     { pattern: "0 9 * * *", tz: "Asia/Taipei" },
     { name: "low-stock-check", data: {} },
   )
-  logger.info("Job schedulers registered (daily-billing 03:00, low-stock-check 09:00 Asia/Taipei)")
+  // Daily points expiration sweep (03:00 Asia/Taipei).
+  await pointsExpireQueue.upsertJobScheduler(
+    "daily-points-expire",
+    { pattern: "0 3 * * *", tz: "Asia/Taipei" },
+    { name: "expire", data: {} },
+  )
+  logger.info("Job schedulers registered (daily-billing 03:00, low-stock-check 09:00, daily-points-expire 03:00 Asia/Taipei)")
 }
 
 const workers = [
   { name: "inventory", worker: inventoryWorker },
   { name: "invoice", worker: invoiceWorker },
+  { name: "points-expire", worker: pointsExpireWorker },
   { name: "subscription-billing", worker: subscriptionBillingWorker },
 ]
 
@@ -61,7 +69,7 @@ const healthServer = http.createServer((req, res) => {
 healthServer.listen(Number(process.env.PORT ?? 4001), () =>
   logger.info({ port: process.env.PORT ?? 4001 }, "worker health server listening"))
 
-logger.info("Worker process started (inventory, invoice, subscription-billing)")
+logger.info("Worker process started (inventory, invoice, points-expire, subscription-billing)")
 
 let shuttingDown = false
 async function shutdown(signal: string) {

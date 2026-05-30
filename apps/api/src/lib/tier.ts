@@ -48,13 +48,16 @@ export async function incrementSpendAndUpgrade(userId: string, amount: number) {
   if (updatedProfile?.membership_tier_id) {
     const { data: tier } = await supabase
       .from("membership_tiers")
-      .select("benefits")
+      .select("rebate_rate")
       .eq("id", updatedProfile.membership_tier_id)
       .single()
 
-    const benefits = tier?.benefits as Record<string, unknown> | null
-    const rebateRate = Number(benefits?.rebate_rate ?? 0) // e.g. 2.3 or 3.3
+    const rebateRate = Number(tier?.rebate_rate ?? 0) // e.g. 2.3 or 3.3
     if (rebateRate > 0) {
+      // TODO(points-migration): grantPoints in lib/points.ts is now the SoT for
+      // rewarding users on purchase. This charity_savings update is kept as a
+      // legacy display-only mirror for backward compat; remove once all readers
+      // migrate to the points_ledger / v_user_points_balance view.
       const charitySavingsIncrement = Math.round(amount * (rebateRate / 100) * 100) / 100
       const currentCharity = Number(profile?.charity_savings ?? 0)
       await supabase

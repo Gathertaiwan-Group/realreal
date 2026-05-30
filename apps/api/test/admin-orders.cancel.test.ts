@@ -21,11 +21,16 @@ vi.mock("../src/lib/refund-payment", () => ({
   refundPayment: vi.fn(),
 }))
 
+vi.mock("../src/lib/points", () => ({
+  refundOrderPoints: vi.fn(),
+}))
+
 import { app } from "../src/app"
 import { supabase } from "../src/lib/supabase"
 import { voidInvoice } from "../src/lib/amego"
 import { cancelEcpayLogistics } from "../src/lib/ecpay-logistics"
 import { refundPayment } from "../src/lib/refund-payment"
+import { refundOrderPoints } from "../src/lib/points"
 
 // ---------------------------------------------------------------------------
 // Shared test helpers
@@ -47,6 +52,7 @@ interface OrderFixture {
   payment_method?: string | null
   total?: number | string | null
   gateway_tx_id?: string | null
+  user_id?: string | null
   invoices?:
     | Array<{ id: string; status: string | null; amego_id: string | null }>
     | { id: string; status: string | null; amego_id: string | null }
@@ -73,6 +79,7 @@ interface OrderFixture {
 function setupSupabaseMocks(order: OrderFixture = {}) {
   const orderRow = {
     id: ORDER_ID,
+    user_id: order.user_id === undefined ? "user-customer-1" : order.user_id,
     status: order.status ?? "processing",
     payment_status: order.payment_status ?? "paid",
     payment_method: order.payment_method ?? "pchomepay",
@@ -171,6 +178,13 @@ beforeEach(() => {
     ok: true,
     message: "已標記退款請求，請至金流後台手動操作",
   })
+  // Spec Section 7 step 5 — points_refund. Default to a successful claw-back
+  // so the happy-path case shows actions.points_refund.ok=true. Individual
+  // tests override to assert the throw branch.
+  vi.mocked(refundOrderPoints).mockResolvedValue({
+    earned_reverted: 50,
+    redeemed_returned: 30,
+  })
 })
 
 // ---------------------------------------------------------------------------
@@ -201,9 +215,23 @@ describe("POST /admin/orders/:id/cancel", () => {
             ok: true,
             message: "已標記退款請求，請至金流後台手動操作",
           },
+          points_refund: {
+            ok: true,
+            message: "返還 30 點、扣除 50 點回饋",
+          },
           status_update: { ok: true, message: "訂單狀態已標記取消" },
         },
       })
+      // Explicit per-spec expectation: refundOrderPoints returns ok:true on
+      // the happy path, with the message reflecting the returned counts.
+      expect(res.body.actions.points_refund).toEqual({
+        ok: true,
+        message: "返還 30 點、扣除 50 點回饋",
+      })
+      expect(refundOrderPoints).toHaveBeenCalledWith(
+        ORDER_ID,
+        "user-customer-1",
+      )
 
       // Each external side-effect was called with the right input
       expect(voidInvoice).toHaveBeenCalledWith("AB12345678", "客戶要求取消")
@@ -355,6 +383,36 @@ describe("POST /admin/orders/:id/cancel", () => {
       // voidInvoice must NOT be called when there's no invoice
       expect(voidInvoice).not.toHaveBeenCalled()
       // The other three still run
+      expect(res.body.actions.logistics_cancel.ok).toBe(true)
+      expect(res.body.actions.payment_refund.ok).toBe(true)
+      expect(res.body.actions.status_update.ok).toBe(true)
+    })
+  })
+
+  // Spec Section 7 — step 5 (points-refund) is independent of the other
+  // four. A throw must surface as actions.points_refund.ok=false but the
+  // other four still run.
+  describe("case 7 — refundOrderPoints throws", () => {
+    it("returns 200 with points_refund.ok=false; other four steps still succeed", async () => {
+      mockAdminAuth()
+      setupSupabaseMocks()
+      vi.mocked(refundOrderPoints).mockRejectedValue(
+        new Error("points table down"),
+      )
+
+      const res = await request(app)
+        .post(`/admin/orders/${ORDER_ID}/cancel`)
+        .set("Authorization", "Bearer valid-token")
+        .send({ reason: "test" })
+
+      expect(res.status).toBe(200)
+      expect(res.body.ok).toBe(true)
+      expect(res.body.actions.points_refund).toEqual({
+        ok: false,
+        message: "points table down",
+      })
+      // The other four steps still ran independently
+      expect(res.body.actions.invoice_void.ok).toBe(true)
       expect(res.body.actions.logistics_cancel.ok).toBe(true)
       expect(res.body.actions.payment_refund.ok).toBe(true)
       expect(res.body.actions.status_update.ok).toBe(true)
