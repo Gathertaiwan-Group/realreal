@@ -48,6 +48,7 @@ export default function AdminProductEditClient({ product }: { product: any }) {
   const [excerpt, setExcerpt] = useState(toHtml(product.excerpt ?? ""))
   const [description, setDescription] = useState(toHtml(product.description ?? ""))
   const [isActive, setIsActive] = useState<boolean>(product.is_active ?? true)
+  const [isAddon, setIsAddon] = useState<boolean>(product.is_addon ?? false)
   const [categoryId, setCategoryId] = useState<string>(product.category_id ?? "")
   const [categories, setCategories] = useState<Category[]>([])
   const [variants, setVariants] = useState<Variant[]>([])
@@ -88,6 +89,7 @@ export default function AdminProductEditClient({ product }: { product: any }) {
       description,
       excerpt,
       is_active: isActive,
+      is_addon: isAddon,
       category_id: categoryId || null,
       images: imagesPayload,
     }
@@ -165,6 +167,27 @@ export default function AdminProductEditClient({ product }: { product: any }) {
           </button>
           <span className={isActive ? "text-green-600 text-sm" : "text-gray-400 text-sm"}>
             {isActive ? "✓ 上架中" : "✗ 已下架"}
+          </span>
+        </div>
+
+        {/* Addon flag */}
+        <div className="flex items-center gap-3">
+          <Label>加購商品</Label>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isAddon}
+            onClick={() => setIsAddon(v => !v)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+              isAddon ? "bg-[#10305a]" : "bg-zinc-300"
+            }`}
+          >
+            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+              isAddon ? "translate-x-5" : "translate-x-0.5"
+            }`} />
+          </button>
+          <span className={isAddon ? "text-[#10305a] text-sm" : "text-gray-400 text-sm"}>
+            {isAddon ? "✓ 顯示於加購區" : "不顯示於加購區"}
           </span>
         </div>
 
