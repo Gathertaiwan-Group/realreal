@@ -498,7 +498,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     } else if (paymentMethod === "linepay") {
       const result = await linePayRequestPayment(
         order.order_number,
-        totalCents,
+        Math.round(totalCents / 100),
         `realreal order #${order.order_number}`
       )
       paymentUrl = result.paymentUrl

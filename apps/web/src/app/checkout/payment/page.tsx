@@ -324,7 +324,7 @@ export default function PaymentPage() {
       const apiItems = checkoutData.items.map((i) => ({
         variantId: i.variantId,
         qty: i.qty,
-        unitPrice: Math.round(i.price),
+        unitPrice: Math.round(i.price * 100),
         productName: i.productName,
         variantName: i.variantName,
       }))
