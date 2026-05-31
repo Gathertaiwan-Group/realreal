@@ -26,10 +26,14 @@ export async function enqueuePostPaymentJobs(orderId: string) {
     return
   }
 
+  // orders.total is stored in cents (e.g. 10000 = NT$100). Convert once here
+  // so every downstream consumer gets TWD without per-call division.
+  const totalTwd = Math.round(Number(order.total) / 100)
+
   // 0) Update total_spend, check tier upgrade, accumulate charity_savings
   if (order.user_id) {
     try {
-      await incrementSpendAndUpgrade(order.user_id, Number(order.total))
+      await incrementSpendAndUpgrade(order.user_id, totalTwd)
     } catch (err) {
       console.warn("[post-payment] tier upgrade failed (non-fatal):", err)
     }
@@ -54,7 +58,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
         to: recipientEmail,
         data: {
           orderNumber: order.order_number,
-          amount: String(order.total),
+          amount: String(totalTwd),
           method: "",
         },
       })
@@ -105,14 +109,14 @@ export async function enqueuePostPaymentJobs(orderId: string) {
         }
       }
 
-      const subject = `【誠真生活】新訂單 ${order.order_number} — NT$ ${order.total}`
+      const subject = `【誠真生活】新訂單 ${order.order_number} — NT$ ${totalTwd}`
       const html = `
         <div style="font-family: -apple-system, sans-serif; max-width:600px;">
           <h2 style="color:#10305a;margin:0 0 8px">新訂單通知</h2>
           <p style="color:#687279;margin:0 0 24px">付款已完成，請準備出貨。</p>
           <table style="border-collapse:collapse;width:100%;font-size:14px;">
             <tr><td style="padding:6px 0;color:#687279;width:120px">訂單編號</td><td style="font-family:monospace;font-weight:600">${order.order_number}</td></tr>
-            <tr><td style="padding:6px 0;color:#687279">總金額</td><td style="font-weight:600;color:#10305a">NT$ ${order.total}</td></tr>
+            <tr><td style="padding:6px 0;color:#687279">總金額</td><td style="font-weight:600;color:#10305a">NT$ ${totalTwd}</td></tr>
             <tr><td style="padding:6px 0;color:#687279">收件人</td><td>${(shippingRow as any)?.name ?? "—"}</td></tr>
             <tr><td style="padding:6px 0;color:#687279">電話</td><td><a href="tel:${(shippingRow as any)?.phone ?? ""}">${(shippingRow as any)?.phone ?? "—"}</a></td></tr>
             <tr><td style="padding:6px 0;color:#687279;vertical-align:top">取貨</td><td>${shippingLine}</td></tr>
@@ -135,7 +139,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   await sendLineNotify(
     `🛒 新訂單 #${order.order_number}\n` +
       `顧客：${userEmail ?? "guest"}\n` +
-      `金額：NT$ ${order.total}` +
+      `金額：NT$ ${totalTwd}` +
       (kolSlug ? `\n來自 KOL：${kolSlug}` : ""),
   )
 
@@ -160,7 +164,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
         .from("invoices")
         .insert({
           order_id: orderId,
-          amount: order.total,
+          amount: totalTwd,
           tax_amount: 0,
           status: "pending",
           type: "B2C_2",
@@ -208,7 +212,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
         ?.membership_tier_id ?? null
 
       // Grant earned points based on tier rebate_rate
-      await grantPoints(orderId, order.user_id, Number(order.total), tierId)
+      await grantPoints(orderId, order.user_id, totalTwd, tierId)
 
       // Redeem points if order.points_used > 0
       const pointsUsed = Number((order as { points_used?: number }).points_used ?? 0)
@@ -222,7 +226,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
     // 5) Accumulate tier_period_spend for requalification window tracking.
     // Independent try/catch so a failure here does not block any other step.
     try {
-      await incrementPeriodSpend(order.user_id, Number(order.total))
+      await incrementPeriodSpend(order.user_id, totalTwd)
     } catch (err) {
       console.warn("[post-payment] incrementPeriodSpend failed (non-fatal):", err)
     }
