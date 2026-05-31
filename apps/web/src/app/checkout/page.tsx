@@ -240,6 +240,8 @@ export default function CheckoutPage() {
     shipping: number
     discount_total: number
     discounts: Array<{ campaign_id: string; name: string; amount: number; type: string }>
+    free_items: Array<{ sku?: string; product_id?: string; qty: number; name?: string }>
+    free_shipping_names: string[]
     total: number
   } | null>(null)
   const itemsKey = useMemo(
@@ -496,6 +498,8 @@ export default function CheckoutPage() {
   const shippingFee = preview?.shipping ?? localShippingFee
   const grandTotal = preview?.total ?? subtotal + localShippingFee
   const discountLines = preview?.discounts ?? []
+  const freeItemsList = preview?.free_items ?? []
+  const freeShippingByCampaign = (preview?.free_shipping_names ?? []).length > 0
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
@@ -791,9 +795,15 @@ export default function CheckoutPage() {
                         <span>- NT$ {d.amount.toLocaleString()}</span>
                       </div>
                     ))}
+                    {freeItemsList.map((g, i) => (
+                      <div key={`gift-m-${i}`} className="flex justify-between text-emerald-700">
+                        <span>🎁 滿額贈：{g.name ?? g.sku ?? "贈品"} × {g.qty}</span>
+                        <span>免費</span>
+                      </div>
+                    ))}
                     <div className="flex justify-between text-zinc-500">
                       <span>運費</span>
-                      <span>{shippingFee === 0 ? "免運" : `NT$ ${shippingFee.toLocaleString()}`}</span>
+                      <span>{shippingFee === 0 ? (freeShippingByCampaign ? "活動免運" : "免運") : `NT$ ${shippingFee.toLocaleString()}`}</span>
                     </div>
                     <div className="flex justify-between font-semibold text-base pt-1 border-t">
                       <span>合計</span>
@@ -850,9 +860,15 @@ export default function CheckoutPage() {
                     <span>- NT$ {d.amount.toLocaleString()}</span>
                   </div>
                 ))}
+                {freeItemsList.map((g, i) => (
+                  <div key={`gift-d-${i}`} className="flex justify-between text-emerald-700 font-medium">
+                    <span>🎁 滿額贈：{g.name ?? g.sku ?? "贈品"} × {g.qty}</span>
+                    <span>免費</span>
+                  </div>
+                ))}
                 <div className="flex justify-between text-zinc-500">
                   <span>運費（{SHIPPING_LABELS[shippingMethod]}）</span>
-                  <span>{shippingFee === 0 ? "免運" : `NT$ ${shippingFee.toLocaleString()}`}</span>
+                  <span>{shippingFee === 0 ? (freeShippingByCampaign ? "活動免運" : "免運") : `NT$ ${shippingFee.toLocaleString()}`}</span>
                 </div>
                 <div className="flex justify-between font-bold text-lg pt-2 border-t">
                   <span>合計</span>
