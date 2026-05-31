@@ -5,6 +5,7 @@ import { AdminTabs } from "../_components/AdminTabs"
 
 const PRODUCT_TABS = [
   { href: "/admin/products", label: "商品" },
+  { href: "/admin/categories", label: "分類" },
   { href: "/admin/reviews", label: "評價" },
 ]
 

@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
+import { AdminTabs } from "../../_components/AdminTabs"
 import { PostCategoriesClient, type PostCategoryRow } from "./_client"
 
 export const metadata = { title: "文章分類 | Admin" }
@@ -56,6 +57,7 @@ export default async function AdminPostCategoriesPage() {
 
   return (
     <div className="space-y-6">
+      <AdminTabs tabs={[{ href: "/admin/posts", label: "文章" }, { href: "/admin/posts/categories", label: "分類" }]} />
       <div>
         <h1 className="mb-2 text-xl font-semibold text-[#10305a]">文章分類</h1>
         <p className="text-sm text-zinc-500">

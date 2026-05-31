@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
+import { AdminTabs } from "../_components/AdminTabs"
 import { CategoriesClient, type CategoryRow } from "./_client"
 
 export const metadata = { title: "分類管理 | Admin" }
@@ -49,6 +50,7 @@ export default async function AdminCategoriesPage() {
 
   return (
     <div className="space-y-6">
+      <AdminTabs tabs={[{ href: "/admin/products", label: "商品" }, { href: "/admin/categories", label: "分類" }, { href: "/admin/reviews", label: "評價" }]} />
       <div>
         <h1 className="mb-2 text-xl font-semibold text-[#10305a]">分類管理</h1>
         <p className="text-sm text-zinc-500">

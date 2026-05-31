@@ -5,10 +5,8 @@ import { LogoutButton } from "./LogoutButton"
 import {
   ShoppingCart,
   Package,
-  Folders,
   Users,
   FileText,
-  FolderTree,
   LayoutDashboard,
   Megaphone,
   Settings,
@@ -33,12 +31,10 @@ const NAV_ITEMS: NavItem[] = [
   { href: "/admin", label: "概覽", icon: LayoutDashboard, roles: ["admin", "editor"] },
   { href: "/admin/orders", label: "訂單", icon: ShoppingCart, roles: ["admin", "editor"] },
   { href: "/admin/products", label: "商品", icon: Package, roles: ["admin", "editor"] },
-  { href: "/admin/categories", label: "分類", icon: Folders, roles: ["admin", "editor"] },
   { href: "/admin/customers", label: "客戶", icon: Users, roles: ["admin", "editor"] },
   { href: "/admin/campaigns", label: "行銷", icon: Megaphone, roles: ["admin", "editor"] },
   { href: "/admin/kols", label: "聯盟行銷", icon: Share2, roles: ["admin"] },
   { href: "/admin/posts", label: "文章", icon: FileText, roles: ["admin", "editor"] },
-  { href: "/admin/posts/categories", label: "文章分類", icon: FolderTree, roles: ["admin", "editor"] },
   { href: "/admin/settings", label: "設定", icon: Settings, roles: ["admin"] },
 ]
 

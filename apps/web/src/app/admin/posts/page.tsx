@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
+import { AdminTabs } from "../_components/AdminTabs"
 
 export const metadata = { title: "文章管理 | Admin" }
 
@@ -121,7 +122,8 @@ export default async function AdminPostsPage({
         })
 
   return (
-    <div className="container mx-auto px-4 py-8">
+    <div className="container mx-auto px-4 py-8 space-y-6">
+      <AdminTabs tabs={[{ href: "/admin/posts", label: "文章" }, { href: "/admin/posts/categories", label: "分類" }]} />
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold text-[#10305a]">文章管理</h1>
         <Link href="/admin/posts/new">

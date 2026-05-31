@@ -35,9 +35,9 @@ async function getCategoryLanding(slug: string): Promise<CategoryResponse | null
 export default async function CategoryLandingPage({
   params,
 }: {
-  params: Promise<{ category: string }>
+  params: Promise<{ slug: string }>
 }) {
-  const { category: slug } = await params
+  const { slug } = await params
 
   const landing = await getCategoryLanding(slug)
   if (!landing) notFound()
