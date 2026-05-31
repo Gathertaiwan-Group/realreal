@@ -57,41 +57,40 @@ export async function fetchRecommendations(
 ): Promise<RecommendedProduct[]> {
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
   const total = limit + excludeVariantIds.length
-  try {
-    // Try best_selling first; if the API doesn't support that sort it'll
-    // typically return latest anyway, but fall back explicitly if we get
-    // nothing back so the user always sees a recommendation strip.
-    let products = await fetchProductsList(
-      apiUrl,
-      `sort=best_selling&limit=${total}`,
-    )
-    if (products.length === 0) {
-      products = await fetchProductsList(apiUrl, `limit=${total}`)
-    }
 
-    const out: RecommendedProduct[] = []
-    for (const p of products) {
-      // Prefer default_variant if the API returns it, otherwise first variant
-      const v = p.default_variant ?? p.variants?.[0]
-      if (!v) continue
-      if (excludeVariantIds.includes(v.id)) continue
-      const price = Number(v.price)
-      const stock = Number(v.stock_qty)
-      if (!Number.isFinite(price) || stock <= 0) continue
-      out.push({
-        id: p.id,
-        name: p.name,
-        slug: p.slug,
-        variantId: v.id,
-        variantName: v.name,
-        price,
-        stockQty: stock,
-        imageUrl: p.images?.[0],
-      })
-      if (out.length >= limit) break
+  const queries = [
+    `is_addon=true&limit=${total}`,
+    `sort=best_selling&limit=${total}`,
+    `limit=${total}`,
+  ]
+
+  for (const query of queries) {
+    try {
+      const products = await fetchProductsList(apiUrl, query)
+      const out: RecommendedProduct[] = []
+      for (const p of products) {
+        const v = p.default_variant ?? p.variants?.[0]
+        if (!v) continue
+        if (excludeVariantIds.includes(v.id)) continue
+        const price = Number(v.price)
+        const stock = Number(v.stock_qty)
+        if (!Number.isFinite(price) || stock <= 0) continue
+        out.push({
+          id: p.id,
+          name: p.name,
+          slug: p.slug,
+          variantId: v.id,
+          variantName: v.name,
+          price,
+          stockQty: stock,
+          imageUrl: p.images?.[0],
+        })
+        if (out.length >= limit) break
+      }
+      if (out.length > 0) return out
+    } catch {
+      continue
     }
-    return out
-  } catch {
-    return []
   }
+  return []
 }
