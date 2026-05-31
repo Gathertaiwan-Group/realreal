@@ -42,6 +42,7 @@ import { adminCustomersRouter } from "./routes/admin-customers"
 import { pointsRouter } from "./routes/points"
 import { kolsRouter } from "./routes/kols"
 import { adminKolsRouter } from "./routes/admin-kols"
+import { requireInternal } from "./middleware/internal"
 
 export const app = express()
 
@@ -115,6 +116,22 @@ app.use("/admin/reviews", reviewsAdminRouter)
 app.use("/points", pointsRouter)
 app.use("/kols", kolsRouter)
 app.use("/admin/kols", adminKolsRouter)
+
+// TEMP: one-shot DB patch — remove after use
+import { supabase } from "./lib/supabase"
+app.post("/internal/db-patch", requireInternal, async (_req, res) => {
+  const GIFT_CAT_ID = "c6489e2f-1a47-45fc-ac39-034b177ccd06"
+  const PRODUCT_IDS = [
+    "1f4085e3-14c7-45c7-a71f-69372297a0c7", // 滋養禮盒
+    "ef8762c8-eac8-4560-a0fb-e15ad0163da4", // 輕鬆補給禮
+  ]
+  const { error: catErr } = await supabase.from("categories").update({ name: "送禮推薦" }).eq("id", GIFT_CAT_ID)
+  if (catErr) { res.status(500).json({ step: "rename_category", error: catErr.message }); return }
+  const { error: prodErr } = await supabase.from("products").update({ category_id: GIFT_CAT_ID }).in("id", PRODUCT_IDS)
+  if (prodErr) { res.status(500).json({ step: "update_products", error: prodErr.message }); return }
+  res.json({ ok: true, renamed: "禮物→送禮推薦", updated_products: PRODUCT_IDS.length })
+})
+
 app.use((_req, res) => { res.status(404).json({ error: "Not found" }) })
 // Sentry error handler — must come before any other error middleware and after all controllers
 // Cast to any because @sentry/node returns its own ExpressErrorMiddleware type that doesn't
