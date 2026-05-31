@@ -1,87 +1,113 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import Image from "next/image"
+
+interface Slide {
+  src: string
+  alt: string
+  title: string
+  body: string[]   // each string = one paragraph
+}
 
 interface BannerCarouselProps {
-  images: { src: string; alt: string }[]
+  slides: Slide[]
   autoPlayInterval?: number
 }
 
-export function BannerCarousel({ images, autoPlayInterval = 4000 }: BannerCarouselProps) {
+export function BannerCarousel({ slides, autoPlayInterval = 5000 }: BannerCarouselProps) {
   const [current, setCurrent] = useState(0)
+  const [animating, setAnimating] = useState(false)
 
-  const next = useCallback(() => {
-    setCurrent((c) => (c + 1) % images.length)
-  }, [images.length])
+  const goTo = useCallback((idx: number) => {
+    if (animating) return
+    setAnimating(true)
+    setCurrent(idx)
+    setTimeout(() => setAnimating(false), 700)
+  }, [animating])
 
-  const prev = useCallback(() => {
-    setCurrent((c) => (c - 1 + images.length) % images.length)
-  }, [images.length])
+  const next = useCallback(() => goTo((current + 1) % slides.length), [current, slides.length, goTo])
+  const prev = useCallback(() => goTo((current - 1 + slides.length) % slides.length), [current, slides.length, goTo])
 
   useEffect(() => {
     const timer = setInterval(next, autoPlayInterval)
     return () => clearInterval(timer)
   }, [next, autoPlayInterval])
 
-  if (!images.length) return null
+  if (!slides.length) return null
 
   return (
-    <div className="relative w-full overflow-hidden rounded-[10px] mb-10 select-none">
+    <div className="relative w-full overflow-hidden mb-10" style={{ aspectRatio: "16/5" }}>
       {/* Slides */}
-      <div
-        className="flex transition-transform duration-700 ease-in-out"
-        style={{ transform: `translateX(-${current * 100}%)` }}
-      >
-        {images.map((img, i) => (
-          <div key={i} className="min-w-full">
-            <Image
-              src={img.src}
-              alt={img.alt}
-              width={1200}
-              height={800}
-              className="w-full h-auto block"
-              priority={i === 0}
-            />
+      {slides.map((slide, i) => (
+        <div
+          key={i}
+          className="absolute inset-0 transition-opacity duration-700"
+          style={{ opacity: i === current ? 1 : 0, pointerEvents: i === current ? "auto" : "none" }}
+        >
+          {/* Background image */}
+          <img
+            src={slide.src}
+            alt={slide.alt}
+            className="w-full h-full object-cover"
+          />
+          {/* Dark scrim */}
+          <div className="absolute inset-0" style={{ backgroundColor: "rgba(0,0,0,0.38)" }} />
+          {/* Text overlay — centered */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center px-8 text-center text-white">
+            <h2
+              className="font-bold mb-3 leading-tight"
+              style={{ fontSize: "clamp(1.4rem, 2.8vw, 2.2rem)", textShadow: "0 1px 4px rgba(0,0,0,0.4)" }}
+            >
+              {slide.title}
+            </h2>
+            {slide.body.map((para, j) => (
+              <p
+                key={j}
+                className="leading-relaxed"
+                style={{
+                  fontSize: "clamp(0.8rem, 1.4vw, 1rem)",
+                  marginBottom: j < slide.body.length - 1 ? "0.6rem" : 0,
+                  textShadow: "0 1px 3px rgba(0,0,0,0.35)",
+                  whiteSpace: "pre-line",
+                }}
+              >
+                {para}
+              </p>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      ))}
 
-      {/* Prev / Next arrows */}
-      {images.length > 1 && (
-        <>
-          <button
-            onClick={prev}
-            aria-label="上一張"
-            className="absolute left-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-9 h-9 rounded-full bg-white/70 hover:bg-white transition-colors shadow"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10305a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-          </button>
-          <button
-            onClick={next}
-            aria-label="下一張"
-            className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center justify-center w-9 h-9 rounded-full bg-white/70 hover:bg-white transition-colors shadow"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10305a" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="9 18 15 12 9 6" />
-            </svg>
-          </button>
-        </>
-      )}
+      {/* Prev arrow */}
+      <button
+        onClick={prev}
+        aria-label="上一張"
+        className="absolute left-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white transition-colors"
+        style={{ fontSize: "1.5rem", lineHeight: 1 }}
+      >
+        &#8249;
+      </button>
+
+      {/* Next arrow */}
+      <button
+        onClick={next}
+        aria-label="下一張"
+        className="absolute right-4 top-1/2 -translate-y-1/2 text-white/80 hover:text-white transition-colors"
+        style={{ fontSize: "1.5rem", lineHeight: 1 }}
+      >
+        &#8250;
+      </button>
 
       {/* Dot indicators */}
-      {images.length > 1 && (
+      {slides.length > 1 && (
         <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-2">
-          {images.map((_, i) => (
+          {slides.map((_, i) => (
             <button
               key={i}
-              onClick={() => setCurrent(i)}
+              onClick={() => goTo(i)}
               aria-label={`第 ${i + 1} 張`}
-              className={`w-2 h-2 rounded-full transition-colors ${
-                i === current ? "bg-[#10305a]" : "bg-white/60"
-              }`}
+              className="w-1.5 h-1.5 rounded-full transition-colors"
+              style={{ backgroundColor: i === current ? "white" : "rgba(255,255,255,0.45)" }}
             />
           ))}
         </div>

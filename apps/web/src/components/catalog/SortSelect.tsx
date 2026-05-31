@@ -12,11 +12,11 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 export function SortSelect() {
   const router = useRouter()
   const sp = useSearchParams()
-  const current = sp.get("sort") ?? "newest"
+  const current = sp.get("sort") ?? "price_desc"
 
   function onChange(value: string) {
     const params = new URLSearchParams(sp.toString())
-    if (value === "newest") {
+    if (value === "price_desc") {
       params.delete("sort")
     } else {
       params.set("sort", value)
