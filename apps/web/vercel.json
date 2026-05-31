@@ -1,7 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "projectId": "prj_JYMZqGwlhavXTr0r11vL0k00o4me",
-  "orgId": "team_4meLkHZuHu0i2boCKXLISF8g",
   "framework": "nextjs",
   "buildCommand": "next build",
   "installCommand": "npm install"
