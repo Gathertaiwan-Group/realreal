@@ -20,6 +20,7 @@ const productSchema = z.object({
     sort_order: z.number().int().nonnegative(),
   })).optional(),
   is_active: z.boolean().optional(),
+  is_addon: z.boolean().optional(),
 })
 
 // Helper: enrich products with prices, total_stock, and flatten image URLs
@@ -97,7 +98,7 @@ productsRouter.get("/", async (req, res) => {
 
   let query = supabase
     .from("products")
-    .select("id, name, slug, description, category_id, images, is_active, is_featured, display_priority, created_at, product_variants(sku, name)", { count: "exact" })
+    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, display_priority, created_at, product_variants(sku, name)", { count: "exact" })
     .eq("is_active", true)
     .order("is_featured", { ascending: false })
     .order("display_priority", { ascending: false })
@@ -105,6 +106,7 @@ productsRouter.get("/", async (req, res) => {
 
   if (categoryId) query = query.eq("category_id", categoryId)
   if (req.query.featured_only === "true") query = query.eq("is_featured", true)
+  if (req.query.is_addon === "true") query = query.eq("is_addon", true)
   if (req.query.q) {
     query = query.textSearch("search_vector", req.query.q as string, { type: "plain", config: "simple" })
   }
