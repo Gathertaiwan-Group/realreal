@@ -165,7 +165,7 @@ export function Header({
                 className="inline-flex h-10 w-10 items-center justify-center rounded-md transition-opacity hover:opacity-90"
               >
                 <span
-                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-white"
+                  className="inline-flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold text-white"
                   style={{ backgroundColor: "#10305a" }}
                 >
                   {headerUser.initial}
