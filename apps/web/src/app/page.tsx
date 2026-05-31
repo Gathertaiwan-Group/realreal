@@ -8,6 +8,7 @@ import type { Product, Category } from "@/lib/catalog"
 import { getSiteContent, getPosts } from "@/lib/content"
 import type { Post } from "@/lib/content"
 import type { Metadata } from "next"
+import { ReviewImagesCarousel } from "@/components/ui/review-images-carousel"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -571,6 +572,17 @@ export default async function HomePage() {
           moreHref={fruitSlug ? `/shop/${fruitSlug}` : "/shop"}
         />
       </div>
+
+      {/* 6. Customer reviews carousel */}
+      <section className="bg-[#fffeee] py-16 sm:py-20">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+          <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl mb-2">
+            顧客真實回饋
+          </h2>
+          <p className="text-center text-sm text-zinc-500 mb-0">來自真實購買顧客的分享</p>
+          <ReviewImagesCarousel />
+        </div>
+      </section>
 
       {/* 5. Blog section */}
       <BlogSection posts={blogResult.data} />
