@@ -5,6 +5,7 @@ import { ChevronLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { apiClient } from "@/lib/api-client"
 import { Badge } from "@/components/ui/badge"
+import { ORDER_STATUS_LABELS as STATUS_LABELS } from "@/lib/order-status"
 
 export const metadata = { title: "訂單詳情 | 誠真生活 RealReal" }
 
@@ -35,14 +36,6 @@ type OrderDetail = {
     address_type: string
   }
   items: OrderItem[]
-}
-
-const STATUS_LABELS: Record<OrderStatus, string> = {
-  pending: "待付款",
-  paid: "已付款",
-  shipped: "出貨中",
-  delivered: "已送達",
-  cancelled: "已取消",
 }
 
 const STATUS_VARIANTS: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {

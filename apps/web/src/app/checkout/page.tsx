@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useCart } from "@/lib/cart"
@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { InvoiceSelector, type InvoiceData } from "@/components/checkout/InvoiceSelector"
+import { API_URL } from "@/lib/api-url"
 
 type AddressType = "home" | "cvs"
 type ShippingMethod = "711" | "family" | "home_delivery"
@@ -241,6 +242,10 @@ export default function CheckoutPage() {
     discounts: Array<{ campaign_id: string; name: string; amount: number; type: string }>
     total: number
   } | null>(null)
+  const itemsKey = useMemo(
+    () => items.map(i => i.variantId + ":" + i.qty).sort().join("|"),
+    [items],
+  )
   useEffect(() => {
     if (items.length === 0) {
       setPreview(null)
@@ -257,8 +262,7 @@ export default function CheckoutPage() {
           family: "cvs_family",
           home_delivery: "home_delivery",
         }
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
-        const res = await fetch(`${apiUrl}/orders/preview`, {
+        const res = await fetch(`${API_URL}/orders/preview`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -283,7 +287,9 @@ export default function CheckoutPage() {
       }
     }, 300)
     return () => clearTimeout(t)
-  }, [items, shippingMethod])
+    // items intentionally referenced via itemsKey for stable identity (T20)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itemsKey, shippingMethod])
 
   // 3. Listen for postMessage from the ECPay store-picker popup.
   //    Origin guard prevents third-party tabs from injecting fake selections.
@@ -392,9 +398,8 @@ export default function CheckoutPage() {
   ])
 
   const openCvsMap = useCallback(() => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
     const subType = shippingMethod === "family" ? "FAMIC2C" : "UNIMARTC2C"
-    const url = `${apiUrl}/logistics/map?logisticsSubType=${subType}&isCollection=N`
+    const url = `${API_URL}/logistics/map?logisticsSubType=${subType}&isCollection=N`
 
     const isMobile =
       typeof navigator !== "undefined" &&
@@ -416,7 +421,9 @@ export default function CheckoutPage() {
     }
   }, [shippingMethod, saveCvsDraft])
 
-  // When switching to CVS, auto-select a CVS shipping method
+  // When switching to CVS, auto-select a CVS shipping method.
+  // T8: only react to addressType changes — listening to shippingMethod here
+  // would fight the user's manual selection (711 vs family).
   useEffect(() => {
     if (addressType === "cvs" && shippingMethod === "home_delivery") {
       setShippingMethod("711")
@@ -424,7 +431,8 @@ export default function CheckoutPage() {
     if (addressType === "home" && shippingMethod !== "home_delivery") {
       setShippingMethod("home_delivery")
     }
-  }, [addressType, shippingMethod])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addressType])
 
   function validate(): FieldErrors {
     const errs: FieldErrors = {}

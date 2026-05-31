@@ -1,7 +1,9 @@
 import { Router } from "express"
+import { randomBytes } from "crypto"
 import { z } from "zod"
 import { supabase } from "../lib/supabase"
 import { requireAuth, optionalAuth } from "../middleware/auth"
+import { idempotencyMiddleware } from "../middleware/idempotency"
 import { getMemberDiscountRate } from "../lib/tier"
 import {
   evaluateAllCampaigns,
@@ -13,6 +15,7 @@ import { createPayment as pchomepayCreatePayment } from "../lib/pchomepay"
 import { requestPayment as linePayRequestPayment } from "../lib/linepay"
 import { initiatePayment as jkoPayInitiatePayment } from "../lib/jkopay"
 import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
+import { computeShipping } from "../lib/shipping"
 
 export const ordersRouter = Router()
 
@@ -65,8 +68,8 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
   const userId: string | undefined = res.locals.userId
 
   const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
-  const shippingFees: Record<string, number> = { home_delivery: 100, cvs_711: 60, cvs_family: 60 }
-  let shippingFeeCents = shippingFees[shippingMethod] ?? 100
+  const feeDollars = await computeShipping(shippingMethod, subtotalCents / 100)
+  let shippingFeeCents = Math.round(feeDollars * 100)
 
   // Fetch user profile fields needed by evaluator (tier, birthday, created_at)
   let profileTierId: string | null = null
@@ -170,7 +173,7 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
 // optionalAuth: if a Bearer token is present, the order is linked to that
 // user; if absent, the order is created as a guest checkout (user_id=null,
 // guest_email used). Either path is fine.
-ordersRouter.post("/", optionalAuth, async (req, res) => {
+ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => {
   const parsed = createOrderSchema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid request", details: parsed.error.flatten() }); return
@@ -180,10 +183,10 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
   let { couponCode } = parsed.data
   const userId: string | undefined = res.locals.userId
 
-  const orderNumber = "RR" + Date.now()
+  const orderNumber = "RR" + Date.now() + randomBytes(4).toString("hex")
   const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
-  const shippingFees: Record<string, number> = { home_delivery: 100, cvs_711: 60, cvs_family: 60 }
-  let shippingFeeCents = shippingFees[shippingMethod] ?? 100
+  const feeDollars = await computeShipping(shippingMethod, subtotalCents / 100)
+  let shippingFeeCents = Math.round(feeDollars * 100)
 
   // ---------------------------------------------------------------------------
   // KOL affiliate attribution (Spec I §3)
@@ -293,8 +296,11 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
   const campaignResults = await evaluateAllCampaigns(evaluatorCtx)
 
   let campaignDiscountCents = 0
+  let shippingZeroedByCampaign = false
+  let firstPurchaseApplied = false
   const freeItems: FreeItem[] = []
   for (const r of campaignResults) {
+    if (!r.applied) continue
     if (r.discount_amount) {
       campaignDiscountCents += Math.round(r.discount_amount * 100)
     }
@@ -303,11 +309,16 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
     }
     if (r.zero_shipping) {
       shippingFeeCents = 0
+      shippingZeroedByCampaign = true
+    }
+    if (r.type === "first_purchase") {
+      firstPurchaseApplied = true
     }
   }
   // "preview" sentinel comes from POST /admin/campaigns/preview; real
   // checkout results never carry it, but skip defensively.
   const appliedCampaignIds = campaignResults
+    .filter((r) => r.applied)
     .map((r) => r.campaign_id)
     .filter((id) => id !== "preview")
 
@@ -323,25 +334,30 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
       .eq("code", couponCode)
       .maybeSingle()
     const now = new Date()
-    const valid =
+    const validPrecheck =
       coupon &&
       (!coupon.expires_at || new Date(coupon.expires_at) >= now) &&
-      (coupon.max_uses == null || coupon.used_count < coupon.max_uses) &&
       (coupon.min_order == null || subtotalCents >= coupon.min_order)
-    if (valid && coupon) {
-      const baseAfterCampaigns = Math.max(
-        0,
-        subtotalCents - memberDiscountCents - campaignDiscountCents,
-      )
-      if (coupon.type === "percentage") {
-        couponDiscountCents = Math.round(baseAfterCampaigns * (Number(coupon.value) / 100))
-      } else if (coupon.type === "fixed") {
-        couponDiscountCents = Math.min(baseAfterCampaigns, Math.round(Number(coupon.value)))
-      } else if (coupon.type === "free_shipping") {
-        // Don't deduct from items; zero the shipping fee instead.
-        shippingFeeCents = 0
+    if (validPrecheck && coupon) {
+      // Atomically increment used_count; RPC returns false if already at max_uses or expired.
+      const incResp = await supabase.rpc("atomic_increment_coupon_usage", { p_coupon_id: coupon.id })
+      if (incResp.error || !incResp.data) {
+        // Silently skip the coupon — claim race lost or expired.
+      } else {
+        const baseAfterCampaigns = Math.max(
+          0,
+          subtotalCents - memberDiscountCents - campaignDiscountCents,
+        )
+        if (coupon.type === "percentage") {
+          couponDiscountCents = Math.round(baseAfterCampaigns * (Number(coupon.value) / 100))
+        } else if (coupon.type === "fixed") {
+          couponDiscountCents = Math.min(baseAfterCampaigns, Math.round(Number(coupon.value)))
+        } else if (coupon.type === "free_shipping") {
+          // Don't deduct from items; zero the shipping fee instead.
+          shippingFeeCents = 0
+        }
+        appliedCouponId = coupon.id
       }
-      appliedCouponId = coupon.id
     }
   }
 
@@ -354,6 +370,16 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
       + shippingFeeCents,
   )
   const totalDiscount = memberDiscountCents + campaignDiscountCents + couponDiscountCents
+
+  // Atomically deduct stock BEFORE creating the order — single RPC that
+  // locks all variants and either succeeds or rejects with insufficient_stock.
+  // This prevents the per-item race where two checkouts each see "enough left".
+  const variantsPayload = items.map((i) => ({ variant_id: i.variantId, qty: i.qty }))
+  const stockResp = await supabase.rpc("atomic_deduct_stock", { p_variants: variantsPayload })
+  if (stockResp.error) {
+    console.error("[orders] atomic_deduct_stock failed:", stockResp.error)
+    res.status(409).json({ error: "商品庫存不足" }); return
+  }
 
   // Insert order
   const { data: order, error: orderError } = await supabase
@@ -373,6 +399,8 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
       campaign_discount: campaignDiscountCents / 100,
       applied_campaign_ids: appliedCampaignIds,
       free_items: freeItems,
+      first_purchase_applied: firstPurchaseApplied,
+      shipping_zeroed_by_campaign: shippingZeroedByCampaign,
       attributed_kol_id: attributedKolId,
       attributed_kol_slug: attributedKolSlug,
       metadata: couponCode
@@ -384,6 +412,8 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
 
   if (orderError || !order) {
     console.error("[orders] insert order failed:", orderError)
+    // Rollback: restore stock since order creation failed.
+    await supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload })
     res.status(500).json({ error: "Failed to create order" }); return
   }
 
@@ -406,35 +436,12 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
 
   if (itemsError) {
     console.error("[orders] insert order_items failed:", itemsError)
-    // Rollback: delete the order
-    await supabase.from("orders").delete().eq("id", order.id)
+    // Rollback: restore stock + delete the order in parallel.
+    await Promise.all([
+      supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload }),
+      supabase.from("orders").delete().eq("id", order.id),
+    ])
     res.status(500).json({ error: "Failed to create order items" }); return
-  }
-
-  // Deduct stock from product_variants (reserve stock before payment)
-  const deductedVariants: { variantId: string; qty: number }[] = []
-  for (const item of items) {
-    const { data: success, error: stockError } = await supabase.rpc("deduct_variant_stock", {
-      p_variant_id: item.variantId,
-      p_qty: item.qty,
-    })
-
-    if (stockError || success === false) {
-      console.error("[orders] insufficient stock for variant:", item.variantId, stockError)
-      // Restore stock for variants already deducted in this loop
-      for (const prev of deductedVariants) {
-        await supabase.rpc("restore_variant_stock", {
-          p_variant_id: prev.variantId,
-          p_qty: prev.qty,
-        })
-      }
-      // Rollback: delete items and order
-      await supabase.from("order_items").delete().eq("order_id", order.id)
-      await supabase.from("orders").delete().eq("id", order.id)
-      res.status(409).json({ error: "Insufficient stock", variantId: item.variantId }); return
-    }
-
-    deductedVariants.push({ variantId: item.variantId, qty: item.qty })
   }
 
   // Insert order address
@@ -455,9 +462,12 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
 
   if (addrError) {
     console.error("[orders] insert order_addresses failed:", addrError)
-    // Rollback: delete items and order
-    await supabase.from("order_items").delete().eq("order_id", order.id)
-    await supabase.from("orders").delete().eq("id", order.id)
+    // Rollback: restore stock, delete items + order in parallel.
+    await Promise.all([
+      supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload }),
+      supabase.from("order_items").delete().eq("order_id", order.id),
+      supabase.from("orders").delete().eq("id", order.id),
+    ])
     res.status(500).json({ error: "Failed to create order address" }); return
   }
 
@@ -502,16 +512,13 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
     }
   } catch (err) {
     console.error(`[orders] ${paymentMethod} payment initiation failed:`, err)
-    // Rollback: restore stock, delete address, items, and order
-    for (const prev of deductedVariants) {
-      await supabase.rpc("restore_variant_stock", {
-        p_variant_id: prev.variantId,
-        p_qty: prev.qty,
-      })
-    }
-    await supabase.from("order_addresses").delete().eq("order_id", order.id)
-    await supabase.from("order_items").delete().eq("order_id", order.id)
-    await supabase.from("orders").delete().eq("id", order.id)
+    // Rollback: restore stock + delete address, items, order in parallel.
+    await Promise.all([
+      supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload }),
+      supabase.from("order_addresses").delete().eq("order_id", order.id),
+      supabase.from("order_items").delete().eq("order_id", order.id),
+      supabase.from("orders").delete().eq("id", order.id),
+    ])
     res.status(502).json({ error: "Payment gateway error" }); return
   }
 
@@ -582,7 +589,7 @@ ordersRouter.get("/", requireAuth, async (req, res) => {
 
   const { data, error, count } = await supabase
     .from("orders")
-    .select("id, order_number, status, total, payment_method, shipping_method, created_at", { count: "exact" })
+    .select("id, order_number, status, total, payment_method, shipping_method, created_at", { count: "estimated" })
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .range(from, to)

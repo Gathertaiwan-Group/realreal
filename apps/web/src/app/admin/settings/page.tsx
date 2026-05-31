@@ -118,6 +118,13 @@ const FIELD_META: Record<
     hint: "實際 tag 配置在 GTM workspace；此處僅供記錄",
     placeholder: "10-char alphanumeric",
   },
+  // Shipping
+  "shipping.fee_home_delivery":   { label: "宅配運費 NT$", placeholder: "150" },
+  "shipping.fee_cvs":             { label: "超商運費 NT$", placeholder: "65" },
+  "shipping.free_threshold_home": { label: "宅配免運門檻", placeholder: "999" },
+  "shipping.free_threshold_cvs":  { label: "超商免運門檻", placeholder: "499" },
+  // Contact
+  "contact.email": { label: "客服 Email", placeholder: "love@realreal.cc" },
 }
 
 function fieldLabel(key: string): string {

@@ -95,6 +95,7 @@ const hardcodedSections: FaqSection[] = [
       },
       {
         q: "收到破損或寄錯商品怎麼辦？",
+        // TODO: read from app_settings.contact.email
         a: "請於收到商品後 48 小時內聯繫客服處理。可透過官方 LINE 或客服信箱 love@realreal.cc 聯繫我們。",
       },
     ],

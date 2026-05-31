@@ -1,6 +1,7 @@
 import Link from "next/link"
 import { ChevronRight, ShoppingBag } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
+import { ORDER_STATUS_LABELS as STATUS_LABELS } from "@/lib/order-status"
 
 export interface OrderRow {
   id: string
@@ -8,17 +9,6 @@ export interface OrderRow {
   created_at: string
   status: string
   total: number
-}
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: "待付款",
-  processing: "備貨中",
-  paid: "已付款",
-  shipped: "出貨中",
-  delivered: "已送達",
-  completed: "已完成",
-  cancelled: "已取消",
-  failed: "付款失敗",
 }
 
 const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
@@ -80,7 +70,7 @@ export function RecentOrdersSection({ orders }: { orders: OrderRow[] }) {
                 </div>
                 <div className="flex shrink-0 items-center gap-3">
                   <Badge variant={STATUS_VARIANT[order.status] ?? "outline"}>
-                    {STATUS_LABELS[order.status] ?? order.status}
+                    {STATUS_LABELS[order.status as keyof typeof STATUS_LABELS] ?? order.status}
                   </Badge>
                   <span className="text-sm font-semibold text-[#10305a]">
                     NT$ {Number(order.total).toLocaleString()}

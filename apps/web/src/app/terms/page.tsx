@@ -208,10 +208,10 @@ export default async function TermsPage() {
           <p>
             如您對本服務條款有任何疑問，歡迎聯繫我們：
             <a
-              href="mailto:hello@realreal.cc"
+              href="mailto:love@realreal.cc"
               className="underline hover:text-[#10305a]"
             >
-              hello@realreal.cc
+              love@realreal.cc
             </a>
           </p>
         </div>

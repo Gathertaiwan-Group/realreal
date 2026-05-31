@@ -38,6 +38,8 @@ export type FreeItem = {
   product_id?: string
   qty: number
   name?: string
+  /** Optional unit price (dollars) — used by pickBestPerType to score freebie campaigns. */
+  unit_price?: number
 }
 
 export type EvaluatorResult = {
@@ -140,11 +142,36 @@ function isInBirthdayWindow(
   windowDays: number,
   now: Date = new Date(),
 ): boolean {
-  const bd = new Date(birthday)
-  if (Number.isNaN(bd.getTime())) return false
-  const bdThisYear = new Date(now.getFullYear(), bd.getMonth(), bd.getDate())
-  const diffDays = (now.getTime() - bdThisYear.getTime()) / 86_400_000
-  return diffDays >= -1 && diffDays <= windowDays
+  // Parse birthday string YYYY-MM-DD via String split (no Date constructor → no UTC drift)
+  const parts = birthday.split("-")
+  if (parts.length < 3) return false
+  const bMonth = Number(parts[1])
+  const bDay = Number(parts[2])
+  if (!Number.isFinite(bMonth) || !Number.isFinite(bDay)) return false
+
+  // Convert "now" UTC to Asia/Taipei wall-clock by adding 8h offset
+  const tpeNow = new Date(now.getTime() + 8 * 3600 * 1000)
+  const tpeYear = tpeNow.getUTCFullYear()
+  const tpeMonth = tpeNow.getUTCMonth() + 1
+  const tpeDay = tpeNow.getUTCDate()
+
+  // Build two anchor timestamps (this-year + next-year birthday at TPE 00:00 → UTC = TPE - 8h)
+  const tpeNowMs = Date.UTC(tpeYear, tpeMonth - 1, tpeDay)
+  const thisYearMs = Date.UTC(tpeYear, bMonth - 1, bDay)
+  const nextYearMs = Date.UTC(tpeYear + 1, bMonth - 1, bDay)
+  const prevYearMs = Date.UTC(tpeYear - 1, bMonth - 1, bDay)
+
+  const diffThis = (tpeNowMs - thisYearMs) / 86_400_000
+  const diffNext = (tpeNowMs - nextYearMs) / 86_400_000
+  const diffPrev = (tpeNowMs - prevYearMs) / 86_400_000
+
+  // Pick anchor whose |diff| is smallest
+  let bestDiff = diffThis
+  if (Math.abs(diffNext) < Math.abs(bestDiff)) bestDiff = diffNext
+  if (Math.abs(diffPrev) < Math.abs(bestDiff)) bestDiff = diffPrev
+
+  const half = windowDays / 2
+  return Math.abs(bestDiff) <= half
 }
 
 function notApplied(c: CampaignRow, reason: string): EvaluatorResult {
@@ -220,7 +247,7 @@ export async function evalDiscount(
   const sub = sumItems(items)
   const discount =
     method === "percent"
-      ? Math.round((sub * value) / 100)
+      ? Math.min(Math.round((sub * value) / 100), sub)
       : Math.min(value, sub)
 
   return { ...applied(c), discount_amount: discount }
@@ -313,8 +340,8 @@ export function evalBundle(
   }
 
   const totalQty = ctx.cart.items.reduce((s, i) => s + i.qty, 0)
-  if (totalQty < buyQty) {
-    return notApplied(c, `總件數 ${totalQty} < ${buyQty}`)
+  if (totalQty < buyQty + freeQty) {
+    return notApplied(c, `總件數 ${totalQty} < ${buyQty + freeQty}（需 ${buyQty} 件購買 + ${freeQty} 件贈送）`)
   }
 
   const units = explodeUnits(ctx.cart.items)
@@ -400,9 +427,10 @@ export async function evalSecondHalfPrice(
     return notApplied(c, `scope 件數 ${units.length} 不足 1 對`)
   }
 
-  const discount = units
-    .slice(0, pairs)
-    .reduce((s, u) => s + (u.unit_price * discountPercent) / 100, 0)
+  let discount = 0
+  for (let i = 0; i < pairs; i++) {
+    discount += (units[i * 2].unit_price * discountPercent) / 100
+  }
 
   return { ...applied(c), discount_amount: Math.round(discount) }
 }
@@ -503,7 +531,7 @@ export function evalBirthdayBonus(
 
   const discount =
     method === "percent"
-      ? Math.round((ctx.cart.subtotal * value) / 100)
+      ? Math.min(Math.round((ctx.cart.subtotal * value) / 100), ctx.cart.subtotal)
       : Math.min(value, ctx.cart.subtotal)
 
   const result: EvaluatorResult = {
@@ -610,14 +638,30 @@ async function fetchActiveCampaignsForUser(
   return (data ?? []) as CampaignRow[]
 }
 
-function pickBestPerType(results: EvaluatorResult[]): EvaluatorResult[] {
+function scoreForType(r: EvaluatorResult, ctx: EvaluatorContext): number {
+  switch (r.type) {
+    case "points_multiplier":
+      return r.rebate_multiplier ?? 0
+    case "freebie":
+      return (r.free_items ?? []).reduce(
+        (s, fi) => s + (fi.unit_price ?? 0) * (fi.qty ?? 0),
+        0,
+      )
+    case "free_shipping":
+      return r.zero_shipping ? ctx.cart.shipping_fee : 0
+    default:
+      return r.discount_amount ?? 0
+  }
+}
+
+function pickBestPerType(
+  results: EvaluatorResult[],
+  ctx: EvaluatorContext,
+): EvaluatorResult[] {
   const byType = new Map<string, EvaluatorResult>()
   for (const r of results) {
     const existing = byType.get(r.type)
-    if (
-      !existing ||
-      (r.discount_amount ?? 0) > (existing.discount_amount ?? 0)
-    ) {
+    if (!existing || scoreForType(r, ctx) > scoreForType(existing, ctx)) {
       byType.set(r.type, r)
     }
   }
@@ -629,5 +673,5 @@ export async function evaluateAllCampaigns(
 ): Promise<EvaluatorResult[]> {
   const active = await fetchActiveCampaignsForUser(ctx.user.id, ctx.user.tier_id)
   const results = await Promise.all(active.map((c) => evaluateCampaign(c, ctx)))
-  return pickBestPerType(results.filter((r) => r.applied))
+  return pickBestPerType(results.filter((r) => r.applied), ctx)
 }

@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
+import { API_URL } from "@/lib/api-url"
 import type { InvoiceData } from "@/components/checkout/InvoiceSelector"
 
 type PaymentMethod = "pchomepay" | "linepay" | "jkopay"
@@ -135,8 +136,7 @@ export default function PaymentPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.access_token) return
 
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
-        const res = await fetch(`${apiUrl}/my-member-discount`, {
+        const res = await fetch(`${API_URL}/my-member-discount`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
         })
         if (!res.ok) return
@@ -159,8 +159,7 @@ export default function PaymentPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.access_token) return
 
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
-        const res = await fetch(`${apiUrl}/points/balance`, {
+        const res = await fetch(`${API_URL}/points/balance`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
         })
         if (!res.ok) return
@@ -189,7 +188,7 @@ export default function PaymentPage() {
     : 0
   const shippingFee = checkoutData?.shippingFee ?? 0
   const memberDiscountAmount = Math.round(subtotal * memberDiscount.discountRate)
-  const grandTotal = subtotal - memberDiscountAmount + shippingFee - discount - pointsDiscount
+  const grandTotal = Math.max(0, subtotal - memberDiscountAmount + shippingFee - discount - pointsDiscount)
 
   // Determine if points input is blocked by coupon stacking rule
   const pointsBlockedByCoupon = couponApplied && !allowCouponStack
@@ -217,7 +216,6 @@ export default function PaymentPage() {
     const handle = setTimeout(async () => {
       setPointsApplying(true)
       try {
-        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
         const supabase = createClient()
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.access_token) return
@@ -231,7 +229,7 @@ export default function PaymentPage() {
           total: subtotal + shippingFee,
           sale_item_total: 0,
         }
-        const res = await fetch(`${apiUrl}/points/apply`, {
+        const res = await fetch(`${API_URL}/points/apply`, {
           method: "POST",
           headers,
           body: JSON.stringify({ requested, cart }),
@@ -268,7 +266,7 @@ export default function PaymentPage() {
       }
     }, 300)
     return () => clearTimeout(handle)
-  }, [pointsInput, pointsBalance, pointsBlockedByCoupon, checkoutData, subtotal, shippingFee])
+  }, [pointsInput, pointsBalance, pointsBlockedByCoupon, checkoutData, subtotal, shippingFee, couponApplied, allowCouponStack, pointsAllowed])
 
   const [couponLoading, setCouponLoading] = useState(false)
 
@@ -280,12 +278,11 @@ export default function PaymentPage() {
     }
     setCouponLoading(true)
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       const couponHeaders: Record<string, string> = { "Content-Type": "application/json" }
       if (session?.access_token) couponHeaders.Authorization = `Bearer ${session.access_token}`
-      const res = await fetch(`${apiUrl}/coupons/validate`, {
+      const res = await fetch(`${API_URL}/coupons/validate`, {
         method: "POST",
         headers: couponHeaders,
         body: JSON.stringify({ code: couponCode.trim(), order_amount: subtotal }),
@@ -315,7 +312,6 @@ export default function PaymentPage() {
     setLoading(true)
     setError(null)
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
       const headers: Record<string, string> = { "Content-Type": "application/json" }
@@ -354,7 +350,7 @@ export default function PaymentPage() {
         cvsStoreId: checkoutData.address.cvsStoreId || undefined,
         cvsType: cvsTypeMap[shippingMethod],
       }
-      const res = await fetch(`${apiUrl}/orders`, {
+      const res = await fetch(`${API_URL}/orders`, {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -468,7 +464,7 @@ export default function PaymentPage() {
               <Input
                 placeholder="輸入優惠碼"
                 value={couponCode}
-                onChange={e => { setCouponCode(e.target.value); setCouponError(""); setCouponApplied(false); setDiscount(0) }}
+                onChange={e => { setCouponCode(e.target.value) }}
                 disabled={couponApplied}
                 className="max-w-xs"
               />
@@ -605,7 +601,7 @@ export default function PaymentPage() {
               className="flex-1 rounded-[10px]"
               style={{ backgroundColor: "#10305a", color: "#fff" }}
               onClick={handleConfirm}
-              disabled={loading}
+              disabled={loading || pointsApplying}
             >
               {loading ? "處理中..." : `確認付款 NT$ ${grandTotal.toLocaleString()}`}
             </Button>
