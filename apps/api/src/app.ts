@@ -11,7 +11,7 @@ const ALLOWED_ORIGINS = [
 ]
 import healthRouter from "./routes/health"
 import { categoriesRouter, categoriesAdminRouter } from "./routes/categories"
-import { productsRouter } from "./routes/products"
+import { productsRouter, productsAdminRouter } from "./routes/products"
 import { variantsRouter } from "./routes/variants"
 import { couponsRouter } from "./routes/coupons"
 import { analyticsRouter } from "./routes/analytics"
@@ -81,6 +81,7 @@ app.use("/health", healthRouter)
 app.use("/categories", categoriesRouter)
 app.use("/admin/categories", categoriesAdminRouter)
 app.use("/products/:id/variants", variantsRouter)
+app.use("/admin/products", productsAdminRouter)
 app.use("/products", productsRouter)
 app.use("/", couponsRouter)
 app.use("/", analyticsRouter)
