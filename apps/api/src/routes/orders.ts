@@ -512,13 +512,15 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     }
   } catch (err) {
     console.error(`[orders] ${paymentMethod} payment initiation failed:`, err)
-    // Rollback: restore stock + delete address, items, order in parallel.
+    // Rollback: delete child tables + restore stock first, then delete parent order.
+    // Order matters: payments/items/addresses must be removed before orders (FK).
     await Promise.all([
       supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload }),
+      supabase.from("payments").delete().eq("order_id", order.id),
       supabase.from("order_addresses").delete().eq("order_id", order.id),
       supabase.from("order_items").delete().eq("order_id", order.id),
-      supabase.from("orders").delete().eq("id", order.id),
     ])
+    await supabase.from("orders").delete().eq("id", order.id)
     res.status(502).json({ error: "Payment gateway error" }); return
   }
 
