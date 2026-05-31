@@ -58,7 +58,6 @@ reviewsPublicRouter.post("/", requireAuth, async (req: Request<ReviewParams>, re
     .from("product_reviews")
     .insert({
       product_id: productId,
-      user_id: userId,
       rating: parsed.data.rating,
       content: parsed.data.content,
       author_name: authorName,
