@@ -1,9 +1,40 @@
 import { notFound } from "next/navigation"
 import { CategoryHero } from "@/components/category/CategoryHero"
+import { BannerCarousel } from "@/components/catalog/BannerCarousel"
 import { FeatureBlocks, type FeatureBlock } from "@/components/category/FeatureBlocks"
 import { RelatedPosts, type RelatedPost } from "@/components/category/RelatedPosts"
 import { ProductGrid } from "@/components/catalog/ProductGrid"
 import { getProducts, getCategories } from "@/lib/catalog"
+
+const PROTEIN_SLIDES = [
+  {
+    src: "/shop/protein-banners/3.jpg",
+    alt: "植物蛋白粉 可可",
+    title: "誠真生活植物蛋白粉",
+    body: [
+      "從古早味杏仁茶出發的未來營養學",
+      "一杯喝得到誠意與初心的高蛋白。\n滋養身心，也滋養生活。",
+    ],
+  },
+  {
+    src: "/shop/protein-banners/5.jpg",
+    alt: "植物蛋白粉 黑芝麻",
+    title: "營養可以誠實，風味可以真實",
+    body: [
+      "以大豆、豌豆、米蛋白為基底，\n結合真實凍乾水果，保留纖維與自然香氣。\n無香料、無添加糖，只保留食物本身的原味。",
+    ],
+  },
+  {
+    src: "/shop/protein-banners/4.jpg",
+    alt: "植物蛋白粉 草莓",
+    title: "從街角的杏仁香，到未來的營養學",
+    body: [
+      "我們邀請深耕三十餘年的杏仁茶堅果穀粉專家，\n以植物為本、以真實食材為魂，\n將傳統的溫潤滋味，化為現代的營養力。",
+      "每一口，都喝得到真實的凍乾水果——\n沒有多餘修飾，只有食物的本味與濃厚的誠意。",
+      "一份來自台灣的實在創新\n為每一個年齡的身與心，注入溫潤又堅定的力量。",
+    ],
+  },
+]
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -44,8 +75,10 @@ export default async function CategoryLandingPage({
 
   const { category, posts } = landing
 
+  const isProtein = slug === "plant-based-powder"
+
   const [{ data: products }, categories] = await Promise.all([
-    getProducts({ category: slug, limit: 24 }),
+    getProducts({ category: slug, limit: 24, sort: "price_desc" }),
     getCategories(),
   ])
 
@@ -54,11 +87,15 @@ export default async function CategoryLandingPage({
 
   return (
     <div className="min-h-screen bg-white">
-      <CategoryHero
-        bannerUrl={category.banner_url}
-        tagline={tagline}
-        subtitle={category.subtitle}
-      />
+      {isProtein ? (
+        <BannerCarousel slides={PROTEIN_SLIDES} />
+      ) : (
+        <CategoryHero
+          bannerUrl={category.banner_url}
+          tagline={tagline}
+          subtitle={category.subtitle}
+        />
+      )}
 
       {blocks.length > 0 && <FeatureBlocks blocks={blocks} />}
 
