@@ -5,6 +5,15 @@ import { ProductGrid, ProductGridSkeleton } from "@/components/catalog/ProductGr
 import { CategoryFilter } from "@/components/catalog/CategoryFilter"
 import { SortSelect } from "@/components/catalog/SortSelect"
 import { Pagination } from "@/components/catalog/Pagination"
+import { BannerCarousel } from "@/components/catalog/BannerCarousel"
+
+const PROTEIN_BANNERS = [
+  { src: "/shop/protein-banners/1.jpg", alt: "植物蛋白粉 原味" },
+  { src: "/shop/protein-banners/2.jpg", alt: "植物蛋白粉 原味火龍果" },
+  { src: "/shop/protein-banners/3.jpg", alt: "植物蛋白粉 可可" },
+  { src: "/shop/protein-banners/4.jpg", alt: "植物蛋白粉 草莓" },
+  { src: "/shop/protein-banners/5.jpg", alt: "植物蛋白粉 黑芝麻" },
+]
 
 export const metadata = {
   title: "商品目錄",
@@ -23,7 +32,7 @@ export default async function ShopPage({
   // products; treat it as "no filter" so users always see everything.
   const category = rawCategory && rawCategory !== "all" ? rawCategory : undefined
   const currentPage = page ? Number(page) : 1
-  const sortOption = (sort as SortOption) || "newest"
+  const sortOption = (sort as SortOption) || "price_desc"
 
   const [categories, { data: products, total }] = await Promise.all([
     getCategories(),
@@ -36,10 +45,16 @@ export default async function ShopPage({
 
   // Find current category name for section heading
   const currentCategory = categories.find(c => c.slug === category)
+  const isProteinCategory = currentCategory?.slug === "plant-based-powder"
 
   return (
     <div className="min-h-screen bg-white">
       <div className="container mx-auto px-4 py-12 max-w-7xl">
+        {/* Protein banner carousel */}
+        {isProteinCategory && (
+          <BannerCarousel images={PROTEIN_BANNERS} />
+        )}
+
         {/* Page heading */}
         <h1 className="text-3xl md:text-4xl font-bold text-center mb-2 tracking-tight" style={{ color: "#10305a" }}>
           {currentCategory ? currentCategory.name : "所有商品"}
