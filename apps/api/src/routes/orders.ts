@@ -531,7 +531,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       order_id: order.id,
       gateway: paymentMethod,
       gateway_tx_id: gatewayTxId,
-      amount: totalCents,
+      amount: Math.round(totalCents / 100),
       status: "pending",
     })
 
