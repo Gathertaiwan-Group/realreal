@@ -571,12 +571,35 @@ ordersRouter.get("/:id", requireAuth, async (req, res) => {
     supabase.from("payments").select("*").eq("order_id", orderId).order("created_at", { ascending: false }).limit(1),
   ])
 
+  const addr = addresses?.[0] ?? null
   res.json({
     data: {
-      order,
-      items: items ?? [],
-      address: addresses?.[0] ?? null,
-      payment: payments?.[0] ?? null,
+      id: order.id,
+      order_number: order.order_number,
+      created_at: order.created_at,
+      status: order.status,
+      total: Math.round(Number(order.total) / 100),
+      subtotal: Math.round(Number(order.subtotal) / 100),
+      shipping_fee: Math.round(Number(order.shipping_fee) / 100),
+      discount_amount: Math.round(Number(order.discount_amount) / 100),
+      payment_method: order.payment_method ?? "",
+      payment_status: order.payment_status ?? "pending",
+      shipping_method: order.shipping_method ?? "",
+      shipping_status: (order as Record<string, unknown>).shipping_status as string ?? "pending",
+      address: addr ? {
+        name: addr.name,
+        phone: addr.phone,
+        city: addr.city,
+        postal_code: addr.postal_code,
+        address_type: addr.address_type,
+        address: addr.address,
+      } : null,
+      items: (items ?? []).map((item: Record<string, unknown>) => ({
+        id: item.id,
+        qty: item.qty,
+        unit_price: Math.round(Number(item.unit_price) / 100),
+        product_snapshot: item.product_snapshot,
+      })),
     },
   })
 })
@@ -599,7 +622,7 @@ ordersRouter.get("/", requireAuth, async (req, res) => {
   if (error) { res.status(500).json({ error: error.message }); return }
 
   res.json({
-    data: data ?? [],
+    data: (data ?? []).map((o: Record<string, unknown>) => ({ ...o, total: Math.round(Number(o.total) / 100) })),
     pagination: { page, limit, total: count ?? 0 },
   })
 })

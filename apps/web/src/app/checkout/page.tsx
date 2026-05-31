@@ -225,6 +225,30 @@ export default function CheckoutPage() {
             : prev,
         )
       }
+
+      // Pre-fill address from the most recent home-delivery order address
+      const { data: recentOrders } = await supabase
+        .from("orders")
+        .select("id")
+        .eq("user_id", user.id)
+        .order("created_at", { ascending: false })
+        .limit(10)
+      if (cancelled || !recentOrders?.length) return
+      const { data: lastAddr } = await supabase
+        .from("order_addresses")
+        .select("name, phone, city, postal_code, address")
+        .in("order_id", recentOrders.map((o: { id: string }) => o.id))
+        .eq("address_type", "home")
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (cancelled || !lastAddr) return
+      const a = lastAddr as { name: string | null; phone: string | null; city: string | null; postal_code: string | null; address: string | null }
+      if (!name && a.name) setName(a.name)
+      if (!phone && a.phone) setPhone(a.phone)
+      if (a.city) setCity(a.city)
+      if (a.postal_code) setPostalCode(a.postal_code)
+      if (a.address) setAddressLine(a.address)
     })()
     return () => {
       cancelled = true
