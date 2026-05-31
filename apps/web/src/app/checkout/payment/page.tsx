@@ -423,40 +423,6 @@ export default function PaymentPage() {
             </div>
           </section>
 
-          {/* Payment Method Cards */}
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold border-b pb-2">付款方式</h2>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              {PAYMENT_OPTIONS.map(option => {
-                const selected = paymentMethod === option.value
-                return (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setPaymentMethod(option.value)}
-                    className={`relative flex flex-col items-center gap-2 rounded-lg border-2 p-4 text-center transition-all ${
-                      selected
-                        ? "shadow-sm"
-                        : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50"
-                    }`}
-                    style={selected ? { borderColor: "#10305a", backgroundColor: "rgba(16,48,90,0.05)" } : undefined}
-                  >
-                    {selected && (
-                      <span className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full text-white text-xs" style={{ backgroundColor: "#10305a" }}>
-                        ✓
-                      </span>
-                    )}
-                    <span className="text-2xl">{option.icon}</span>
-                    <span className="font-medium text-sm">{option.label}</span>
-                    {option.note && (
-                      <span className="text-[11px] text-zinc-400 leading-tight">{option.note}</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </section>
-
           {/* Coupon Code */}
           <section className="space-y-3">
             <h2 className="text-lg font-semibold border-b pb-2">優惠碼</h2>
@@ -546,6 +512,40 @@ export default function PaymentPage() {
               )}
             </section>
           )}
+
+          {/* Payment Method Cards */}
+          <section className="space-y-4">
+            <h2 className="text-lg font-semibold border-b pb-2">付款方式</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {PAYMENT_OPTIONS.map(option => {
+                const selected = paymentMethod === option.value
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    onClick={() => setPaymentMethod(option.value)}
+                    className={`relative flex flex-col items-center gap-2 rounded-lg border-2 p-4 text-center transition-all ${
+                      selected
+                        ? "shadow-sm"
+                        : "border-zinc-200 hover:border-zinc-300 hover:bg-zinc-50"
+                    }`}
+                    style={selected ? { borderColor: "#10305a", backgroundColor: "rgba(16,48,90,0.05)" } : undefined}
+                  >
+                    {selected && (
+                      <span className="absolute top-2 right-2 flex h-5 w-5 items-center justify-center rounded-full text-white text-xs" style={{ backgroundColor: "#10305a" }}>
+                        ✓
+                      </span>
+                    )}
+                    <span className="text-2xl">{option.icon}</span>
+                    <span className="font-medium text-sm">{option.label}</span>
+                    {option.note && (
+                      <span className="text-[11px] text-zinc-400 leading-tight">{option.note}</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </section>
 
           {/* Mobile Order Total */}
           <div className="lg:hidden rounded-lg border bg-zinc-50/50 p-4">
