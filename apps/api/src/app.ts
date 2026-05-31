@@ -43,6 +43,7 @@ import { pointsRouter } from "./routes/points"
 import { kolsRouter } from "./routes/kols"
 import { adminKolsRouter } from "./routes/admin-kols"
 import { requireInternal } from "./middleware/internal"
+import { supabase } from "./lib/supabase"
 
 export const app = express()
 
@@ -118,7 +119,6 @@ app.use("/kols", kolsRouter)
 app.use("/admin/kols", adminKolsRouter)
 
 // TEMP: one-shot DB patch — remove after use
-import { supabase } from "./lib/supabase"
 app.post("/internal/db-patch", requireInternal, async (_req, res) => {
   const GIFT_CAT_ID = "c6489e2f-1a47-45fc-ac39-034b177ccd06"
   const PRODUCT_IDS = [
