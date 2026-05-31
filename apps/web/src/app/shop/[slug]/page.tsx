@@ -4,6 +4,8 @@ import { ChevronRight } from "lucide-react"
 import { getProductBySlug, getCategories } from "@/lib/catalog"
 import { AddToCartSection } from "@/components/product/AddToCartSection"
 import { ImageGallery } from "@/components/product/ImageGallery"
+import { ReviewForm } from "@/components/product/ReviewForm"
+import { createClient } from "@/lib/supabase/server"
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
 const BULLET_CHARS = "✔✅✓▪▸•◆■◉"
@@ -91,6 +93,8 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
   const [product, categories] = await Promise.all([getProductBySlug(slug), getCategories()])
   if (!product) notFound()
 
@@ -220,6 +224,14 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 常見問題
               </Link>
             </div>
+          </div>
+        )}
+
+        {/* Reviews */}
+        {session && (
+          <div className="mt-14 max-w-[640px]">
+            <h2 className="text-lg font-semibold mb-4" style={{ color: "#10305a" }}>撰寫評價</h2>
+            <ReviewForm productId={product.id} token={session.access_token} />
           </div>
         )}
 
