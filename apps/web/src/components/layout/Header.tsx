@@ -7,7 +7,13 @@ import { Menu, X, User, ChevronDown } from "lucide-react"
 import { CartButton } from "@/components/cart/CartButton"
 import type { Category } from "@/lib/catalog"
 
-export function Header({ categories }: { categories: Category[] }) {
+export function Header({
+  categories,
+  headerUser,
+}: {
+  categories: Category[]
+  headerUser: { initial: string } | null
+}) {
   // 了解產品 dropdown children come from DB (spec P).
   // - Skip "all" (WooCommerce legacy)
   // - Hide categories with 0 products (user choice; empty pages hidden until populated)
@@ -152,13 +158,28 @@ export function Header({ categories }: { categories: Category[] }) {
           {/* Right side icons */}
           <div className="flex items-center gap-1">
             <CartButton />
-            <Link
-              href="/my-account"
-              aria-label="我的帳戶"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-gray-100"
-            >
-              <User className="h-5 w-5" style={{ color: "#10305a" }} />
-            </Link>
+            {headerUser ? (
+              <Link
+                href="/my-account"
+                aria-label={`我的帳戶（${headerUser.initial}）`}
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md transition-opacity hover:opacity-90"
+              >
+                <span
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-white"
+                  style={{ backgroundColor: "#10305a" }}
+                >
+                  {headerUser.initial}
+                </span>
+              </Link>
+            ) : (
+              <Link
+                href="/auth/login?redirect=/my-account"
+                aria-label="登入"
+                className="inline-flex h-10 w-10 items-center justify-center rounded-md transition-colors hover:bg-gray-100"
+              >
+                <User className="h-5 w-5" style={{ color: "#10305a" }} />
+              </Link>
+            )}
 
             {/* Mobile hamburger */}
             <button

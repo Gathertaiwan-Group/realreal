@@ -678,6 +678,10 @@ export default function AdminCampaignsPage() {
     const type = fd.get("type") as string
     const form = e.currentTarget
 
+    // datetime-local input returns "YYYY-MM-DDTHH:mm" (no timezone);
+    // API schema requires ISO 8601 with timezone — normalise via Date.
+    const startsAtRaw = (fd.get("starts_at") as string) || ""
+    const endsAtRaw = (fd.get("ends_at") as string) || ""
     startTransition(async () => {
       try {
         const res = await adminFetch(`${API_URL}/admin/campaigns`, {
@@ -690,8 +694,8 @@ export default function AdminCampaignsPage() {
             type,
             config: extractConfig(fd, "c", type),
             is_active: fd.get("is_active") === "on",
-            starts_at: fd.get("starts_at"),
-            ends_at: (fd.get("ends_at") as string) || null,
+            starts_at: startsAtRaw ? new Date(startsAtRaw).toISOString() : new Date().toISOString(),
+            ends_at: endsAtRaw ? new Date(endsAtRaw).toISOString() : null,
           }),
         })
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? "建立失敗")
@@ -713,6 +717,9 @@ export default function AdminCampaignsPage() {
     const fd = new FormData(e.currentTarget)
     const type = fd.get("type") as string
 
+    // Same datetime-local → ISO normalisation as handleCreate.
+    const startsAtRaw = (fd.get("starts_at") as string) || ""
+    const endsAtRaw = (fd.get("ends_at") as string) || ""
     startTransition(async () => {
       try {
         const res = await adminFetch(`${API_URL}/admin/campaigns/${id}`, {
@@ -725,8 +732,8 @@ export default function AdminCampaignsPage() {
             type,
             config: extractConfig(fd, "e", type),
             is_active: fd.get("is_active") === "on",
-            starts_at: fd.get("starts_at"),
-            ends_at: (fd.get("ends_at") as string) || null,
+            starts_at: startsAtRaw ? new Date(startsAtRaw).toISOString() : new Date().toISOString(),
+            ends_at: endsAtRaw ? new Date(endsAtRaw).toISOString() : null,
           }),
         })
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message ?? "更新失敗")
