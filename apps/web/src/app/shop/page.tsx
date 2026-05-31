@@ -7,6 +7,35 @@ import { SortSelect } from "@/components/catalog/SortSelect"
 import { Pagination } from "@/components/catalog/Pagination"
 import { BannerCarousel } from "@/components/catalog/BannerCarousel"
 
+const FRUIT_SLIDES = [
+  {
+    src: "/shop/fruit-banners/1.jpg",
+    alt: "凍乾草莓",
+    title: "為你的笑容，鎖住每一口純粹",
+    body: [
+      "孩子的笑容，是世界上最純粹的能量。",
+      "每一顆凍乾水果，都是對這份純粹的承諾。",
+    ],
+  },
+  {
+    src: "/shop/fruit-banners/2.jpg",
+    alt: "凍乾無花果",
+    title: "先進凍乾技術，完整鎖住營養",
+    body: [
+      "完整保留維生素、膳食纖維與微量元素。\n無化學添加劑，孩子吃得健康，大人放心。",
+    ],
+  },
+  {
+    src: "/shop/fruit-banners/3.jpg",
+    alt: "凍乾綜合水果",
+    title: "全年齡皆宜的快樂零食",
+    body: [
+      "早餐配料、下午茶點心、隨身零食或戶外探險食糧",
+      "真正的美味不只是味蕾的享受，更是大家共享的幸福感。",
+    ],
+  },
+]
+
 const PROTEIN_SLIDES = [
   {
     src: "/shop/protein-banners/3.jpg",
@@ -68,13 +97,17 @@ export default async function ShopPage({
   // Find current category name for section heading
   const currentCategory = categories.find(c => c.slug === category)
   const isProteinCategory = currentCategory?.slug === "plant-based-powder"
+  const isFruitCategory = currentCategory?.slug === "freeze-dried"
 
   return (
     <div className="min-h-screen bg-white">
       <div className="container mx-auto px-4 py-12 max-w-7xl">
-        {/* Protein banner carousel */}
+        {/* Category banner carousels */}
         {isProteinCategory && (
           <BannerCarousel slides={PROTEIN_SLIDES} />
+        )}
+        {isFruitCategory && (
+          <BannerCarousel slides={FRUIT_SLIDES} />
         )}
 
         {/* Page heading */}
