@@ -191,26 +191,99 @@ export default function CheckoutPage() {
     setHydrated(true)
   }, [])
 
-  // 2b. Pre-fill email from the logged-in account if the user hasn't typed
-  //     one yet. Required email + auto-fill = guaranteed delivery without
-  //     friction for return customers. Imported lazily to avoid pulling
-  //     the supabase client into SSR.
+  // 2b. Pre-fill email + name + phone + tax_id from the logged-in account
+  //     (spec R). Required fields + auto-fill = no re-typing for return
+  //     customers. Lazy import keeps the supabase client out of SSR bundle.
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      if (email) return // user already has something (draft restore or typing)
       const { createClient } = await import("@/lib/supabase/client")
       const supabase = createClient()
       const { data } = await supabase.auth.getUser()
       if (cancelled) return
-      const authEmail = data.user?.email
-      if (authEmail && !email) setEmail(authEmail)
+      const user = data.user
+      if (!user) return
+
+      if (!email && user.email) setEmail(user.email)
+
+      // Fetch profile fields for name / phone / tax_id prefill
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("display_name, phone, tax_id")
+        .eq("user_id", user.id)
+        .maybeSingle()
+      if (cancelled || !profile) return
+      const p = profile as { display_name: string | null; phone: string | null; tax_id: string | null }
+      if (!name && p.display_name) setName(p.display_name)
+      if (!phone && p.phone) setPhone(p.phone)
+      if (p.tax_id) {
+        // Upgrade to B2B invoice with the saved tax id when user hasn't picked another option.
+        setInvoice(prev =>
+          prev.type === "B2C_2" && !prev.taxId
+            ? { ...prev, type: "B2B", taxId: p.tax_id ?? undefined }
+            : prev,
+        )
+      }
     })()
     return () => {
       cancelled = true
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // 2c. Spec R Section 1 — call POST /orders/preview whenever cart or shipping
+  //     changes so the summary can show 首購折抵 / 滿額贈品 / 等活動 lines BEFORE
+  //     the user pays. Debounced 300ms.
+  const [preview, setPreview] = useState<{
+    subtotal: number
+    shipping: number
+    discount_total: number
+    discounts: Array<{ campaign_id: string; name: string; amount: number; type: string }>
+    total: number
+  } | null>(null)
+  useEffect(() => {
+    if (items.length === 0) {
+      setPreview(null)
+      return
+    }
+    const t = setTimeout(async () => {
+      try {
+        const { createClient } = await import("@/lib/supabase/client")
+        const supabase = createClient()
+        const { data } = await supabase.auth.getSession()
+        const token = data.session?.access_token
+        const shippingMethodMap: Record<string, string> = {
+          "711": "cvs_711",
+          family: "cvs_family",
+          home_delivery: "home_delivery",
+        }
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+        const res = await fetch(`${apiUrl}/orders/preview`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            items: items.map(i => ({
+              variantId: i.variantId,
+              qty: i.qty,
+              unitPrice: Math.round(i.price * 100),
+              productName: i.productName,
+              variantName: i.variantName,
+            })),
+            shippingMethod: shippingMethodMap[shippingMethod] ?? "home_delivery",
+          }),
+        })
+        if (!res.ok) { setPreview(null); return }
+        const json = await res.json()
+        setPreview(json.data ?? null)
+      } catch {
+        setPreview(null)  // network blip: hide discount lines, keep raw total
+      }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [items, shippingMethod])
 
   // 3. Listen for postMessage from the ECPay store-picker popup.
   //    Origin guard prevents third-party tabs from injecting fake selections.
@@ -408,8 +481,13 @@ export default function CheckoutPage() {
   if (!hydrated) return null
 
   const subtotal = total()
-  const shippingFee = getShippingFee(shippingMethod, subtotal)
-  const grandTotal = subtotal + shippingFee
+  const localShippingFee = getShippingFee(shippingMethod, subtotal)
+  // Prefer server-computed values from preview (includes campaign-applied free
+  // shipping + first-purchase / 滿額贈 etc. discount lines). Fall back to local
+  // calc while preview is still in-flight or has errored.
+  const shippingFee = preview?.shipping ?? localShippingFee
+  const grandTotal = preview?.total ?? subtotal + localShippingFee
+  const discountLines = preview?.discounts ?? []
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
@@ -699,6 +777,12 @@ export default function CheckoutPage() {
                       <span>商品小計</span>
                       <span>NT$ {subtotal.toLocaleString()}</span>
                     </div>
+                    {discountLines.map(d => (
+                      <div key={d.campaign_id} className="flex justify-between text-emerald-700">
+                        <span>{d.name}</span>
+                        <span>- NT$ {d.amount.toLocaleString()}</span>
+                      </div>
+                    ))}
                     <div className="flex justify-between text-zinc-500">
                       <span>運費</span>
                       <span>{shippingFee === 0 ? "免運" : `NT$ ${shippingFee.toLocaleString()}`}</span>
@@ -752,6 +836,12 @@ export default function CheckoutPage() {
                   <span>商品小計</span>
                   <span>NT$ {subtotal.toLocaleString()}</span>
                 </div>
+                {discountLines.map(d => (
+                  <div key={d.campaign_id} className="flex justify-between text-emerald-700 font-medium">
+                    <span>{d.name}</span>
+                    <span>- NT$ {d.amount.toLocaleString()}</span>
+                  </div>
+                ))}
                 <div className="flex justify-between text-zinc-500">
                   <span>運費（{SHIPPING_LABELS[shippingMethod]}）</span>
                   <span>{shippingFee === 0 ? "免運" : `NT$ ${shippingFee.toLocaleString()}`}</span>

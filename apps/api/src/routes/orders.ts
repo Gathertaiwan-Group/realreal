@@ -45,6 +45,127 @@ const createOrderSchema = z.object({
   couponCode: z.string().optional(),
 })
 
+// POST /orders/preview — price-only preview (subtotal + campaigns + total).
+// No order is created, no inventory locked. Frontend calls on cart/shipping
+// change so the checkout summary can show 首購折抵 / 滿額贈品 / 等活動 lines
+// BEFORE the user pays. Spec R Section 1.
+//
+// optionalAuth: logged-in users get campaign eval with their user_id (enables
+// first_purchase / birthday / tier-specific campaigns). Guests get the
+// "no user_id" path (most campaigns still fire on cart-level conditions).
+ordersRouter.post("/preview", optionalAuth, async (req, res) => {
+  const previewSchema = z.object({
+    items: z.array(orderItemSchema).min(1),
+    shippingMethod: z.enum(["home_delivery", "cvs_711", "cvs_family"]).default("home_delivery"),
+    couponCode: z.string().optional(),
+  })
+  const parsed = previewSchema.safeParse(req.body)
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return }
+  const { items, shippingMethod } = parsed.data
+  const userId: string | undefined = res.locals.userId
+
+  const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
+  const shippingFees: Record<string, number> = { home_delivery: 100, cvs_711: 60, cvs_family: 60 }
+  let shippingFeeCents = shippingFees[shippingMethod] ?? 100
+
+  // Fetch user profile fields needed by evaluator (tier, birthday, created_at)
+  let profileTierId: string | null = null
+  let profileBirthday: string | null = null
+  let profileCreatedAt: string | null = null
+  if (userId) {
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("membership_tier_id, birthday, created_at")
+      .eq("user_id", userId)
+      .maybeSingle()
+    if (profile) {
+      profileTierId = (profile as { membership_tier_id: string | null }).membership_tier_id
+      profileBirthday = (profile as { birthday: string | null }).birthday
+      profileCreatedAt = (profile as { created_at: string | null }).created_at
+    }
+  }
+
+  // Build variant lookup for category_id (campaign scope matching)
+  const variantIds = items.map((i) => i.variantId)
+  const { data: variantRows } = await supabase
+    .from("product_variants")
+    .select("id, sku, name, product_id, products(category_id, name)")
+    .in("id", variantIds)
+  type VariantRow = {
+    id: string
+    sku: string | null
+    name: string
+    product_id: string
+    products: { category_id: string | null; name: string | null } | null
+  }
+  const variantMap = new Map<string, VariantRow>()
+  for (const row of (variantRows ?? []) as unknown as VariantRow[]) {
+    variantMap.set(row.id, row)
+  }
+  const cartItems: CartItem[] = items.map((item) => {
+    const v = variantMap.get(item.variantId)
+    return {
+      product_id: v?.product_id ?? "",
+      variant_id: item.variantId,
+      category_id: v?.products?.category_id ?? null,
+      sku: v?.sku ?? null,
+      name: item.productName ?? v?.products?.name ?? v?.name ?? "",
+      unit_price: item.unitPrice / 100,
+      qty: item.qty,
+    }
+  })
+
+  const evaluatorCtx: EvaluatorContext = {
+    user: {
+      id: userId ?? "",
+      tier_id: profileTierId,
+      birthday: profileBirthday,
+      created_at: profileCreatedAt,
+    },
+    cart: {
+      items: cartItems,
+      subtotal: subtotalCents / 100,
+      shipping_fee: shippingFeeCents / 100,
+    },
+  }
+  const campaignResults = await evaluateAllCampaigns(evaluatorCtx)
+
+  let discountCents = 0
+  const freeItems: FreeItem[] = []
+  const discounts: Array<{ campaign_id: string; name: string; amount: number; type: string }> = []
+  const freeShippingNames: string[] = []
+  for (const r of campaignResults) {
+    if (!r.applied) continue
+    if (r.discount_amount && r.discount_amount > 0) {
+      discountCents += Math.round(r.discount_amount * 100)
+      discounts.push({
+        campaign_id: r.campaign_id,
+        name: r.campaign_name,
+        amount: r.discount_amount,
+        type: r.type,
+      })
+    }
+    if (r.free_items?.length) freeItems.push(...r.free_items)
+    if (r.zero_shipping) {
+      shippingFeeCents = 0
+      freeShippingNames.push(r.campaign_name)
+    }
+  }
+
+  const totalCents = Math.max(0, subtotalCents + shippingFeeCents - discountCents)
+  res.json({
+    data: {
+      subtotal: subtotalCents / 100,
+      shipping: shippingFeeCents / 100,
+      discount_total: discountCents / 100,
+      discounts,
+      free_items: freeItems,
+      free_shipping_names: freeShippingNames,
+      total: totalCents / 100,
+    },
+  })
+})
+
 // POST /orders — create order from cart items.
 // optionalAuth: if a Bearer token is present, the order is linked to that
 // user; if absent, the order is created as a guest checkout (user_id=null,
