@@ -65,13 +65,24 @@ export async function requestPayment(
     },
     body,
   })
-  const data = await response.json() as Record<string, any>
+  // Read raw text first — LINE Pay's transactionId is a 19-digit integer that
+  // exceeds JS Number.MAX_SAFE_INTEGER. JSON.parse() would silently round it,
+  // causing the stored gateway_tx_id to mismatch the value LINE Pay sends back
+  // in the redirect URL (e.g. 2026053158491409700 → 2026053158491409664).
+  const responseText = await response.text()
+  const txIdMatch = responseText.match(/"transactionId"\s*:\s*(\d+)/)
+  const rawTxId = txIdMatch?.[1] ?? null
+
+  const data = JSON.parse(responseText) as Record<string, any>
   if (data.returnCode !== "0000") {
     throw new Error(`LINE Pay error: ${data.returnCode} ${data.returnMessage}`)
   }
+  if (!rawTxId) {
+    throw new Error("LINE Pay error: transactionId missing from response")
+  }
   return {
     paymentUrl: data.info.paymentUrl.web as string,
-    transactionId: String(data.info.transactionId),
+    transactionId: rawTxId,
   }
 }
 

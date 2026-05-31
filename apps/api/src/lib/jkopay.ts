@@ -17,7 +17,7 @@ async function getCreds() {
     apiKey,
     secretKey,
     baseUrl:
-      sandbox === "true" ? "https://uat-api.jkopay.com" : "https://api.jkopay.com",
+      sandbox === "true" ? "https://uat-onlinepay.jkopay.app" : "https://onlinepay.jkopay.com",
   }
 }
 

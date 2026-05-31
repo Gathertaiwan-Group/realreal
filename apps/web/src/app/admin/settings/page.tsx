@@ -57,7 +57,7 @@ const FIELD_META: Record<
   "jkopay.store_id":   { label: "Store ID" },
   "jkopay.api_key":    { label: "API Key" },
   "jkopay.secret_key": { label: "Secret Key" },
-  "jkopay.sandbox":    { label: "沙箱模式", type: "switch" },
+  "jkopay.sandbox":    { label: "沙箱模式", type: "switch", hint: "關閉 = 正式 onlinepay.jkopay.com｜開啟 = 測試 uat-onlinepay.jkopay.app" },
   // ECPay
   "ecpay.merchant_id":    { label: "Merchant ID" },
   "ecpay.hash_key":       { label: "Hash Key" },
