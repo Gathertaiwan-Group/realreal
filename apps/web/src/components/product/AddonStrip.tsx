@@ -37,7 +37,7 @@ async function fetchAddons(
   ]
   for (const url of candidates) {
     try {
-      const res = await fetch(url, { next: { revalidate: 300 } })
+      const res = await fetch(url)
       if (!res.ok) continue
       const json = (await res.json()) as { data?: ApiProduct[] }
       const out: AddonProduct[] = []
@@ -81,10 +81,11 @@ export function AddonStrip({
   const addItem = useCart((s) => s.addItem)
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
+  const excludeKey = excludeVariantIds.join(",")
   useEffect(() => {
     fetchAddons(apiUrl, excludeVariantIds, limit).then(setProducts)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [apiUrl, excludeKey, limit])
 
   if (products.length === 0) return null
 
