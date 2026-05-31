@@ -105,6 +105,7 @@ export default function PaymentPage() {
   const [memberDiscount, setMemberDiscount] = useState<{ discountRate: number; tierName: string | null }>({ discountRate: 0, tierName: null })
 
   // Points redemption state
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [pointsBalance, setPointsBalance] = useState(0)
   const [pointsInput, setPointsInput] = useState<string>("")
   const [pointsUsed, setPointsUsed] = useState(0)
@@ -159,6 +160,7 @@ export default function PaymentPage() {
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.access_token) return
 
+        setIsLoggedIn(true)
         const res = await fetch(`${API_URL}/points/balance`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
         })
@@ -455,48 +457,53 @@ export default function PaymentPage() {
             )}
           </section>
 
-          {/* Points Redemption — hidden when balance is 0 */}
-          {pointsBalance > 0 && (
+          {/* Points Redemption — shown for all logged-in users to build awareness */}
+          {isLoggedIn && (
             <section className="space-y-3">
               <h2 className="text-lg font-semibold border-b pb-2">公益點折抵</h2>
               <p className="text-sm text-zinc-600">
-                你目前有 <span className="font-semibold">{pointsBalance.toLocaleString()}</span> 點（= NT$ {Math.floor(pointsBalance * pointsRatio).toLocaleString()}）
+                你目前有 <span className="font-semibold">{pointsBalance.toLocaleString()}</span> 點
+                {pointsBalance > 0 && `（= NT$ ${Math.floor(pointsBalance * pointsRatio).toLocaleString()}）`}
               </p>
-              <div className="flex gap-2 items-center">
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  max={pointsBalance}
-                  placeholder="使用點數"
-                  value={pointsInput}
-                  onChange={e => {
-                    const raw = e.target.value
-                    if (raw === "") {
-                      setPointsInput("")
-                      return
-                    }
-                    const n = Number.parseInt(raw, 10)
-                    if (!Number.isFinite(n)) {
-                      setPointsInput("")
-                      return
-                    }
-                    const clamped = Math.max(0, Math.min(pointsBalance, n))
-                    setPointsInput(String(clamped))
-                  }}
-                  disabled={pointsBlockedByCoupon}
-                  className="max-w-xs"
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setPointsInput(String(pointsBalance))}
-                  disabled={pointsBlockedByCoupon}
-                >
-                  全部使用
-                </Button>
-                <span className="text-sm text-zinc-500">點</span>
-              </div>
+              {pointsBalance === 0 ? (
+                <p className="text-sm text-zinc-400">累積消費可獲得公益點，下次購物可折抵金額。</p>
+              ) : (
+                <div className="flex gap-2 items-center">
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    max={pointsBalance}
+                    placeholder="使用點數"
+                    value={pointsInput}
+                    onChange={e => {
+                      const raw = e.target.value
+                      if (raw === "") {
+                        setPointsInput("")
+                        return
+                      }
+                      const n = Number.parseInt(raw, 10)
+                      if (!Number.isFinite(n)) {
+                        setPointsInput("")
+                        return
+                      }
+                      const clamped = Math.max(0, Math.min(pointsBalance, n))
+                      setPointsInput(String(clamped))
+                    }}
+                    disabled={pointsBlockedByCoupon}
+                    className="max-w-xs"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setPointsInput(String(pointsBalance))}
+                    disabled={pointsBlockedByCoupon}
+                  >
+                    全部使用
+                  </Button>
+                  <span className="text-sm text-zinc-500">點</span>
+                </div>
+              )}
               {pointsBlockReason && (
                 <p className="text-sm text-zinc-500">{pointsBlockReason}</p>
               )}
