@@ -487,7 +487,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       const result = await pchomepayCreatePayment({
         orderId: order.id,
         orderNumber: order.order_number,
-        amount: totalCents,
+        amount: Math.round(totalCents / 100),
         itemName: `realreal order #${order.order_number}`,
         returnUrl: confirmUrl,
         notifyUrl: `${apiUrl}/webhooks/pchomepay`,
