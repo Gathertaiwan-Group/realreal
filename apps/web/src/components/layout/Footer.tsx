@@ -1,43 +1,47 @@
 import Link from "next/link"
 import Image from "next/image"
+import type { Category } from "@/lib/catalog"
 
-const FOOTER_LINKS = [
-  {
-    title: "商品",
-    links: [
-      { href: "/category/protein", label: "植物蛋白粉" },
-      { href: "/category/fruit", label: "凍乾水果" },
-      { href: "/shop", label: "全部商品" },
-    ],
-  },
-  {
-    title: "關於",
-    links: [
-      { href: "/about", label: "品牌故事" },
-      { href: "/idea", label: "公益里程" },
-      { href: "/blog", label: "聰明生活" },
-    ],
-  },
-  {
-    title: "會員",
-    links: [
-      { href: "/membership", label: "會員制度" },
-      { href: "/my-account", label: "我的帳戶" },
-      { href: "/my-account/orders", label: "我的訂單" },
-    ],
-  },
-  {
-    title: "客服",
-    links: [
-      { href: "/contact", label: "聯絡我們" },
-      { href: "/faq", label: "常見問題" },
-      { href: "/shipping", label: "配送說明" },
-      { href: "/returns", label: "購物須知" },
-    ],
-  },
-]
+export function Footer({ categories }: { categories: Category[] }) {
+  // Spec P: 商品 column links come from DB (same filter rule as Header).
+  const productLinks = [
+    ...categories
+      .filter((c) => c.slug !== "all")
+      .filter((c) => (c.product_count ?? 0) > 0)
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+      .map((c) => ({ href: `/category/${c.slug}`, label: c.name })),
+    { href: "/shop", label: "全部商品" },
+  ]
 
-export function Footer() {
+  const FOOTER_LINKS = [
+    { title: "商品", links: productLinks },
+    {
+      title: "關於",
+      links: [
+        { href: "/about", label: "品牌故事" },
+        { href: "/idea", label: "公益里程" },
+        { href: "/blog", label: "聰明生活" },
+      ],
+    },
+    {
+      title: "會員",
+      links: [
+        { href: "/membership", label: "會員制度" },
+        { href: "/my-account", label: "我的帳戶" },
+        { href: "/my-account/orders", label: "我的訂單" },
+      ],
+    },
+    {
+      title: "客服",
+      links: [
+        { href: "/contact", label: "聯絡我們" },
+        { href: "/faq", label: "常見問題" },
+        { href: "/shipping", label: "配送說明" },
+        { href: "/returns", label: "購物須知" },
+      ],
+    },
+  ]
+
   return (
     <footer
       className="text-white"

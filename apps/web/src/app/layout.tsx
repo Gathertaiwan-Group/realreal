@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { StorefrontShell } from "@/components/layout/StorefrontShell"
 import { KolRefCapture } from "@/components/KolRefCapture"
 import { Analytics } from "@/components/Analytics"
+import { getCategories } from "@/lib/catalog"
 import "./globals.css"
 
 export const metadata: Metadata = {
@@ -35,7 +36,10 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Fetch categories server-side so Header / Footer can render the dropdown
+  // dynamically from DB (spec P). Already cached for 300s by getCategories().
+  const categories = await getCategories()
   return (
     <html lang="zh-TW">
       <body className="font-sans antialiased">
@@ -43,7 +47,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Suspense fallback={null}>
           <KolRefCapture />
         </Suspense>
-        <StorefrontShell>{children}</StorefrontShell>
+        <StorefrontShell categories={categories}>{children}</StorefrontShell>
         <Toaster />
       </body>
     </html>

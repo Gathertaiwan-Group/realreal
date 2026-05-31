@@ -84,6 +84,7 @@ const TYPE_LABEL: Record<string, string> = {
   tier_upgrade_bonus: "升等加碼",
   combo_discount: "任選N件折扣",
   birthday_bonus: "生日當月優惠",
+  first_purchase: "首購折扣",
 }
 
 /* ---- Quick-import preset templates ---- */
@@ -113,6 +114,7 @@ const PRESET_CATEGORIES: PresetCategory[] = [
       { name: "任選5件8折", description: "凍乾水果任選5件8折", type: "combo_discount", config: { min_items: 5, discount_percent: 20, scope: "specific_categories", category_slug: "freeze-dried", mix_match: true } },
       { name: "第二件半價", description: "全館第二件半價", type: "second_half_price", config: { discount_percent: 50, scope: "all", applies_to: "cheapest", max_pairs: 1 } },
       { name: "第二件6折", description: "蛋白粉第二件6折", type: "second_half_price", config: { discount_percent: 40, scope: "specific_categories", category_slug: "protein", applies_to: "cheapest", max_pairs: 1 } },
+      { name: "首購折 NT$50", description: "新客首次下單折抵 50 元", type: "first_purchase", config: { discount_amount: 50, min_order_amount: 0 } },
     ],
   },
   {
@@ -433,6 +435,25 @@ function ConfigFields({
     )
   }
 
+  if (type === "first_purchase") {
+    return (
+      <>
+        <div className="space-y-1.5">
+          <Label className="text-xs">折抵金額 (NT$)</Label>
+          <Input name={`${prefix}_discount_amount`} type="number" min={0} defaultValue={(config.discount_amount as number) ?? 50} placeholder="50" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">最低訂單金額 (NT$)</Label>
+          <Input name={`${prefix}_min_order_amount`} type="number" min={0} defaultValue={(config.min_order_amount as number) ?? 0} placeholder="0 = 無門檻" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">註冊後 N 天內 (留空 = 永遠首購)</Label>
+          <Input name={`${prefix}_days_since_signup`} type="number" min={0} defaultValue={(config.days_since_signup as number) ?? ""} placeholder="例如 30" />
+        </div>
+      </>
+    )
+  }
+
   // default: raw JSON textarea
   return (
     <div className="space-y-1.5 sm:col-span-2 md:col-span-3">
@@ -510,6 +531,14 @@ function extractConfig(fd: FormData, prefix: string, type: string): Record<strin
     return {
       tier_slug: (fd.get(`${prefix}_tier_slug`) as string) || "",
       bonus_points: Number(fd.get(`${prefix}_bonus_points`)) || 0,
+    }
+  }
+  if (type === "first_purchase") {
+    const days = fd.get(`${prefix}_days_since_signup`) as string
+    return {
+      discount_amount: Number(fd.get(`${prefix}_discount_amount`)) || 50,
+      min_order_amount: Number(fd.get(`${prefix}_min_order_amount`)) || 0,
+      days_since_signup: days ? Number(days) : undefined,
     }
   }
   try {

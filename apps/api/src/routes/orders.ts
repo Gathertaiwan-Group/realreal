@@ -113,14 +113,16 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
   // ---------------------------------------------------------------------------
   let profileTierId: string | null = null
   let profileBirthday: string | null = null
+  let profileCreatedAt: string | null = null
   if (userId) {
     const { data: profile } = await supabase
       .from("user_profiles")
-      .select("membership_tier_id, birthday")
+      .select("membership_tier_id, birthday, created_at")
       .eq("user_id", userId)
       .maybeSingle()
     profileTierId = (profile?.membership_tier_id as string | null) ?? null
     profileBirthday = (profile?.birthday as string | null) ?? null
+    profileCreatedAt = (profile?.created_at as string | null) ?? null
   }
 
   // Fetch variant → product → category mapping for cart items in a single round-trip.
@@ -159,6 +161,7 @@ ordersRouter.post("/", optionalAuth, async (req, res) => {
       id: userId ?? "",
       tier_id: profileTierId,
       birthday: profileBirthday,
+      created_at: profileCreatedAt,
     },
     cart: {
       items: cartItems,

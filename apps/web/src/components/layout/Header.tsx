@@ -2,29 +2,43 @@
 
 import Link from "next/link"
 import Image from "next/image"
-import { useState, useRef, useEffect } from "react"
+import { useState, useRef, useEffect, useMemo } from "react"
 import { Menu, X, User, ChevronDown } from "lucide-react"
 import { CartButton } from "@/components/cart/CartButton"
+import type { Category } from "@/lib/catalog"
 
-const NAV_LINKS = [
-  { href: "/", label: "首頁" },
-  { href: "/about", label: "品牌故事" },
-  {
-    href: "/shop",
-    label: "了解產品",
-    children: [
-      { href: "/category/protein", label: "植物蛋白粉" },
-      { href: "/category/fruit", label: "凍乾水果" },
+export function Header({ categories }: { categories: Category[] }) {
+  // 了解產品 dropdown children come from DB (spec P).
+  // - Skip "all" (WooCommerce legacy)
+  // - Hide categories with 0 products (user choice; empty pages hidden until populated)
+  // - Sort by sort_order
+  const productChildren = useMemo(
+    () =>
+      categories
+        .filter((c) => c.slug !== "all")
+        .filter((c) => (c.product_count ?? 0) > 0)
+        .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+        .map((c) => ({ href: `/category/${c.slug}`, label: c.name })),
+    [categories],
+  )
+
+  const NAV_LINKS = useMemo(
+    () => [
+      { href: "/", label: "首頁" },
+      { href: "/about", label: "品牌故事" },
+      {
+        href: "/shop",
+        label: "了解產品",
+        children: productChildren,
+      },
+      { href: "/faq", label: "常見問題" },
+      { href: "/blog", label: "聰明生活" },
+      { href: "/idea", label: "公益里程" },
+      { href: "/membership", label: "會員制度" },
     ],
-  },
-  { href: "/faq", label: "常見問題" },
-  { href: "/blog", label: "聰明生活" },
-  { href: "/idea", label: "公益里程" },
-  { href: "/membership", label: "會員制度" },
-]
+    [productChildren],
+  )
 
-
-export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [productOpen, setProductOpen] = useState(false)
   const dropdownTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)

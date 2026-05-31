@@ -21,6 +21,8 @@ export type EvaluatorContext = {
     tier_id: string | null
     /** ISO date string (YYYY-MM-DD) or null. */
     birthday: string | null
+    /** ISO timestamp string or null; used by first_purchase optional days_since_signup check. */
+    created_at?: string | null
   }
   cart: {
     items: CartItem[]
@@ -90,6 +92,20 @@ async function getCategoryIdBySlug(slug: string): Promise<string | undefined> {
     return data.id
   }
   return undefined
+}
+
+async function isFirstPurchase(userId: string | null | undefined): Promise<boolean> {
+  if (!userId) return false // guest 不算首購
+  const { count, error } = await supabase
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .in("status", ["processing", "shipped", "completed"])
+  if (error) {
+    console.warn("[first-purchase] check failed:", error.message)
+    return false // fail closed
+  }
+  return (count ?? 0) === 0
 }
 
 async function resolveScopeItems(
@@ -500,6 +516,38 @@ export function evalBirthdayBonus(
   return result
 }
 
+// 12. first_purchase — fixed discount for users with no prior paid orders
+export async function evalFirstPurchase(
+  c: CampaignRow,
+  ctx: EvaluatorContext,
+): Promise<EvaluatorResult> {
+  const cfg = getConfig(c)
+  const discountAmount = asNumber(cfg.discount_amount) ?? 50
+  const minOrderAmount = asNumber(cfg.min_order_amount) ?? 0
+  const daysSinceSignup = asNumber(cfg.days_since_signup) // optional
+
+  // 1) Subtotal threshold
+  if (ctx.cart.subtotal < minOrderAmount) {
+    return notApplied(c, `未達最低訂單金額 NT$${minOrderAmount}`)
+  }
+
+  // 2) First-purchase check (DB)
+  const isFirst = await isFirstPurchase(ctx.user.id)
+  if (!isFirst) return notApplied(c, "不是首購")
+
+  // 3) Optional signup-window check
+  if (daysSinceSignup && ctx.user.created_at) {
+    const daysAgo =
+      (Date.now() - new Date(ctx.user.created_at).getTime()) / 86_400_000
+    if (daysAgo > daysSinceSignup) {
+      return notApplied(c, `超過註冊後 ${daysSinceSignup} 天`)
+    }
+  }
+
+  const discount = Math.min(discountAmount, ctx.cart.subtotal)
+  return { ...applied(c), discount_amount: discount }
+}
+
 /* ============================================================================
  * Dispatcher
  * ========================================================================== */
@@ -531,6 +579,8 @@ export async function evaluateCampaign(
       return evalComboDiscount(c, ctx)
     case "birthday_bonus":
       return evalBirthdayBonus(c, ctx)
+    case "first_purchase":
+      return evalFirstPurchase(c, ctx)
     default:
       return notApplied(c, `未知的 campaign type: ${c.type}`)
   }
