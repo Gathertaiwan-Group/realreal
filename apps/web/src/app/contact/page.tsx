@@ -50,7 +50,7 @@ export default async function ContactPage() {
               </div>
               <div>
                 <dt className="font-medium text-[#10305a]">公司地址</dt>
-                <dd>{address}</dd>
+                <dd>{address}（非對外門市）</dd>
               </div>
             </dl>
           </div>

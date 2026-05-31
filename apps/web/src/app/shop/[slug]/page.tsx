@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
 import { ChevronRight } from "lucide-react"
-import { getProductBySlug } from "@/lib/catalog"
+import { getProductBySlug, getCategories } from "@/lib/catalog"
 import { AddToCartSection } from "@/components/product/AddToCartSection"
 import { ImageGallery } from "@/components/product/ImageGallery"
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
@@ -91,10 +91,13 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const product = await getProductBySlug(slug)
+  const [product, categories] = await Promise.all([getProductBySlug(slug), getCategories()])
   if (!product) notFound()
 
   if (!product.is_active) notFound()
+
+  const productCategory = categories.find(c => c.id === product.category_id)
+  const isProtein = productCategory?.slug === "plant-based-powder"
 
   const images = product.images ?? []
   const mainImage = images[0]
@@ -182,18 +185,43 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
 
-        {/* Product info images (shared 6–14, full-width vertical stack) */}
-        <div className="mt-14">
-          {[6, 7, 8, 9, 10, 11, 12, 13, 14].map((n) => (
-            <img
-              key={n}
-              src={`/product-info/${n}.jpg`}
-              alt={`商品說明 ${n}`}
-              loading="lazy"
-              className="w-full block"
+        {/* 沖泡說明影片 */}
+        <div className="mt-14 flex flex-col items-center gap-4">
+          <h2 className="text-lg font-semibold" style={{ color: "#10305a" }}>沖泡說明</h2>
+          <div className="w-full max-w-[360px] overflow-hidden rounded-2xl shadow-md" style={{ aspectRatio: "9/16" }}>
+            <iframe
+              src="https://www.youtube.com/embed/gkru2H1QJA0"
+              title="沖泡說明影片"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="w-full h-full border-0"
             />
-          ))}
+          </div>
         </div>
+
+        {/* Product info images — protein only */}
+        {isProtein && (
+          <div className="mt-14 max-w-[960px] mx-auto">
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+              <img
+                key={n}
+                src={`/product-info/protein/${n}.jpg`}
+                alt={`商品說明 ${n}`}
+                loading="lazy"
+                className="w-full block"
+              />
+            ))}
+            <div className="flex justify-center py-12">
+              <Link
+                href="/faq"
+                className="inline-flex items-center gap-2 rounded-full px-10 py-4 text-base font-semibold transition-opacity hover:opacity-80"
+                style={{ backgroundColor: "#10305a", color: "#ffffff" }}
+              >
+                常見問題
+              </Link>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>
