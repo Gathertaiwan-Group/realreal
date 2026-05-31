@@ -506,7 +506,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
 
     } else {
       // jkopay
-      const result = await jkoPayInitiatePayment(order.order_number, totalCents)
+      const result = await jkoPayInitiatePayment(order.order_number, Math.round(totalCents / 100))
       paymentUrl = result.paymentUrl
       gatewayTxId = result.merchantTradeNo
     }
