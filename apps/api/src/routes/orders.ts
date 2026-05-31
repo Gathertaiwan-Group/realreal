@@ -374,7 +374,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   // Atomically deduct stock BEFORE creating the order — single RPC that
   // locks all variants and either succeeds or rejects with insufficient_stock.
   // This prevents the per-item race where two checkouts each see "enough left".
-  const variantsPayload = items.map((i) => ({ variant_id: i.variantId, qty: i.qty }))
+  const variantsPayload = items.map((i) => ({ id: i.variantId, qty: i.qty }))
   const stockResp = await supabase.rpc("atomic_deduct_stock", { p_variants: variantsPayload })
   if (stockResp.error) {
     console.error("[orders] atomic_deduct_stock failed:", stockResp.error)
