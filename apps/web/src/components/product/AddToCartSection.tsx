@@ -4,6 +4,7 @@ import { useState } from "react"
 import { Minus, Plus, ShoppingCart } from "lucide-react"
 import { useCart } from "@/lib/cart"
 import { Badge } from "@/components/ui/badge"
+import { AddonStrip } from "./AddonStrip"
 
 type Variant = {
   id: string
@@ -134,6 +135,12 @@ export function AddToCartSection({
           {outOfStock ? "目前缺貨" : "加入購物車"}
         </button>
       </div>
+
+      <AddonStrip
+        excludeVariantIds={variants.map((v) => v.id)}
+        limit={6}
+        title="加購區"
+      />
     </div>
   )
 }
