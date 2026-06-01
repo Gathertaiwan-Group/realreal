@@ -99,6 +99,8 @@ export default function ConfirmPage() {
   const cleanedUp = useRef(false)
 
   const orderNumber = deriveOrderNumber(searchParams) ?? "---"
+  const method = searchParams.get("method")
+  const isCvsCod = method === "cvs_cod"
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("loading")
   const estimatedDelivery = getEstimatedDelivery()
 
@@ -198,6 +200,34 @@ export default function ConfirmPage() {
       items: [],
     })
   }, [paymentStatus, orderNumber])
+
+  if (isCvsCod) {
+    return (
+      <div className="container mx-auto px-4 py-8 max-w-lg">
+        <StepIndicator current={3} />
+        <div className="text-center space-y-6 py-8">
+          <div className="text-6xl">🏪</div>
+          <div className="space-y-2">
+            <h1 className="text-2xl font-bold">訂單已成立！</h1>
+            <p className="text-zinc-500">
+              訂單編號：<span className="font-mono font-medium">{orderNumber}</span>
+            </p>
+          </div>
+          <div className="max-w-sm mx-auto rounded-lg bg-zinc-50 border p-4 text-sm text-zinc-600 space-y-2 text-left">
+            <p className="font-semibold text-zinc-800">📦 超商取貨付款流程</p>
+            <ol className="list-decimal list-inside space-y-1.5 text-zinc-600">
+              <li>包裹寄至您選擇的超商（約 3–5 個工作天）</li>
+              <li>收到超商簡訊通知後，前往取貨</li>
+              <li>取貨時現場付款給店員（現金）</li>
+            </ol>
+          </div>
+          <Link href="/shop">
+            <Button variant="outline">繼續購物</Button>
+          </Link>
+        </div>
+      </div>
+    )
+  }
 
   if (paymentStatus === "loading") {
     return (

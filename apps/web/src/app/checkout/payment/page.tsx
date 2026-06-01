@@ -10,7 +10,7 @@ import { toast } from "sonner"
 import { API_URL } from "@/lib/api-url"
 import type { InvoiceData } from "@/components/checkout/InvoiceSelector"
 
-type PaymentMethod = "pchomepay" | "linepay" | "jkopay"
+type PaymentMethod = "pchomepay" | "linepay" | "jkopay" | "cvs_cod"
 
 type PaymentOption = {
   value: PaymentMethod
@@ -19,12 +19,6 @@ type PaymentOption = {
   color: string
   note?: string
 }
-
-const PAYMENT_OPTIONS: PaymentOption[] = [
-  { value: "pchomepay", label: "PChomePay 支付連", icon: "💳", color: "bg-blue-50 border-blue-200" },
-  { value: "linepay", label: "LINE Pay", icon: "💚", color: "bg-green-50 border-green-200", note: "不支援定期訂閱扣款" },
-  { value: "jkopay", label: "街口支付 JKOPay", icon: "🟠", color: "bg-orange-50 border-orange-200", note: "不支援定期訂閱扣款" },
-]
 
 type CheckoutData = {
   items: { variantId: string; productName: string; variantName: string; price: number; qty: number }[]
@@ -121,6 +115,27 @@ export default function PaymentPage() {
   const [pointsRatio, setPointsRatio] = useState(1)
   const [allowCouponStack, setAllowCouponStack] = useState(true)
   const [pointsApplying, setPointsApplying] = useState(false)
+
+  const isCvsShipping = checkoutData?.shippingMethod === "711" || checkoutData?.shippingMethod === "family"
+
+  const PAYMENT_OPTIONS: PaymentOption[] = [
+    { value: "pchomepay", label: "PChomePay 支付連", icon: "💳", color: "bg-blue-50 border-blue-200" },
+    { value: "linepay", label: "LINE Pay", icon: "💚", color: "bg-green-50 border-green-200", note: "不支援定期訂閱扣款" },
+    { value: "jkopay", label: "街口支付 JKOPay", icon: "🟠", color: "bg-orange-50 border-orange-200", note: "不支援定期訂閱扣款" },
+    ...(isCvsShipping ? [{
+      value: "cvs_cod" as PaymentMethod,
+      label: "超商取貨付款",
+      icon: "🏪",
+      color: "bg-zinc-50 border-zinc-200",
+      note: "到店取貨時付款，由綠界代收"
+    }] : []),
+  ]
+
+  useEffect(() => {
+    if (!isCvsShipping && paymentMethod === "cvs_cod") {
+      setPaymentMethod("pchomepay")
+    }
+  }, [isCvsShipping, paymentMethod])
 
   useEffect(() => {
     const raw = localStorage.getItem("realreal-checkout")
@@ -386,14 +401,21 @@ export default function PaymentPage() {
         data?: { orderId?: string; orderNumber?: string; paymentUrl?: string }
       }
       const paymentUrl = data?.data?.paymentUrl
+      const returnedOrderNumber = data?.data?.orderNumber as string | undefined
 
       if (paymentUrl) {
         // Redirect to payment gateway (PChomePay / LINE Pay / JKOPay).
         // Cart clearing and confirm redirect happen after the payment webhook callback.
         toast.success("正在前往付款頁面...")
         window.location.href = paymentUrl
+      } else if (paymentMethod === "cvs_cod" && returnedOrderNumber) {
+        // CVS COD：訂單已成立，直接跳確認頁（不需線上付款）
+        toast.success("訂單已成立！")
+        // 清空購物車
+        const cartStore = await import("@/lib/cart")
+        cartStore.useCart.getState().clear()
+        router.push(`/checkout/confirm?order=${encodeURIComponent(returnedOrderNumber)}&method=cvs_cod`)
       } else {
-        // paymentUrl should always be present; if missing, show an error
         setError("無法取得付款連結，請稍後再試或聯繫客服")
       }
     } catch (err) {
@@ -568,6 +590,17 @@ export default function PaymentPage() {
               })}
             </div>
           </section>
+
+          {paymentMethod === "cvs_cod" && (
+            <div className="rounded-lg bg-zinc-50 border border-zinc-200 p-3 text-sm text-zinc-600 space-y-1">
+              <p className="font-medium">🏪 超商取貨付款流程</p>
+              <ol className="list-decimal list-inside space-y-0.5 text-xs text-zinc-500">
+                <li>訂單成立後，包裹寄至您選擇的超商</li>
+                <li>超商簡訊通知到貨後，前往取貨</li>
+                <li>取貨時現場付款給店員（現金）</li>
+              </ol>
+            </div>
+          )}
 
           {/* Mobile Order Total */}
           <div className="lg:hidden rounded-lg border bg-zinc-50/50 p-4">
