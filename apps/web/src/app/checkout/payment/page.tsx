@@ -460,13 +460,13 @@ export default function PaymentPage() {
           {/* Points Redemption — shown for all logged-in users to build awareness */}
           {isLoggedIn && (
             <section className="space-y-3">
-              <h2 className="text-lg font-semibold border-b pb-2">公益點折抵</h2>
+              <h2 className="text-lg font-semibold border-b pb-2">公益點數折抵</h2>
               <p className="text-sm text-zinc-600">
                 你目前有 <span className="font-semibold">{pointsBalance.toLocaleString()}</span> 點
                 {pointsBalance > 0 && `（= NT$ ${Math.floor(pointsBalance * pointsRatio).toLocaleString()}）`}
               </p>
               {pointsBalance === 0 ? (
-                <p className="text-sm text-zinc-400">累積消費可獲得公益點，下次購物可折抵金額。</p>
+                <p className="text-sm text-zinc-400">累積消費可獲得公益點數，下次購物可折抵金額。</p>
               ) : (
                 <div className="flex gap-2 items-center">
                   <Input
@@ -579,7 +579,7 @@ export default function PaymentPage() {
               )}
               {pointsDiscount > 0 && pointsAllowed && (
                 <div className="flex justify-between text-green-600">
-                  <span>公益點折抵 ({pointsUsed.toLocaleString()} 點)</span>
+                  <span>公益點數折抵 ({pointsUsed.toLocaleString()} 點)</span>
                   <span>-NT$ {pointsDiscount.toLocaleString()}</span>
                 </div>
               )}
@@ -653,7 +653,7 @@ export default function PaymentPage() {
               )}
               {pointsDiscount > 0 && pointsAllowed && (
                 <div className="flex justify-between text-green-600">
-                  <span>公益點折抵 ({pointsUsed.toLocaleString()} 點)</span>
+                  <span>公益點數折抵 ({pointsUsed.toLocaleString()} 點)</span>
                   <span>-NT$ {pointsDiscount.toLocaleString()}</span>
                 </div>
               )}
