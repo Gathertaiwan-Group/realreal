@@ -77,6 +77,8 @@ export async function createCvsLogistics(
   receiverPhone: string,
   receiverEmail: string,
   storeId: string,
+  isCollection: boolean = false,
+  collectionAmount: number = 0,
 ): Promise<CvsLogisticsResult> {
   const merchantTradeNo = `RRL${Date.now()}`
   const apiUrl = getApiBaseUrl()
@@ -107,8 +109,11 @@ export async function createCvsLogistics(
     ReceiverCellPhone: receiverPhone,
     ReceiverStoreID: storeId,
     ReceiverEmail: receiverEmail,
-    IsCollection: "N",
+    IsCollection: isCollection ? "Y" : "N",
     ServerReplyURL: `${apiUrl}/webhooks/ecpay-logistics`,
+  }
+  if (isCollection && collectionAmount > 0) {
+    fields.CollectionAmount = String(Math.round(collectionAmount))
   }
   fields.CheckMacValue = buildCheckMacValue(fields, c.hashKey, c.hashIv)
 

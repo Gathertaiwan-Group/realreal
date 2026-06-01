@@ -16,6 +16,7 @@ import { requestPayment as linePayRequestPayment } from "../lib/linepay"
 import { initiatePayment as jkoPayInitiatePayment } from "../lib/jkopay"
 import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
 import { computeShipping } from "../lib/shipping"
+import { inventoryQueue } from "../lib/queue"
 
 export const ordersRouter = Router()
 
@@ -477,6 +478,39 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       supabase.from("orders").delete().eq("id", order.id),
     ])
     res.status(500).json({ error: "Failed to create order address" }); return
+  }
+
+  // ---- cvs_cod：不走線上金流，立即建立物流 ----
+  if (paymentMethod === "cvs_cod") {
+    // Insert payment record (pending, gateway = cvs_cod)
+    await supabase.from("payments").insert({
+      order_id: order.id,
+      gateway: "cvs_cod",
+      gateway_tx_id: order.order_number,
+      amount: Math.round(totalCents / 100),
+      status: "pending",
+    })
+
+    // Enqueue CVS COD logistics creation immediately (no payment wait)
+    try {
+      await inventoryQueue.add(
+        "create-shipment-cod",
+        { orderId: order.id },
+        { attempts: 5, backoff: { type: "exponential", delay: 60000 } },
+      )
+    } catch (err) {
+      console.warn("[orders] cvs_cod logistics enqueue failed (non-fatal):", err)
+    }
+
+    // Return without paymentUrl — frontend detects this and navigates to confirm
+    res.status(201).json({
+      data: {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        paymentMethod,
+      },
+    })
+    return
   }
 
   // --- Payment initiation ---

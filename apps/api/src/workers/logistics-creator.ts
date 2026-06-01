@@ -107,3 +107,78 @@ export async function processCreateShipment(orderId: string) {
     `[logistics-creator] shipment created for order ${orderId}, ecpay_logistics_id=${ecpayLogisticsId}`,
   )
 }
+
+/**
+ * Create CVS logistics with IsCollection=Y for cvs_cod orders.
+ * Called immediately after order creation (not waiting for payment).
+ * Payment is confirmed when ECPay webhook fires on LogisticsStatus=3018.
+ */
+export async function processCreateShipmentCod(orderId: string) {
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, order_number, shipping_method, payment_method, total")
+    .eq("id", orderId)
+    .single()
+
+  if (!order) throw new Error(`Order ${orderId} not found`)
+  if (order.payment_method !== "cvs_cod") {
+    console.warn(`[logistics-creator] processCreateShipmentCod called for non-cvs_cod order ${orderId}`)
+    return
+  }
+
+  // Idempotency: skip if logistics row already exists
+  const { data: existing } = await supabase
+    .from("logistics")
+    .select("id")
+    .eq("order_id", orderId)
+    .limit(1)
+    .maybeSingle()
+
+  if (existing) {
+    console.log(`[logistics-creator] logistics already exists for order ${orderId}, skipping`)
+    return
+  }
+
+  const { data: address } = await supabase
+    .from("order_addresses")
+    .select("name, phone, email, address, cvs_store_id, cvs_type")
+    .eq("order_id", orderId)
+    .eq("type", "shipping")
+    .maybeSingle()
+
+  if (!address) throw new Error(`Shipping address not found for order ${orderId}`)
+
+  // order.total is in cents — convert to TWD for ECPay CollectionAmount
+  const collectionAmountTwd = Math.round(Number(order.total) / 100)
+
+  const cvsType = order.shipping_method === "cvs_711" ? "UNIMARTC2C" : "FAMIC2C"
+  const result = await createCvsLogistics(
+    orderId,
+    cvsType as "UNIMARTC2C" | "FAMIC2C",
+    address.name,
+    address.phone,
+    address.email ?? "",
+    address.cvs_store_id ?? "",
+    true,               // isCollection = Y
+    collectionAmountTwd,
+  )
+
+  const { error } = await supabase.from("logistics").insert({
+    order_id: orderId,
+    provider: "ecpay",
+    type: "CVS",
+    ecpay_logistics_id: result.logisticsId,
+    status: "pending",
+    cvs_payment_no: result.cvsPaymentNo ?? null,
+    cvs_validation_no: result.cvsValidationNo ?? null,
+  })
+
+  if (error) {
+    console.error(`[logistics-creator] failed to insert logistics row for cvs_cod order ${orderId}:`, error)
+    throw error
+  }
+
+  console.log(
+    `[logistics-creator] CVS COD shipment created for order ${orderId}, collection=${collectionAmountTwd} TWD`
+  )
+}

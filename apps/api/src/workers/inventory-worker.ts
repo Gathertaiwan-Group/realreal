@@ -1,6 +1,6 @@
 import { Worker } from "bullmq"
 import { Redis } from "ioredis"
-import { processCreateShipment } from "./logistics-creator"
+import { processCreateShipment, processCreateShipmentCod } from "./logistics-creator"
 import { processLowStockAlert } from "../jobs/low-stock-alert"
 
 const connection = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
@@ -17,6 +17,8 @@ export const inventoryWorker = new Worker(
     switch (job.name) {
       case "create-shipment":
         return processCreateShipment((job.data as { orderId: string }).orderId)
+      case "create-shipment-cod":
+        return processCreateShipmentCod((job.data as { orderId: string }).orderId)
       case "low-stock-check":
         return processLowStockAlert()
       default:

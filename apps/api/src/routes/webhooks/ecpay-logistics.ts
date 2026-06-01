@@ -1,6 +1,7 @@
 import { Router } from "express"
 import { supabase } from "../../lib/supabase"
 import { buildCheckMacValue, getEcpayCreds } from "../../lib/ecpay-logistics"
+import { enqueuePostPaymentJobs } from "../../lib/enqueue-post-payment"
 
 export const ecpayLogisticsWebhookRouter = Router()
 
@@ -91,12 +92,40 @@ ecpayLogisticsWebhookRouter.post("/", async (req, res) => {
         .update({ status: "shipped", updated_at: new Date().toISOString() })
         .eq("id", record.order_id)
     } else if (mappedStatus === "delivered") {
-      // 配達 / 取貨完成 → 訂單完成 + 紀錄 completed_at
       const now = new Date().toISOString()
-      await supabase
+
+      // 取得訂單付款方式，判斷是否為 CVS COD
+      const { data: orderForCod } = await supabase
         .from("orders")
-        .update({ status: "completed", completed_at: now, updated_at: now })
+        .select("payment_method, payment_status")
         .eq("id", record.order_id)
+        .single()
+
+      if (orderForCod?.payment_method === "cvs_cod" && orderForCod.payment_status !== "paid") {
+        // CVS COD：顧客取貨付款，ECPay 代收完成 → 確認付款
+        await supabase
+          .from("orders")
+          .update({
+            payment_status: "paid",
+            status: "completed",
+            completed_at: now,
+            updated_at: now,
+          })
+          .eq("id", record.order_id)
+
+        // 觸發 post-payment jobs（email/發票/點數/升等）
+        try {
+          await enqueuePostPaymentJobs(record.order_id)
+        } catch (err) {
+          console.warn("[webhooks/ecpay-logistics] enqueuePostPaymentJobs failed for cvs_cod:", err)
+        }
+      } else {
+        // 非 COD 訂單：只更新 order.status
+        await supabase
+          .from("orders")
+          .update({ status: "completed", completed_at: now, updated_at: now })
+          .eq("id", record.order_id)
+      }
     } else if (mappedStatus === "returned") {
       // 超過期限未取 / 退件 → 訂單標記 failed + 寫入原因
       await supabase
