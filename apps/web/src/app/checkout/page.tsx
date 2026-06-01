@@ -37,6 +37,7 @@ type CvsDraft = {
   shippingMethod: ShippingMethod
   invoice: InvoiceData
   expiresAt: number
+  country: string
 }
 
 const CVS_DRAFT_KEY = "realreal-cvs-draft"
@@ -133,6 +134,7 @@ type FieldErrors = {
   postalCode?: string
   address?: string
   cvsStore?: string
+  country?: string
 }
 
 export default function CheckoutPage() {
@@ -182,6 +184,7 @@ export default function CheckoutPage() {
       if (draft.addressLine) setAddressLine(draft.addressLine)
       if (draft.shippingMethod) setShippingMethod(draft.shippingMethod)
       if (draft.invoice) setInvoice(draft.invoice)
+      if (draft.country) setCountry(draft.country)
     } catch {
       // bad json → fall through to cleanup
     } finally {
@@ -407,6 +410,7 @@ export default function CheckoutPage() {
       addressLine,
       shippingMethod,
       invoice,
+      country,
       expiresAt: Date.now() + CVS_DRAFT_TTL_MS,
     }
     try {
@@ -426,6 +430,7 @@ export default function CheckoutPage() {
     addressLine,
     shippingMethod,
     invoice,
+    country,
   ])
 
   const openCvsMap = useCallback(() => {
@@ -472,7 +477,9 @@ export default function CheckoutPage() {
     const errs: FieldErrors = {}
     if (!name.trim()) errs.name = "請輸入收件人姓名"
     if (!phone.trim()) errs.phone = "請輸入手機號碼"
-    else if (!/^09\d{8}$/.test(phone.trim())) errs.phone = "手機號碼格式不正確（09xxxxxxxx）"
+    else if (addressType !== "overseas" && !/^09\d{8}$/.test(phone.trim())) {
+      errs.phone = "手機號碼格式不正確（09xxxxxxxx）"
+    }
     if (!email.trim()) errs.email = "請輸入電子信箱"
     else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
       errs.email = "電子信箱格式不正確"
@@ -485,7 +492,7 @@ export default function CheckoutPage() {
       if (!cvsStoreName) errs.cvsStore = "請選擇取貨門市"
     } else {
       // overseas
-      if (!country.trim()) errs.city = "請輸入國家"
+      if (!country.trim()) errs.country = "請輸入國家"
       if (!addressLine.trim()) errs.address = "請輸入詳細地址"
     }
     return errs
@@ -499,7 +506,7 @@ export default function CheckoutPage() {
     const errs = validate()
     setErrors(errs)
     // Mark all as touched to show errors
-    setTouched({ name: true, phone: true, email: true, city: true, address: true, cvsStore: true })
+    setTouched({ name: true, phone: true, email: true, city: true, address: true, cvsStore: true, country: true })
     if (Object.keys(errs).length > 0) return
 
     const checkoutData = {
@@ -814,9 +821,14 @@ export default function CheckoutPage() {
                         <Input
                           id="country"
                           value={country}
-                          onChange={e => setCountry(e.target.value)}
+                          onChange={e => { setCountry(e.target.value); if (touched.country) setErrors(prev => ({ ...prev, country: undefined })) }}
+                          onBlur={() => handleBlur("country")}
                           placeholder="Japan / 日本"
+                          className={touched.country && errors.country ? "border-red-400 focus-visible:ring-red-400" : ""}
                         />
+                        {touched.country && errors.country && (
+                          <p className="text-xs text-red-500">{errors.country}</p>
+                        )}
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="city">
