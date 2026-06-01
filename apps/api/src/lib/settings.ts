@@ -182,6 +182,12 @@ export const ALLOWED_KEYS = new Set<string>([
   // Old rows in app_settings are left intact for audit; reads ignore them.
   "points.ratio",
   "points.expire_days",
+  // Shipping fees
+  "shipping.fee_home_delivery",
+  "shipping.fee_cvs",
+  "shipping.free_threshold_home",
+  "shipping.free_threshold_cvs",
+  "shipping.fee_overseas_cod",
 ])
 
 /**
@@ -288,6 +294,16 @@ export const SECTIONS: Record<string, { label: string; keys: string[] }> = {
       "points.expire_days",
     ],
   },
+  shipping: {
+    label: "物流運費",
+    keys: [
+      "shipping.fee_home_delivery",
+      "shipping.fee_cvs",
+      "shipping.free_threshold_home",
+      "shipping.free_threshold_cvs",
+      "shipping.fee_overseas_cod",
+    ],
+  },
 }
 
 /**
@@ -305,4 +321,9 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   "points.apply_to_shipping": "false",
   "points.apply_to_sale": "true",
   "points.expire_days": "365",
+  "shipping.fee_home_delivery": "150",
+  "shipping.fee_cvs": "65",
+  "shipping.free_threshold_home": "999",
+  "shipping.free_threshold_cvs": "499",
+  "shipping.fee_overseas_cod": "0",
 }
