@@ -30,22 +30,25 @@ const orderItemSchema = z.object({
 const addressSchema = z.object({
   type: z.string().min(1),
   name: z.string().min(1),
-  phone: z.string().regex(/^09\d{8}$/),
-  addressType: z.enum(["home", "cvs"]),
+  phone: z.string().min(1),          // 從 regex(/^09\d{8}$/) 改為 min(1)，海外地址支援國際電話
+  addressType: z.enum(["home", "cvs", "overseas"]),  // 新增 "overseas"
   address: z.string().optional(),
   city: z.string().optional(),
   postalCode: z.string().optional(),
   cvsStoreId: z.string().optional(),
   cvsType: z.string().optional(),
+  country: z.string().optional(),    // 新增 country 欄位
 })
 
 const createOrderSchema = z.object({
   items: z.array(orderItemSchema).min(1),
   address: addressSchema,
-  shippingMethod: z.enum(["home_delivery", "cvs_711", "cvs_family"]),
-  paymentMethod: z.enum(["pchomepay", "linepay", "jkopay"]),
+  shippingMethod: z.enum(["home_delivery", "cvs_711", "cvs_family", "overseas_cod"]),  // 新增
+  paymentMethod: z.enum(["pchomepay", "linepay", "jkopay", "cvs_cod"]),               // 新增
   guestEmail: z.string().email().optional(),
   couponCode: z.string().optional(),
+  points_used: z.number().int().min(0).optional(),
+  invoice: z.any().optional(),
 })
 
 // POST /orders/preview — price-only preview (subtotal + campaigns + total).
@@ -59,7 +62,7 @@ const createOrderSchema = z.object({
 ordersRouter.post("/preview", optionalAuth, async (req, res) => {
   const previewSchema = z.object({
     items: z.array(orderItemSchema).min(1),
-    shippingMethod: z.enum(["home_delivery", "cvs_711", "cvs_family"]).default("home_delivery"),
+    shippingMethod: z.enum(["home_delivery", "cvs_711", "cvs_family", "overseas_cod"]).default("home_delivery"),  // 新增 overseas_cod
     couponCode: z.string().optional(),
   })
   const parsed = previewSchema.safeParse(req.body)
@@ -445,6 +448,11 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   }
 
   // Insert order address
+  // 若有 country，在 address 前加 [Country] 前綴（因 DB 無 country 欄位）
+  const fullAddress = address.country
+    ? `[${address.country}] ${address.address ?? ""}`.trim()
+    : (address.address ?? null)
+
   const { error: addrError } = await supabase
     .from("order_addresses")
     .insert({
@@ -453,7 +461,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       name: address.name,
       phone: address.phone,
       address_type: address.addressType,
-      address: address.address ?? null,
+      address: fullAddress,
       city: address.city ?? null,
       postal_code: address.postalCode ?? null,
       cvs_store_id: address.cvsStoreId ?? null,

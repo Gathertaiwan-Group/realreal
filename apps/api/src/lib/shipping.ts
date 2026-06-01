@@ -10,9 +10,12 @@ import { getSetting } from "./settings"
  * When the threshold is 0 (or unset), free shipping is disabled.
  */
 export async function computeShipping(
-  method: "home_delivery" | "cvs_711" | "cvs_family",
+  method: "home_delivery" | "cvs_711" | "cvs_family" | "overseas_cod",
   subtotal: number,
 ): Promise<number> {
+  // 海外到付：運費由司機收取，線上顯示 0
+  if (method === "overseas_cod") return 0
+
   const isHome = method === "home_delivery"
   const feeKey = isHome ? "shipping.fee_home_delivery" : "shipping.fee_cvs"
   const thresholdKey = isHome

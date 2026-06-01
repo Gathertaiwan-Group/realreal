@@ -25,6 +25,12 @@ export async function processCreateShipment(orderId: string) {
     return
   }
 
+  // 海外到付：無 ECPay 物流，admin 手動安排
+  if (order.shipping_method === "overseas_cod") {
+    console.log(`[logistics-creator] overseas_cod order ${orderId}, skipping ECPay logistics`)
+    return
+  }
+
   // Idempotency: skip if a logistics row already exists for this order.
   const { data: existing } = await supabase
     .from("logistics")
