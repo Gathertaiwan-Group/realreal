@@ -28,7 +28,12 @@ const PAYMENT_OPTIONS: PaymentOption[] = [
 
 type CheckoutData = {
   items: { variantId: string; productName: string; variantName: string; price: number; qty: number }[]
-  address: { name: string; phone: string; email?: string; addressType: string; city: string; district?: string; postalCode: string; addressLine?: string; cvsStoreName?: string; cvsStoreId?: string }
+  address: {
+    name: string; phone: string; email?: string; addressType: string;
+    city: string; district?: string; postalCode: string; addressLine?: string;
+    cvsStoreName?: string; cvsStoreId?: string;
+    country?: string
+  }
   shippingMethod: string
   shippingFee?: number
   invoice?: InvoiceData
@@ -38,6 +43,7 @@ const SHIPPING_LABELS: Record<string, string> = {
   "711": "7-11取貨",
   "family": "全家取貨",
   "home_delivery": "宅配",
+  "overseas_cod": "海外寄送（到付）",
 }
 
 const STEPS = [
@@ -334,6 +340,7 @@ export default function PaymentPage() {
         "711": "cvs_711",
         family: "cvs_family",
         home_delivery: "home_delivery",
+        overseas_cod: "overseas_cod",
       }
       const shippingMethod =
         shippingMethodMap[checkoutData.shippingMethod] ?? checkoutData.shippingMethod
@@ -342,7 +349,9 @@ export default function PaymentPage() {
         type: "shipping",
         name: checkoutData.address.name,
         phone: checkoutData.address.phone,
-        addressType: shippingMethod === "home_delivery" ? "home" : "cvs",
+        addressType: shippingMethod === "home_delivery" ? "home"
+          : shippingMethod === "overseas_cod" ? "overseas"
+          : "cvs",
         address:
           checkoutData.address.addressLine ||
           checkoutData.address.cvsStoreName ||
@@ -351,6 +360,7 @@ export default function PaymentPage() {
         postalCode: checkoutData.address.postalCode || undefined,
         cvsStoreId: checkoutData.address.cvsStoreId || undefined,
         cvsType: cvsTypeMap[shippingMethod],
+        country: checkoutData.address.country || undefined,
       }
       const res = await fetch(`${API_URL}/orders`, {
         method: "POST",
@@ -420,7 +430,12 @@ export default function PaymentPage() {
                 {checkoutData.address.cvsStoreName && ` - ${checkoutData.address.cvsStoreName}`}
               </p>
               {checkoutData.address.addressLine && (
-                <p><span className="text-zinc-500 inline-block w-16">地址</span>{checkoutData.address.city}{checkoutData.address.district}{checkoutData.address.addressLine}</p>
+                <p><span className="text-zinc-500 inline-block w-16">地址</span>{checkoutData.address.country ? `${checkoutData.address.country} ` : ""}{checkoutData.address.city}{checkoutData.address.district}{checkoutData.address.addressLine}</p>
+              )}
+              {checkoutData.shippingMethod === "overseas_cod" && (
+                <div className="mt-2 rounded bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">
+                  🌍 海外到付：運費由司機收取，請線上完成商品金額付款
+                </div>
               )}
             </div>
           </section>

@@ -10,8 +10,8 @@ import { Label } from "@/components/ui/label"
 import { InvoiceSelector, type InvoiceData } from "@/components/checkout/InvoiceSelector"
 import { API_URL } from "@/lib/api-url"
 
-type AddressType = "home" | "cvs"
-type ShippingMethod = "711" | "family" | "home_delivery"
+type AddressType = "home" | "cvs" | "overseas"
+type ShippingMethod = "711" | "family" | "home_delivery" | "overseas_cod"
 
 /**
  * Cross-window contract for ECPay CVS store picker.
@@ -46,18 +46,21 @@ const SHIPPING_LABELS: Record<ShippingMethod, string> = {
   "711": "7-11取貨",
   "family": "全家取貨",
   "home_delivery": "宅配",
+  "overseas_cod": "海外寄送（到付）",
 }
 
 const SHIPPING_FEES: Record<ShippingMethod, number> = {
   "711": 65,
   "family": 65,
   "home_delivery": 150,
+  "overseas_cod": 0,
 }
 
 const FREE_SHIPPING_THRESHOLD: Record<ShippingMethod, number> = {
   "711": 499,
   "family": 499,
   "home_delivery": 999,
+  "overseas_cod": 0,
 }
 
 function getShippingFee(method: ShippingMethod, subtotal: number): number {
@@ -150,6 +153,7 @@ export default function CheckoutPage() {
   const [cvsStoreName, setCvsStoreName] = useState("")
   const [cvsStoreId, setCvsStoreId] = useState("")
   const [cvsAddress, setCvsAddress] = useState("")
+  const [country, setCountry] = useState("")
   const [invoice, setInvoice] = useState<InvoiceData>({ type: "B2C_2" })
   const [errors, setErrors] = useState<FieldErrors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
@@ -287,6 +291,7 @@ export default function CheckoutPage() {
           "711": "cvs_711",
           family: "cvs_family",
           home_delivery: "home_delivery",
+          overseas_cod: "overseas_cod",
         }
         const res = await fetch(`${API_URL}/orders/preview`, {
           method: "POST",
@@ -457,6 +462,9 @@ export default function CheckoutPage() {
     if (addressType === "home" && shippingMethod !== "home_delivery") {
       setShippingMethod("home_delivery")
     }
+    if (addressType === "overseas") {
+      setShippingMethod("overseas_cod")
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addressType])
 
@@ -473,8 +481,12 @@ export default function CheckoutPage() {
     if (addressType === "home") {
       if (!city.trim()) errs.city = "請選擇縣市"
       if (!addressLine.trim()) errs.address = "請輸入詳細地址"
-    } else {
+    } else if (addressType === "cvs") {
       if (!cvsStoreName) errs.cvsStore = "請選擇取貨門市"
+    } else {
+      // overseas
+      if (!country.trim()) errs.city = "請輸入國家"
+      if (!addressLine.trim()) errs.address = "請輸入詳細地址"
     }
     return errs
   }
@@ -503,6 +515,7 @@ export default function CheckoutPage() {
         addressLine,
         cvsStoreName,
         cvsStoreId,
+        country,
       },
       shippingMethod,
       shippingFee: getShippingFee(shippingMethod, total()),
@@ -610,8 +623,8 @@ export default function CheckoutPage() {
 
                 <div className="space-y-2">
                   <Label>取貨方式</Label>
-                  <div className="grid grid-cols-2 gap-3">
-                    {(["home", "cvs"] as AddressType[]).map(type => (
+                  <div className="grid grid-cols-3 gap-3">
+                    {(["home", "cvs", "overseas"] as AddressType[]).map(type => (
                       <button
                         key={type}
                         type="button"
@@ -623,8 +636,8 @@ export default function CheckoutPage() {
                         }`}
                         style={addressType === type ? { borderColor: "#10305a", backgroundColor: "rgba(16,48,90,0.05)", color: "#10305a" } : undefined}
                       >
-                        <span>{type === "home" ? "🏠" : "🏪"}</span>
-                        <span>{type === "home" ? "宅配到府" : "超商取貨"}</span>
+                        <span>{type === "home" ? "🏠" : type === "cvs" ? "🏪" : "🌍"}</span>
+                        <span>{type === "home" ? "宅配到府" : type === "cvs" ? "超商取貨" : "海外寄送"}</span>
                       </button>
                     ))}
                   </div>
@@ -721,7 +734,7 @@ export default function CheckoutPage() {
                   <div className="space-y-3">
                     <div className="space-y-2">
                       {(Object.entries(SHIPPING_LABELS) as [ShippingMethod, string][])
-                        .filter(([v]) => v !== "home_delivery")
+                        .filter(([v]) => v !== "home_delivery" && v !== "overseas_cod")
                         .map(([value, label]) => (
                           <label
                             key={value}
@@ -785,6 +798,52 @@ export default function CheckoutPage() {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {addressType === "overseas" && (
+                  <div className="space-y-3">
+                    <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                      📦 運費由司機收取，收到貨品時當場付款。商品金額請線上完成付款。
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="country">
+                          國家 / Country <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="country"
+                          value={country}
+                          onChange={e => setCountry(e.target.value)}
+                          placeholder="Japan / 日本"
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="city">
+                          城市 / City <span className="text-red-500">*</span>
+                        </Label>
+                        <Input
+                          id="city"
+                          value={city}
+                          onChange={e => setCity(e.target.value)}
+                          placeholder="Tokyo / 東京都"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="addressLine">
+                        詳細地址 <span className="text-red-500">*</span>
+                      </Label>
+                      <Input
+                        id="addressLine"
+                        value={addressLine}
+                        onChange={e => setAddressLine(e.target.value)}
+                        placeholder="街道、區域、郵遞區號"
+                      />
+                    </div>
+                    <p className="text-xs text-zinc-400">
+                      運費：<span className="font-medium text-zinc-600">NT$ 0（到付，由司機收取）</span>
+                    </p>
                   </div>
                 )}
               </section>
