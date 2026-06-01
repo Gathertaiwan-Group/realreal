@@ -7,7 +7,7 @@ export type Product = { id: string; name: string; slug: string; description: str
 export type SortOption = "newest" | "price_asc" | "price_desc" | "best_selling"
 
 export async function getCategories(): Promise<Category[]> {
-  const res = await fetch(`${API_URL}/categories`, { next: { revalidate: 300 } })
+  const res = await fetch(`${API_URL}/categories`, { cache: "no-store" })
   if (!res.ok) return []
   const json = await res.json()
   return json.data ?? []
