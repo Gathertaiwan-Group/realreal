@@ -4,7 +4,6 @@ import { ChevronRight } from "lucide-react"
 import { getProductBySlug, getCategories } from "@/lib/catalog"
 import { AddToCartSection } from "@/components/product/AddToCartSection"
 import { ImageGallery } from "@/components/product/ImageGallery"
-import { ReviewForm } from "@/components/product/ReviewForm"
 import { createClient } from "@/lib/supabase/server"
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -227,13 +226,6 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
         )}
 
-        {/* Reviews */}
-        {session && (
-          <div className="mt-14 max-w-[640px]">
-            <h2 className="text-lg font-semibold mb-4" style={{ color: "#10305a" }}>撰寫評價</h2>
-            <ReviewForm productId={product.id} token={session.access_token} />
-          </div>
-        )}
 
       </div>
     </div>
