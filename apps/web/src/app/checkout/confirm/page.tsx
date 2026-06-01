@@ -112,6 +112,9 @@ export default function ConfirmPage() {
   // before payment_status flips to "paid". Poll every 3s for up to 2 min
   // so the user doesn't have to manually refresh.
   useEffect(() => {
+    // CVS COD：訂單無需線上付款確認，跳過 polling
+    if (method === "cvs_cod") return
+
     if (orderNumber === "---") {
       const explicit = searchParams.get("status")
       setPaymentStatus(
@@ -161,7 +164,7 @@ export default function ConfirmPage() {
       cancelled = true
       if (timer) clearTimeout(timer)
     }
-  }, [orderNumber, searchParams])
+  }, [orderNumber, searchParams, method])
 
   // Clear cart and checkout data once on mount
   useEffect(() => {
