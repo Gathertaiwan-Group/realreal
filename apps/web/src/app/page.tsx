@@ -47,7 +47,6 @@ async function findCategorySlug(needle: string): Promise<string | undefined> {
 
 function AnnouncementBar() {
   const messages = [
-    "加入會員立即享 95 折優惠",
     "消費滿 499 超取免運",
     "消費滿 999 宅配免運",
   ]
