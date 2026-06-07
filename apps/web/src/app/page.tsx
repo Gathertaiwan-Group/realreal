@@ -418,8 +418,8 @@ function RetailSection() {
     {
       name: "原粹蔬食作",
       type: "蔬食店",
-      address: null,
-      phone: null,
+      address: "新北市新店區北新路三段206巷1弄7號",
+      phone: "(02) 8914-7185",
       mapUrl: "https://maps.app.goo.gl/zUmLshtYtRhnmLp87",
       fbUrl: null,
       icon: "🥗",
