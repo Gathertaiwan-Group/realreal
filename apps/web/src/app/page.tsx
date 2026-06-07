@@ -97,26 +97,25 @@ const HOME_BLOCKS = [
 
 function HomeSquareImages() {
   return (
-    <section className="py-6 sm:py-8">
-      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-4">
-          {HOME_BLOCKS.map((block) => (
-            <Link
-              key={block.alt}
-              href={block.href}
-              className="group relative aspect-square overflow-hidden rounded-2xl block"
-            >
-              <img
-                src={block.img}
-                alt={block.alt}
-                loading="lazy"
-                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-              />
-              {/* Bottom gradient — ready for designer's text overlay */}
-              <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
-            </Link>
-          ))}
-        </div>
+    <section className="px-3 sm:px-4 py-3 sm:py-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
+        {HOME_BLOCKS.map((block) => (
+          <Link
+            key={block.alt}
+            href={block.href}
+            className="group relative overflow-hidden rounded-xl sm:rounded-2xl block"
+            style={{ aspectRatio: "3/4" }}
+          >
+            <img
+              src={block.img}
+              alt={block.alt}
+              loading="lazy"
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            />
+            {/* Bottom gradient — ready for designer's text overlay */}
+            <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
+          </Link>
+        ))}
       </div>
     </section>
   )
