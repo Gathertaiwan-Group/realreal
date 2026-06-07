@@ -415,6 +415,15 @@ function RetailSection() {
       fbUrl: "https://www.facebook.com/share/1C9Wk8UDW8/?mibextid=wwXIfr",
       icon: "🌿",
     },
+    {
+      name: "原粹蔬食作",
+      type: "蔬食店",
+      address: null,
+      phone: null,
+      mapUrl: "https://maps.app.goo.gl/zUmLshtYtRhnmLp87",
+      fbUrl: null,
+      icon: "🥗",
+    },
   ]
 
   return (
@@ -430,7 +439,7 @@ function RetailSection() {
           </p>
         </div>
 
-        <div className="grid sm:grid-cols-2 gap-6 max-w-2xl mx-auto">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl mx-auto">
           {stores.map(store => (
             <div
               key={store.name}
@@ -450,20 +459,26 @@ function RetailSection() {
                 </div>
               </div>
 
-              <div className="space-y-1.5 text-sm" style={{ color: "#687279" }}>
-                <p className="flex items-start gap-2">
-                  <span className="mt-0.5 shrink-0">📍</span>
-                  {store.address}
-                </p>
-                <p className="flex items-center gap-2">
-                  <span className="shrink-0">📞</span>
-                  <a href={`tel:${store.phone.replace(/[^0-9]/g, "")}`} className="hover:underline">
-                    {store.phone}
-                  </a>
-                </p>
-              </div>
+              {(store.address || store.phone) && (
+                <div className="space-y-1.5 text-sm" style={{ color: "#687279" }}>
+                  {store.address && (
+                    <p className="flex items-start gap-2">
+                      <span className="mt-0.5 shrink-0">📍</span>
+                      {store.address}
+                    </p>
+                  )}
+                  {store.phone && (
+                    <p className="flex items-center gap-2">
+                      <span className="shrink-0">📞</span>
+                      <a href={`tel:${store.phone.replace(/[^0-9]/g, "")}`} className="hover:underline">
+                        {store.phone}
+                      </a>
+                    </p>
+                  )}
+                </div>
+              )}
 
-              <div className="flex gap-2 mt-1">
+              <div className="flex gap-2 mt-auto">
                 {store.mapUrl && (
                   <a
                     href={store.mapUrl}
