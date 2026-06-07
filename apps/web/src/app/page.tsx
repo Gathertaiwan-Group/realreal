@@ -101,13 +101,14 @@ const HOME_BLOCKS = [
 
 function HomeSquareImages() {
   return (
-    <section className="px-3 sm:px-4 pt-2.5 pb-0">
+    <section className="px-3 sm:px-4 pt-3 pb-0">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
         {HOME_BLOCKS.map((block) => (
           <Link
             key={block.alt}
             href={block.href}
-            className="group relative overflow-hidden rounded-xl sm:rounded-2xl block aspect-[4/5] sm:aspect-[3/4]"
+            className="group relative overflow-hidden rounded-xl sm:rounded-2xl block"
+            style={{ aspectRatio: "3/4" }}
           >
             <img
               src={block.img}
@@ -195,7 +196,7 @@ function ProductSection({
   moreHref: string
 }) {
   return (
-    <section className="py-10 sm:py-14">
+    <section className="pt-8 pb-10 sm:pt-10 sm:pb-14">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl">
           {title}
