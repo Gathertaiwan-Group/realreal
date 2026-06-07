@@ -82,8 +82,12 @@ function HeroSection({ content }: { content?: HeroContent | null }) {
   const banner = content?.image || "/home/banner.jpg"
 
   return (
-    <section>
-      <img src={banner} alt="" className="w-full block" />
+    <section className="overflow-hidden">
+      <img
+        src={banner}
+        alt=""
+        className="w-full block max-h-[62vh] object-cover object-center"
+      />
     </section>
   )
 }
@@ -97,14 +101,13 @@ const HOME_BLOCKS = [
 
 function HomeSquareImages() {
   return (
-    <section className="px-3 sm:px-4 py-3 sm:py-4">
+    <section className="px-3 sm:px-4 pt-2.5 pb-0">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
         {HOME_BLOCKS.map((block) => (
           <Link
             key={block.alt}
             href={block.href}
-            className="group relative overflow-hidden rounded-xl sm:rounded-2xl block"
-            style={{ aspectRatio: "3/4" }}
+            className="group relative overflow-hidden rounded-xl sm:rounded-2xl block aspect-[4/5] sm:aspect-[3/4]"
           >
             <img
               src={block.img}
@@ -192,13 +195,13 @@ function ProductSection({
   moreHref: string
 }) {
   return (
-    <section className="py-16 sm:py-20">
+    <section className="py-10 sm:py-14">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl">
           {title}
         </h2>
 
-        <div className="mt-10 grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-4">
+        <div className="mt-7 grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-4">
           {products.map((product) => {
             const image = product.images?.[0]
             return (
@@ -240,7 +243,7 @@ function ProductSection({
         </div>
 
         {products.length > 0 && (
-          <div className="mt-10 text-center">
+          <div className="mt-7 text-center">
             <Button
               asChild
               variant="outline"
@@ -280,13 +283,13 @@ function BlogSection({ posts }: { posts: Post[] }) {
   const hasPosts = posts.length > 0
 
   return (
-    <section className="bg-[#fffeee] py-16 sm:py-20">
+    <section className="bg-[#fffeee] py-10 sm:py-14">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl">
           聰明過生活
         </h2>
 
-        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mt-7 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {hasPosts
             ? posts.map((post) => (
                 <Link
@@ -419,7 +422,7 @@ function RetailSection() {
   ]
 
   return (
-    <section className="py-16 sm:py-20 bg-white border-t border-gray-100">
+    <section className="py-10 sm:py-14 bg-white border-t border-gray-100">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-10">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#10305a]/40 mb-2">線下也找得到我們</p>
@@ -547,7 +550,7 @@ export default async function HomePage() {
       </div>
 
       {/* 6. Customer reviews carousel */}
-      <section className="bg-[#fffeee] py-16 sm:py-20">
+      <section className="bg-[#fffeee] py-10 sm:py-12">
         <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
           <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl mb-2">
             顧客真實回饋
