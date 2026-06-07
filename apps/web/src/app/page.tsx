@@ -88,23 +88,23 @@ function HeroSection({ content }: { content?: HeroContent | null }) {
   )
 }
 
-function HomeSquareImages() {
-  const blocks = [
-    { img: "/home/2.jpg", alt: "三種植物蛋白", href: "/shop" },
-    { img: "/home/3.jpg", alt: "真實果粒口感", href: "/shop" },
-    { img: "/home/4.jpg", alt: "公益存款計畫", href: "/idea" },
-    { img: "/home/5.jpg", alt: "會員專屬回饋", href: "/my-account" },
-  ]
+const HOME_BLOCKS = [
+  { img: "/home/block1.png", alt: "三種植物蛋白", href: "/shop" },
+  { img: "/home/block2.png", alt: "真實果粒口感", href: "/shop" },
+  { img: "/home/block3.png", alt: "公益存款計畫", href: "/idea" },
+  { img: "/home/block4.png", alt: "會員專屬回饋", href: "/my-account" },
+]
 
+function HomeSquareImages() {
   return (
     <section className="py-6 sm:py-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-4">
-          {blocks.map((block) => (
+          {HOME_BLOCKS.map((block) => (
             <Link
               key={block.alt}
               href={block.href}
-              className="group relative aspect-square overflow-hidden rounded-xl block"
+              className="group relative aspect-square overflow-hidden rounded-2xl block"
             >
               <img
                 src={block.img}
@@ -112,6 +112,8 @@ function HomeSquareImages() {
                 loading="lazy"
                 className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
+              {/* Bottom gradient — ready for designer's text overlay */}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/10 to-transparent" />
             </Link>
           ))}
         </div>
