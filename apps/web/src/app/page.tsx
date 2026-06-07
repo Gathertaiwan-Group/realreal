@@ -89,19 +89,30 @@ function HeroSection({ content }: { content?: HeroContent | null }) {
 }
 
 function HomeSquareImages() {
+  const blocks = [
+    { img: "/home/2.jpg", alt: "三種植物蛋白", href: "/shop" },
+    { img: "/home/3.jpg", alt: "真實果粒口感", href: "/shop" },
+    { img: "/home/4.jpg", alt: "公益存款計畫", href: "/idea" },
+    { img: "/home/5.jpg", alt: "會員專屬回饋", href: "/my-account" },
+  ]
+
   return (
     <section className="py-6 sm:py-8">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          {[2, 3, 4, 5].map((n) => (
-            <div key={n} className="relative aspect-square overflow-hidden rounded-xl">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 sm:grid-cols-4">
+          {blocks.map((block) => (
+            <Link
+              key={block.alt}
+              href={block.href}
+              className="group relative aspect-square overflow-hidden rounded-xl block"
+            >
               <img
-                src={`/home/${n}.jpg`}
-                alt=""
+                src={block.img}
+                alt={block.alt}
                 loading="lazy"
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
               />
-            </div>
+            </Link>
           ))}
         </div>
       </div>
