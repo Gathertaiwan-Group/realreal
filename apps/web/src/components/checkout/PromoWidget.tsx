@@ -112,6 +112,7 @@ export function clearPromoState() {
 export function PromoWidget({ subtotal }: { subtotal: number }) {
   const [state, setState] = useState<PromoState>(DEFAULT_PROMO)
   const [hydrated, setHydrated] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [couponLoading, setCouponLoading] = useState(false)
   const lastSubtotalRef = useRef(0)
 
@@ -135,6 +136,7 @@ export function PromoWidget({ subtotal }: { subtotal: number }) {
         const supabase = createClient()
         const { data: { session } } = await supabase.auth.getSession()
         if (!session?.access_token || cancelled) return
+        setIsLoggedIn(true)
         const headers = { Authorization: `Bearer ${session.access_token}` }
         const [memberRes, pointsRes] = await Promise.all([
           fetch(`${API_URL}/my-member-discount`, { headers }),
@@ -358,17 +360,23 @@ export function PromoWidget({ subtotal }: { subtotal: number }) {
         {state.couponError && <p className="text-xs text-red-600">{state.couponError}</p>}
       </div>
 
-      {/* Points section (logged-in only) */}
-      {state.pointsBalance > 0 && (
+      {/* Points section — show for all logged-in users (educational copy when 0 balance) */}
+      {isLoggedIn && (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <Label className="text-sm font-medium">✨ 公益點數</Label>
             <span className="text-xs text-zinc-500">
               餘額 <strong>{state.pointsBalance.toLocaleString()}</strong> 點
-              <span className="text-zinc-400 ml-1">(= NT$ {Math.floor(state.pointsBalance * state.pointsRatio).toLocaleString()})</span>
+              {state.pointsBalance > 0 && (
+                <span className="text-zinc-400 ml-1">(= NT$ {Math.floor(state.pointsBalance * state.pointsRatio).toLocaleString()})</span>
+              )}
             </span>
           </div>
-          {pointsBlockedByCoupon ? (
+          {state.pointsBalance === 0 ? (
+            <p className="text-xs text-zinc-500 leading-relaxed">
+              累積消費可獲得公益點數，下次購物可折抵金額。
+            </p>
+          ) : pointsBlockedByCoupon ? (
             <div className="rounded bg-amber-50 border border-amber-200 p-2 text-xs text-amber-700">
               已使用優惠券，無法同時使用點數
             </div>
