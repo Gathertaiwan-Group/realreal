@@ -5,10 +5,15 @@ import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { toast } from "sonner"
 import { API_URL } from "@/lib/api-url"
 import type { InvoiceData } from "@/components/checkout/InvoiceSelector"
+import {
+  readPromoState,
+  clearPromoState,
+  PROMO_EVENT,
+  type PromoState,
+} from "@/components/checkout/PromoWidget"
 
 type PaymentMethod = "pchomepay" | "linepay" | "jkopay" | "cvs_cod"
 
@@ -96,25 +101,19 @@ export default function PaymentPage() {
   const router = useRouter()
   const [checkoutData, setCheckoutData] = useState<CheckoutData | null>(null)
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("pchomepay")
-  const [couponCode, setCouponCode] = useState("")
-  const [couponApplied, setCouponApplied] = useState(false)
-  const [couponError, setCouponError] = useState("")
-  const [discount, setDiscount] = useState(0)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [memberDiscount, setMemberDiscount] = useState<{ discountRate: number; tierName: string | null }>({ discountRate: 0, tierName: null })
 
-  // Points redemption state
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
-  const [pointsBalance, setPointsBalance] = useState(0)
-  const [pointsInput, setPointsInput] = useState<string>("")
-  const [pointsUsed, setPointsUsed] = useState(0)
-  const [pointsDiscount, setPointsDiscount] = useState(0)
-  const [pointsAllowed, setPointsAllowed] = useState(true)
-  const [pointsReason, setPointsReason] = useState<string>("")
-  const [pointsRatio, setPointsRatio] = useState(1)
-  const [allowCouponStack, setAllowCouponStack] = useState(true)
-  const [pointsApplying, setPointsApplying] = useState(false)
+  // Promo state is now owned by step 1's PromoWidget; we just read it.
+  // Listening to PROMO_EVENT lets the sidebar stay in sync if the user opens
+  // a second tab and modifies the coupon there.
+  const [promo, setPromo] = useState<PromoState | null>(null)
+  useEffect(() => {
+    setPromo(readPromoState())
+    const handler = () => setPromo(readPromoState())
+    window.addEventListener(PROMO_EVENT, handler)
+    return () => window.removeEventListener(PROMO_EVENT, handler)
+  }, [])
 
   const isCvsShipping = checkoutData?.shippingMethod === "711" || checkoutData?.shippingMethod === "family"
 
@@ -150,185 +149,24 @@ export default function PaymentPage() {
     }
   }, [router])
 
-  // Fetch member discount rate for logged-in users
-  useEffect(() => {
-    async function fetchMemberDiscount() {
-      try {
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.access_token) return
-
-        const res = await fetch(`${API_URL}/my-member-discount`, {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        })
-        if (!res.ok) return
-        const body = await res.json() as { data?: { discountRate?: number; tierName?: string | null } }
-        if (body?.data?.discountRate && body.data.discountRate > 0) {
-          setMemberDiscount({ discountRate: body.data.discountRate, tierName: body.data.tierName ?? null })
-        }
-      } catch {
-        // Silently fail — member discount is optional
-      }
-    }
-    fetchMemberDiscount()
-  }, [])
-
-  // Fetch points balance + settings (logged-in users only)
-  useEffect(() => {
-    async function fetchPointsBalance() {
-      try {
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.access_token) return
-
-        setIsLoggedIn(true)
-        const res = await fetch(`${API_URL}/points/balance`, {
-          headers: { Authorization: `Bearer ${session.access_token}` },
-        })
-        if (!res.ok) return
-        const body = await res.json() as {
-          data?: {
-            balance?: number
-            ratio?: number
-            allow_coupon_stack?: boolean
-          }
-        }
-        const balance = body?.data?.balance ?? 0
-        setPointsBalance(Math.max(0, balance))
-        if (typeof body?.data?.ratio === "number") setPointsRatio(body.data.ratio)
-        if (typeof body?.data?.allow_coupon_stack === "boolean") {
-          setAllowCouponStack(body.data.allow_coupon_stack)
-        }
-      } catch {
-        // Silently fail — points are optional
-      }
-    }
-    fetchPointsBalance()
-  }, [])
-
   const subtotal = checkoutData
     ? checkoutData.items.reduce((sum, i) => sum + i.price * i.qty, 0)
     : 0
   const shippingFee = checkoutData?.shippingFee ?? 0
-  const memberDiscountAmount = Math.round(subtotal * memberDiscount.discountRate)
-  const grandTotal = Math.max(0, subtotal - memberDiscountAmount + shippingFee - discount - pointsDiscount)
 
-  // Determine if points input is blocked by coupon stacking rule
-  const pointsBlockedByCoupon = couponApplied && !allowCouponStack
-  const pointsBlockReason = pointsBlockedByCoupon ? "已使用優惠券，無法同時用點數" : ""
-
-  // Debounced apply: POST /points/apply on input change
-  useEffect(() => {
-    if (!checkoutData) return
-    if (pointsBalance === 0) return
-    if (pointsBlockedByCoupon) {
-      setPointsUsed(0)
-      setPointsDiscount(0)
-      setPointsAllowed(true)
-      setPointsReason("")
-      return
-    }
-    const requested = Number.parseInt(pointsInput, 10)
-    if (!Number.isFinite(requested) || requested <= 0) {
-      setPointsUsed(0)
-      setPointsDiscount(0)
-      setPointsAllowed(true)
-      setPointsReason("")
-      return
-    }
-    const handle = setTimeout(async () => {
-      setPointsApplying(true)
-      try {
-        const supabase = createClient()
-        const { data: { session } } = await supabase.auth.getSession()
-        if (!session?.access_token) return
-        const headers: Record<string, string> = {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`,
-        }
-        const cart = {
-          subtotal,
-          shipping: shippingFee,
-          total: subtotal + shippingFee,
-          sale_item_total: 0,
-        }
-        const res = await fetch(`${API_URL}/points/apply`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ requested, cart }),
-        })
-        if (!res.ok) {
-          setPointsAllowed(false)
-          setPointsReason("無法套用點數")
-          setPointsUsed(0)
-          setPointsDiscount(0)
-          return
-        }
-        const body = await res.json() as {
-          data?: { discount?: number; allowed?: boolean; reason?: string }
-        }
-        const allowed = body?.data?.allowed ?? false
-        const d = body?.data?.discount ?? 0
-        const reason = body?.data?.reason ?? ""
-        setPointsAllowed(allowed)
-        setPointsReason(reason)
-        if (allowed) {
-          setPointsUsed(requested)
-          setPointsDiscount(d)
-        } else {
-          setPointsUsed(0)
-          setPointsDiscount(0)
-        }
-      } catch {
-        setPointsAllowed(false)
-        setPointsReason("套用點數時發生錯誤")
-        setPointsUsed(0)
-        setPointsDiscount(0)
-      } finally {
-        setPointsApplying(false)
-      }
-    }, 300)
-    return () => clearTimeout(handle)
-  }, [pointsInput, pointsBalance, pointsBlockedByCoupon, checkoutData, subtotal, shippingFee, couponApplied, allowCouponStack, pointsAllowed])
-
-  const [couponLoading, setCouponLoading] = useState(false)
-
-  async function handleApplyCoupon() {
-    setCouponError("")
-    if (!couponCode.trim()) {
-      setCouponError("請輸入優惠碼")
-      return
-    }
-    setCouponLoading(true)
-    try {
-      const supabase = createClient()
-      const { data: { session } } = await supabase.auth.getSession()
-      const couponHeaders: Record<string, string> = { "Content-Type": "application/json" }
-      if (session?.access_token) couponHeaders.Authorization = `Bearer ${session.access_token}`
-      const res = await fetch(`${API_URL}/coupons/validate`, {
-        method: "POST",
-        headers: couponHeaders,
-        body: JSON.stringify({ code: couponCode.trim(), order_amount: subtotal }),
-      })
-      if (!res.ok) {
-        const body = await res.json().catch(() => ({ error: "無效的優惠碼" }))
-        setCouponError((body as { error?: string }).error ?? "無效的優惠碼")
-        setCouponApplied(false)
-        setDiscount(0)
-        return
-      }
-      const body = await res.json() as { data?: { discount?: number } }
-      const discountAmount = body?.data?.discount ?? 0
-      setDiscount(discountAmount)
-      setCouponApplied(true)
-    } catch {
-      setCouponError("驗證優惠碼時發生錯誤，請稍後再試")
-      setCouponApplied(false)
-      setDiscount(0)
-    } finally {
-      setCouponLoading(false)
-    }
-  }
+  // Derived from promo state — written by PromoWidget at step 1
+  const memberDiscountAmount = promo ? Math.round(subtotal * promo.memberDiscountRate) : 0
+  const couponCode = promo?.couponCode ?? ""
+  const couponApplied = promo?.couponApplied ?? false
+  const couponDiscount = promo?.couponApplied ? promo.couponDiscount : 0
+  const pointsUsed = promo?.pointsAllowed ? promo.pointsUsed : 0
+  const pointsDiscount = promo?.pointsAllowed ? promo.pointsDiscount : 0
+  const tierName = promo?.tierName ?? null
+  const memberDiscountRate = promo?.memberDiscountRate ?? 0
+  const grandTotal = Math.max(
+    0,
+    subtotal - memberDiscountAmount + shippingFee - couponDiscount - pointsDiscount,
+  )
 
   async function handleConfirm() {
     if (!checkoutData) return
@@ -388,7 +226,7 @@ export default function PaymentPage() {
           invoice: checkoutData.invoice,
           guestEmail: session ? undefined : checkoutData.address.email,
           couponCode: couponApplied ? couponCode : undefined,
-          points_used: pointsUsed > 0 && pointsAllowed ? pointsUsed : 0,
+          points_used: pointsUsed,
         }),
       })
 
@@ -407,6 +245,9 @@ export default function PaymentPage() {
         // Redirect to payment gateway (PChomePay / LINE Pay / JKOPay).
         // Cart clearing and confirm redirect happen after the payment webhook callback.
         toast.success("正在前往付款頁面...")
+        // Promo state was consumed by the order — clear it so a back-button
+        // bounce or a fresh next checkout starts clean.
+        clearPromoState()
         window.location.href = paymentUrl
       } else if (paymentMethod === "cvs_cod" && returnedOrderNumber) {
         // CVS COD：訂單已成立，直接跳確認頁（不需線上付款）
@@ -414,6 +255,7 @@ export default function PaymentPage() {
         // 清空購物車
         const cartStore = await import("@/lib/cart")
         cartStore.useCart.getState().clear()
+        clearPromoState()
         router.push(`/checkout/confirm?order=${encodeURIComponent(returnedOrderNumber)}&method=cvs_cod`)
       } else {
         setError("無法取得付款連結，請稍後再試或聯繫客服")
@@ -462,97 +304,31 @@ export default function PaymentPage() {
             </div>
           </section>
 
-          {/* Coupon Code */}
-          <section className="space-y-3">
-            <h2 className="text-lg font-semibold border-b pb-2">優惠碼</h2>
-            <div className="flex gap-2">
-              <Input
-                placeholder="輸入優惠碼"
-                value={couponCode}
-                onChange={e => { setCouponCode(e.target.value) }}
-                disabled={couponApplied}
-                className="max-w-xs"
-              />
-              {couponApplied ? (
-                <Button
-                  variant="outline"
-                  onClick={() => { setCouponCode(""); setCouponApplied(false); setDiscount(0) }}
-                >
-                  移除
-                </Button>
-              ) : (
-                <Button variant="outline" onClick={handleApplyCoupon} disabled={couponLoading}>
-                  {couponLoading ? "驗證中..." : "套用"}
-                </Button>
+          {/* Promo summary — coupon / points / member discount were applied at
+              step 1. Show a read-only roll-up here with a link back to edit. */}
+          {(couponApplied || pointsUsed > 0 || memberDiscountAmount > 0) && (
+            <section className="rounded-lg border bg-emerald-50/50 p-4 space-y-1.5 text-sm">
+              <div className="flex items-center justify-between mb-1">
+                <h2 className="font-semibold text-sm text-emerald-900">已套用折抵</h2>
+                <Link href="/checkout" className="text-xs text-primary hover:underline">修改</Link>
+              </div>
+              {memberDiscountAmount > 0 && (
+                <p className="text-emerald-700">
+                  👑 {tierName} {Math.round(memberDiscountRate * 100)}% off
+                  <span className="float-right">- NT$ {memberDiscountAmount.toLocaleString()}</span>
+                </p>
               )}
-            </div>
-            {couponApplied && (
-              <p className="text-sm text-green-600">已套用優惠碼，折抵 NT$ {discount.toLocaleString()}</p>
-            )}
-            {couponError && (
-              <p className="text-sm text-red-500">{couponError}</p>
-            )}
-          </section>
-
-          {/* Points Redemption — shown for all logged-in users to build awareness */}
-          {isLoggedIn && (
-            <section className="space-y-3">
-              <h2 className="text-lg font-semibold border-b pb-2">公益點數折抵</h2>
-              <p className="text-sm text-zinc-600">
-                你目前有 <span className="font-semibold">{pointsBalance.toLocaleString()}</span> 點
-                {pointsBalance > 0 && `（= NT$ ${Math.floor(pointsBalance * pointsRatio).toLocaleString()}）`}
-              </p>
-              {pointsBalance === 0 ? (
-                <p className="text-sm text-zinc-400">累積消費可獲得公益點數，下次購物可折抵金額。</p>
-              ) : (
-                <div className="flex gap-2 items-center">
-                  <Input
-                    type="number"
-                    inputMode="numeric"
-                    min={0}
-                    max={pointsBalance}
-                    placeholder="使用點數"
-                    value={pointsInput}
-                    onChange={e => {
-                      const raw = e.target.value
-                      if (raw === "") {
-                        setPointsInput("")
-                        return
-                      }
-                      const n = Number.parseInt(raw, 10)
-                      if (!Number.isFinite(n)) {
-                        setPointsInput("")
-                        return
-                      }
-                      const clamped = Math.max(0, Math.min(pointsBalance, n))
-                      setPointsInput(String(clamped))
-                    }}
-                    disabled={pointsBlockedByCoupon}
-                    className="max-w-xs"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setPointsInput(String(pointsBalance))}
-                    disabled={pointsBlockedByCoupon}
-                  >
-                    全部使用
-                  </Button>
-                  <span className="text-sm text-zinc-500">點</span>
-                </div>
+              {couponApplied && (
+                <p className="text-emerald-700">
+                  🎟 優惠碼 <strong>{couponCode}</strong>
+                  <span className="float-right">- NT$ {couponDiscount.toLocaleString()}</span>
+                </p>
               )}
-              {pointsBlockReason && (
-                <p className="text-sm text-zinc-500">{pointsBlockReason}</p>
-              )}
-              {!pointsBlockedByCoupon && pointsApplying && (
-                <p className="text-sm text-zinc-400">計算中…</p>
-              )}
-              {!pointsBlockedByCoupon && !pointsApplying && pointsInput !== "" && Number.parseInt(pointsInput, 10) > 0 && (
-                pointsAllowed ? (
-                  <p className="text-sm text-green-600">已折抵 -NT$ {pointsDiscount.toLocaleString()}</p>
-                ) : (
-                  <p className="text-sm text-red-500">{pointsReason || "無法套用"}</p>
-                )
+              {pointsUsed > 0 && (
+                <p className="text-emerald-700">
+                  ✨ 點數折抵（{pointsUsed.toLocaleString()} 點）
+                  <span className="float-right">- NT$ {pointsDiscount.toLocaleString()}</span>
+                </p>
               )}
             </section>
           )}
@@ -615,17 +391,17 @@ export default function PaymentPage() {
               </div>
               {memberDiscountAmount > 0 && (
                 <div className="flex justify-between text-amber-600">
-                  <span>{memberDiscount.tierName ?? "會員"}折扣 ({Math.round(memberDiscount.discountRate * 100)}% off)</span>
+                  <span>{tierName ?? "會員"}折扣 ({Math.round(memberDiscountRate * 100)}% off)</span>
                   <span>-NT$ {memberDiscountAmount.toLocaleString()}</span>
                 </div>
               )}
-              {discount > 0 && (
+              {couponDiscount > 0 && (
                 <div className="flex justify-between text-green-600">
-                  <span>優惠折抵</span>
-                  <span>-NT$ {discount.toLocaleString()}</span>
+                  <span>優惠碼 {couponCode}</span>
+                  <span>-NT$ {couponDiscount.toLocaleString()}</span>
                 </div>
               )}
-              {pointsDiscount > 0 && pointsAllowed && (
+              {pointsDiscount > 0 && (
                 <div className="flex justify-between text-green-600">
                   <span>公益點數折抵 ({pointsUsed.toLocaleString()} 點)</span>
                   <span>-NT$ {pointsDiscount.toLocaleString()}</span>
@@ -656,7 +432,7 @@ export default function PaymentPage() {
               className="flex-1 rounded-[10px]"
               style={{ backgroundColor: "#10305a", color: "#fff" }}
               onClick={handleConfirm}
-              disabled={loading || pointsApplying}
+              disabled={loading}
             >
               {loading ? "處理中..." : `確認付款 NT$ ${grandTotal.toLocaleString()}`}
             </Button>
@@ -689,17 +465,17 @@ export default function PaymentPage() {
               </div>
               {memberDiscountAmount > 0 && (
                 <div className="flex justify-between text-amber-600">
-                  <span>{memberDiscount.tierName ?? "會員"}折扣 ({Math.round(memberDiscount.discountRate * 100)}% off)</span>
+                  <span>{tierName ?? "會員"}折扣 ({Math.round(memberDiscountRate * 100)}% off)</span>
                   <span>-NT$ {memberDiscountAmount.toLocaleString()}</span>
                 </div>
               )}
-              {discount > 0 && (
+              {couponDiscount > 0 && (
                 <div className="flex justify-between text-green-600">
-                  <span>優惠折抵</span>
-                  <span>-NT$ {discount.toLocaleString()}</span>
+                  <span>優惠碼 {couponCode}</span>
+                  <span>-NT$ {couponDiscount.toLocaleString()}</span>
                 </div>
               )}
-              {pointsDiscount > 0 && pointsAllowed && (
+              {pointsDiscount > 0 && (
                 <div className="flex justify-between text-green-600">
                   <span>公益點數折抵 ({pointsUsed.toLocaleString()} 點)</span>
                   <span>-NT$ {pointsDiscount.toLocaleString()}</span>

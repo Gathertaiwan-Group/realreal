@@ -9,6 +9,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { InvoiceSelector, type InvoiceData } from "@/components/checkout/InvoiceSelector"
 import { API_URL } from "@/lib/api-url"
+import {
+  PromoWidget,
+  readPromoState,
+  PROMO_EVENT,
+  type PromoState,
+} from "@/components/checkout/PromoWidget"
 
 type AddressType = "home" | "cvs" | "overseas"
 type ShippingMethod = "711" | "family" | "home_delivery" | "overseas_cod"
@@ -532,6 +538,17 @@ export default function CheckoutPage() {
     router.push("/checkout/payment")
   }
 
+  // Promo state lifted from step 2 — keeps coupon / points / member discount
+  // visible BEFORE the user fills the address form. PromoWidget owns writes;
+  // we just subscribe so the sidebar summary refreshes.
+  const [promo, setPromo] = useState<PromoState | null>(null)
+  useEffect(() => {
+    setPromo(readPromoState())
+    const handler = () => setPromo(readPromoState())
+    window.addEventListener(PROMO_EVENT, handler)
+    return () => window.removeEventListener(PROMO_EVENT, handler)
+  }, [])
+
   if (!hydrated) return null
 
   const subtotal = total()
@@ -540,10 +557,16 @@ export default function CheckoutPage() {
   // shipping + first-purchase / 滿額贈 etc. discount lines). Fall back to local
   // calc while preview is still in-flight or has errored.
   const shippingFee = preview?.shipping ?? localShippingFee
-  const grandTotal = preview?.total ?? subtotal + localShippingFee
+  const baseTotal = preview?.total ?? subtotal + localShippingFee  // after campaigns + shipping, before promo
   const discountLines = preview?.discounts ?? []
   const freeItemsList = preview?.free_items ?? []
   const freeShippingByCampaign = (preview?.free_shipping_names ?? []).length > 0
+
+  // Promo deductions (member tier discount + coupon + points)
+  const memberDiscountAmount = promo ? Math.round(subtotal * promo.memberDiscountRate) : 0
+  const couponDiscount = promo?.couponApplied ? promo.couponDiscount : 0
+  const pointsDiscount = promo?.pointsAllowed ? promo.pointsDiscount : 0
+  const grandTotal = Math.max(0, baseTotal - memberDiscountAmount - couponDiscount - pointsDiscount)
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
@@ -552,8 +575,6 @@ export default function CheckoutPage() {
       <div className="flex flex-col lg:flex-row gap-8">
         {/* Main Form */}
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold mb-6">收件資訊</h1>
-
           {items.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-zinc-500 mb-4">購物車是空的</p>
@@ -563,6 +584,13 @@ export default function CheckoutPage() {
             </div>
           ) : (
             <div className="space-y-8">
+              {/* Promo / discount entry — at top of step 1 so customers see
+                  the after-discount total BEFORE filling the address form
+                  (Baymard cart-abandonment research). */}
+              <PromoWidget subtotal={subtotal} />
+
+              <h1 className="text-2xl font-bold">收件資訊</h1>
+
               {/* Contact Info */}
               <section className="space-y-4">
                 <h2 className="text-lg font-semibold border-b pb-2">聯絡資訊</h2>
@@ -896,6 +924,24 @@ export default function CheckoutPage() {
                         <span>免費</span>
                       </div>
                     ))}
+                    {memberDiscountAmount > 0 && (
+                      <div className="flex justify-between text-emerald-700">
+                        <span>👑 {promo?.tierName} {Math.round((promo?.memberDiscountRate ?? 0) * 100)}% off</span>
+                        <span>- NT$ {memberDiscountAmount.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {couponDiscount > 0 && (
+                      <div className="flex justify-between text-emerald-700">
+                        <span>🎟 優惠碼 {promo?.couponCode}</span>
+                        <span>- NT$ {couponDiscount.toLocaleString()}</span>
+                      </div>
+                    )}
+                    {pointsDiscount > 0 && (
+                      <div className="flex justify-between text-emerald-700">
+                        <span>✨ 點數折抵（{promo?.pointsUsed} 點）</span>
+                        <span>- NT$ {pointsDiscount.toLocaleString()}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between text-zinc-500">
                       <span>運費</span>
                       <span>{shippingFee === 0 ? (freeShippingByCampaign ? "活動免運" : "免運") : `NT$ ${shippingFee.toLocaleString()}`}</span>
@@ -961,6 +1007,24 @@ export default function CheckoutPage() {
                     <span>免費</span>
                   </div>
                 ))}
+                {memberDiscountAmount > 0 && (
+                  <div className="flex justify-between text-emerald-700 font-medium">
+                    <span>👑 {promo?.tierName} {Math.round((promo?.memberDiscountRate ?? 0) * 100)}% off</span>
+                    <span>- NT$ {memberDiscountAmount.toLocaleString()}</span>
+                  </div>
+                )}
+                {couponDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-700 font-medium">
+                    <span>🎟 優惠碼 {promo?.couponCode}</span>
+                    <span>- NT$ {couponDiscount.toLocaleString()}</span>
+                  </div>
+                )}
+                {pointsDiscount > 0 && (
+                  <div className="flex justify-between text-emerald-700 font-medium">
+                    <span>✨ 點數折抵（{promo?.pointsUsed} 點）</span>
+                    <span>- NT$ {pointsDiscount.toLocaleString()}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-zinc-500">
                   <span>運費（{SHIPPING_LABELS[shippingMethod]}）</span>
                   <span>{shippingFee === 0 ? (freeShippingByCampaign ? "活動免運" : "免運") : `NT$ ${shippingFee.toLocaleString()}`}</span>
