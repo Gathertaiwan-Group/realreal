@@ -1,6 +1,6 @@
 export function renderSubscriptionFailed(data: { planName: string; retryDate: string; manageUrl: string }): string {
   return `<!DOCTYPE html><html><body style="font-family:sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px">
-    <h1 style="color:#4a7c59;border-bottom:2px solid #4a7c59;padding-bottom:8px">誠真生活 RealReal</h1>
+    <h1 style="color:#10305a;border-bottom:2px solid #10305a;padding-bottom:8px">誠真生活 RealReal</h1>
     <h2>⚠️ 訂閱扣款失敗</h2>
     <p>您的 <strong>${data.planName}</strong> 訂閱扣款失敗，請更新付款資訊以避免訂閱中斷。</p>
     <p>系統將於 <strong>${data.retryDate}</strong> 再次嘗試扣款。</p>

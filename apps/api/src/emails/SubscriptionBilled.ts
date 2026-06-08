@@ -1,6 +1,6 @@
 export function renderSubscriptionBilled(data: { planName: string; amount: string; nextBillingDate: string; orderNumber: string }): string {
   return `<!DOCTYPE html><html><body style="font-family:sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px">
-    <h1 style="color:#4a7c59;border-bottom:2px solid #4a7c59;padding-bottom:8px">誠真生活 RealReal</h1>
+    <h1 style="color:#10305a;border-bottom:2px solid #10305a;padding-bottom:8px">誠真生活 RealReal</h1>
     <h2>訂閱扣款成功</h2>
     <p>您的 <strong>${data.planName}</strong> 訂閱已成功扣款。</p>
     <table style="width:100%;border-collapse:collapse;margin:16px 0">
