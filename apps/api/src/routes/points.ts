@@ -75,13 +75,26 @@ pointsRouter.post("/apply", requireAuth, async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
-// GET /points/balance — { balance, expiring_soon }
+// GET /points/balance — { data: { balance, expiring_soon, ratio, allow_coupon_stack } }
 // expiring_soon = sum of earn rows expiring within 30d that aren't yet
 // matched by an `expire` ledger row
+//
+// Response wrapped in { data: ... } to match the frontend's existing parsing
+// convention (apps/web/src/app/checkout/payment/page.tsx reads body.data.X).
 // ---------------------------------------------------------------------------
 
 pointsRouter.get("/balance", requireAuth, async (_req, res) => {
   const userId = res.locals.userId as string
+
+  // Settings (ratio + allow_coupon_stack) — frontend uses these to render the
+  // "= NT$ X" hint and decide whether to block points when a coupon is applied.
+  let settings
+  try {
+    settings = await loadPointsSettings()
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message ?? "Failed to load points settings" })
+    return
+  }
 
   // Balance = SUM(delta) over every row for the user
   const { data: rows, error: rowsErr } = await supabase
@@ -141,7 +154,17 @@ pointsRouter.get("/balance", requireAuth, async (_req, res) => {
     }
   }
 
-  res.json({ balance, expiring_soon: expiringSoon })
+  res.json({
+    data: {
+      balance,
+      expiring_soon: expiringSoon,
+      ratio: settings.ratio,
+      allow_coupon_stack: settings.allow_coupon_stack,
+    },
+    // Keep flat fields too for any legacy caller — harmless extra bytes.
+    balance,
+    expiring_soon: expiringSoon,
+  })
 })
 
 // ---------------------------------------------------------------------------
