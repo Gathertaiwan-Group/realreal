@@ -264,8 +264,22 @@ export default function PaymentPage() {
       })
 
       if (!res.ok) {
-        const body = await res.json().catch(() => ({ message: "建立訂單失敗" }))
-        throw new Error((body as { message?: string }).message ?? "建立訂單失敗")
+        const body = await res.json().catch(() => ({}))
+        const b = body as { message?: string; error?: string | { fieldErrors?: Record<string, string[]>; formErrors?: string[] }; details?: { fieldErrors?: Record<string, string[]>; formErrors?: string[] } }
+        let msg = b.message ?? (typeof b.error === "string" ? b.error : "")
+        // Surface zod-style validation errors when present (debug-friendly)
+        const details = b.details ?? (typeof b.error === "object" ? b.error : undefined)
+        if (!msg && details) {
+          const fields = Object.entries(details.fieldErrors ?? {})
+            .map(([k, v]) => `${k}: ${(v as string[]).join(", ")}`)
+            .join("; ")
+          const forms = (details.formErrors ?? []).join("; ")
+          msg = [fields, forms].filter(Boolean).join(" | ")
+        }
+        if (!msg) msg = `建立訂單失敗 (HTTP ${res.status})`
+        // Log full body for console debugging (admin testing especially)
+        console.warn("[orders] create failed:", res.status, body)
+        throw new Error(msg)
       }
 
       const data = await res.json() as {
