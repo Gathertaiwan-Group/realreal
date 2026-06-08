@@ -22,6 +22,31 @@ export const adminCustomersRouter = Router()
 adminCustomersRouter.use(requireAuth, requireAdmin)
 
 // ---------------------------------------------------------------------------
+// GET /admin/customers/lookup?email=X — single-row email→id lookup
+// Used by the campaigns test bench (admin impersonates a customer scenario).
+// ---------------------------------------------------------------------------
+
+adminCustomersRouter.get("/lookup", async (req, res) => {
+  const email = String(req.query.email ?? "").trim().toLowerCase()
+  if (!email) {
+    res.status(400).json({ error: "email query required" })
+    return
+  }
+  // auth.users is read via service role; match case-insensitively
+  const { data: { users }, error } = await supabase.auth.admin.listUsers({ page: 1, perPage: 200 })
+  if (error) {
+    res.status(500).json({ error: error.message })
+    return
+  }
+  const u = (users ?? []).find(x => (x.email ?? "").toLowerCase() === email)
+  if (!u) {
+    res.status(404).json({ error: "not found" })
+    return
+  }
+  res.json({ data: { id: u.id, email: u.email } })
+})
+
+// ---------------------------------------------------------------------------
 // GET /admin/customers/:id — full detail page payload
 // ---------------------------------------------------------------------------
 

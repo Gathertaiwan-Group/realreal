@@ -23,6 +23,13 @@ export type EvaluatorContext = {
     birthday: string | null
     /** ISO timestamp string or null; used by first_purchase optional days_since_signup check. */
     created_at?: string | null
+    /**
+     * Sandbox override for first_purchase evaluation (admin test bench).
+     * Real checkout NEVER sets this — evalFirstPurchase falls back to DB.
+     * true  = pretend user is first-purchase eligible (no past paid orders)
+     * false = pretend user already has past paid orders
+     */
+    _is_first_purchase_override?: boolean
   }
   cart: {
     items: CartItem[]
@@ -559,8 +566,11 @@ export async function evalFirstPurchase(
     return notApplied(c, `未達最低訂單金額 NT$${minOrderAmount}`)
   }
 
-  // 2) First-purchase check (DB)
-  const isFirst = await isFirstPurchase(ctx.user.id)
+  // 2) First-purchase check — sandbox can override; else hit DB
+  const isFirst =
+    typeof ctx.user._is_first_purchase_override === "boolean"
+      ? ctx.user._is_first_purchase_override
+      : await isFirstPurchase(ctx.user.id)
   if (!isFirst) return notApplied(c, "不是首購")
 
   // 3) Optional signup-window check
@@ -618,7 +628,7 @@ export async function evaluateCampaign(
  * Orchestrator
  * ========================================================================== */
 
-async function fetchActiveCampaignsForUser(
+export async function fetchActiveCampaignsForUser(
   _userId: string,
   tierId: string | null,
 ): Promise<CampaignRow[]> {
@@ -654,7 +664,7 @@ function scoreForType(r: EvaluatorResult, ctx: EvaluatorContext): number {
   }
 }
 
-function pickBestPerType(
+export function pickBestPerType(
   results: EvaluatorResult[],
   ctx: EvaluatorContext,
 ): EvaluatorResult[] {
