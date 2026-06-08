@@ -101,7 +101,10 @@ export default function ConfirmPage() {
   const orderNumber = deriveOrderNumber(searchParams) ?? "---"
   const method = searchParams.get("method")
   const isCvsCod = method === "cvs_cod"
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>("loading")
+  const isTestPaid = method === "test_paid"
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
+    isTestPaid ? "success" : "loading",
+  )
   const estimatedDelivery = getEstimatedDelivery()
 
   // Server-side truth: fetch the real payment_status from the API.
@@ -112,8 +115,8 @@ export default function ConfirmPage() {
   // before payment_status flips to "paid". Poll every 3s for up to 2 min
   // so the user doesn't have to manually refresh.
   useEffect(() => {
-    // CVS COD：訂單無需線上付款確認，跳過 polling
-    if (method === "cvs_cod") return
+    // CVS COD / test_paid：訂單無需線上付款確認，跳過 polling
+    if (method === "cvs_cod" || method === "test_paid") return
 
     if (orderNumber === "---") {
       const explicit = searchParams.get("status")

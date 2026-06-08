@@ -15,7 +15,7 @@ import {
   type PromoState,
 } from "@/components/checkout/PromoWidget"
 
-type PaymentMethod = "pchomepay" | "linepay" | "jkopay" | "cvs_cod"
+type PaymentMethod = "pchomepay" | "linepay" | "jkopay" | "cvs_cod" | "test_paid"
 
 type PaymentOption = {
   value: PaymentMethod
@@ -115,6 +115,30 @@ export default function PaymentPage() {
     return () => window.removeEventListener(PROMO_EVENT, handler)
   }, [])
 
+  // Admin role detection — controls visibility of the "test_paid" sandbox
+  // payment method (skips gateway but runs full post-payment pipeline:
+  // invoice / email / stock / points / LINE Notify).
+  const [isAdmin, setIsAdmin] = useState(false)
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const supabase = createClient()
+        const { data: { user } } = await supabase.auth.getUser()
+        if (cancelled || !user) return
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("role")
+          .eq("user_id", user.id)
+          .maybeSingle()
+        if (!cancelled && (profile as { role?: string } | null)?.role === "admin") {
+          setIsAdmin(true)
+        }
+      } catch { /* silently fail — non-admin path */ }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
   const isCvsShipping = checkoutData?.shippingMethod === "711" || checkoutData?.shippingMethod === "family"
 
   const PAYMENT_OPTIONS: PaymentOption[] = [
@@ -127,6 +151,15 @@ export default function PaymentPage() {
       icon: "🏪",
       color: "bg-zinc-50 border-zinc-200",
       note: "到店取貨時付款，由綠界代收"
+    }] : []),
+    // Admin-only sandbox: skip gateway, run full pipeline (invoice / email /
+    // stock / points / LINE Notify). Server enforces admin role too.
+    ...(isAdmin ? [{
+      value: "test_paid" as PaymentMethod,
+      label: "🧪 沙盒測試付款",
+      icon: "🧪",
+      color: "bg-amber-50 border-amber-300",
+      note: "Admin 限定：不過金流但跑完整流程（發票/通知/庫存/點數）"
     }] : []),
   ]
 
@@ -257,6 +290,13 @@ export default function PaymentPage() {
         cartStore.useCart.getState().clear()
         clearPromoState()
         router.push(`/checkout/confirm?order=${encodeURIComponent(returnedOrderNumber)}&method=cvs_cod`)
+      } else if (paymentMethod === "test_paid" && returnedOrderNumber) {
+        // Admin 沙盒：訂單建立 + 全 pipeline 已跑（發票/通知/庫存/點數），直跳 confirm
+        toast.success("🧪 沙盒訂單已成立（跳過金流）")
+        const cartStore = await import("@/lib/cart")
+        cartStore.useCart.getState().clear()
+        clearPromoState()
+        router.push(`/checkout/confirm?order=${encodeURIComponent(returnedOrderNumber)}&method=test_paid`)
       } else {
         setError("無法取得付款連結，請稍後再試或聯繫客服")
       }

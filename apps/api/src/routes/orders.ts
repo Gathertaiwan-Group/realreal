@@ -17,6 +17,7 @@ import { initiatePayment as jkoPayInitiatePayment } from "../lib/jkopay"
 import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
 import { computeShipping } from "../lib/shipping"
 import { inventoryQueue } from "../lib/queue"
+import { enqueuePostPaymentJobs } from "../lib/enqueue-post-payment"
 
 export const ordersRouter = Router()
 
@@ -45,7 +46,7 @@ const createOrderSchema = z.object({
   items: z.array(orderItemSchema).min(1),
   address: addressSchema,
   shippingMethod: z.enum(["home_delivery", "cvs_711", "cvs_family", "overseas_cod"]),  // 新增
-  paymentMethod: z.enum(["pchomepay", "linepay", "jkopay", "cvs_cod"]),               // 新增
+  paymentMethod: z.enum(["pchomepay", "linepay", "jkopay", "cvs_cod", "test_paid"]),  // test_paid = admin sandbox (skips gateway)
   guestEmail: z.string().email().optional(),
   couponCode: z.string().optional(),
   points_used: z.number().int().min(0).optional(),
@@ -478,6 +479,77 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       supabase.from("orders").delete().eq("id", order.id),
     ])
     res.status(500).json({ error: "Failed to create order address" }); return
+  }
+
+  // ---- test_paid：admin 沙盒，跳過金流但跑完整 post-payment pipeline ----
+  // 用途：admin 想驗證發票 / 訂單通知 / 庫存扣 / 點數累積 / LINE Notify
+  // 全鏈路是否正常，不用每次真的刷卡。Server-side 驗證 admin role；非 admin
+  // 送這個 paymentMethod 會被擋下並回 403。
+  if (paymentMethod === "test_paid") {
+    // Hard auth gate — only admin can use this sandbox payment.
+    if (!userId) {
+      // Rollback the order we just inserted.
+      await Promise.all([
+        supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload }),
+        supabase.from("order_items").delete().eq("order_id", order.id),
+        supabase.from("order_addresses").delete().eq("order_id", order.id),
+        supabase.from("orders").delete().eq("id", order.id),
+      ])
+      res.status(401).json({ error: "test_paid requires authentication" })
+      return
+    }
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("role")
+      .eq("user_id", userId)
+      .maybeSingle()
+    const role = (profile as { role?: string } | null)?.role
+    if (role !== "admin") {
+      await Promise.all([
+        supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload }),
+        supabase.from("order_items").delete().eq("order_id", order.id),
+        supabase.from("order_addresses").delete().eq("order_id", order.id),
+        supabase.from("orders").delete().eq("id", order.id),
+      ])
+      res.status(403).json({ error: "test_paid requires admin role" })
+      return
+    }
+
+    // Mark order as paid + processing — same end state as a webhook callback
+    // from a real gateway would produce.
+    const nowIso = new Date().toISOString()
+    await supabase
+      .from("orders")
+      .update({ status: "processing", payment_status: "paid", paid_at: nowIso })
+      .eq("id", order.id)
+
+    await supabase.from("payments").insert({
+      order_id: order.id,
+      gateway: "test",
+      gateway_tx_id: order.order_number,
+      amount: Math.round(totalCents / 100),
+      status: "paid",
+    })
+
+    // Fire the full post-payment pipeline INLINE (await it so any failures
+    // surface in the response — admin testing wants to know if invoice/email
+    // broke). Real webhooks do this via BullMQ to absorb timeouts; for admin
+    // sandbox we want immediate end-to-end signal.
+    try {
+      await enqueuePostPaymentJobs(order.id)
+    } catch (err) {
+      console.warn("[test_paid] enqueuePostPaymentJobs threw (non-fatal for response):", err)
+    }
+
+    res.status(201).json({
+      data: {
+        orderId: order.id,
+        orderNumber: order.order_number,
+        paymentMethod,
+        sandbox: true,
+      },
+    })
+    return
   }
 
   // ---- cvs_cod：不走線上金流，立即建立物流 ----
