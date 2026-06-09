@@ -1,97 +1,174 @@
 import type { Metadata } from "next"
-import { getSiteContent } from "@/lib/content"
 
 export const metadata: Metadata = {
-  title: "隱私權政策 | 誠真生活 RealReal",
-  description: "誠真生活 RealReal 隱私權政策，說明我們如何蒐集、使用及保護您的個人資料。",
+  title: "隱私權政策與服務條款 | 誠真生活 RealReal",
+  description: "誠真生活 RealReal 隱私權政策與服務條款，說明我們如何蒐集、使用及保護您的個人資料，以及使用本網站應遵守的相關規範。",
 }
 
-type PrivacyContent = {
-  content_html: string
-  updated_at?: string
-}
-
-const fallbackPrivacyHtml = `
-<h5 style="text-align:center;"><strong>適用範圍</strong> Scope of Policy</h5>
-
-<p>本隱私權保護政策適用於誠真生活網站、官網購物平台及官方 LINE、客服信箱所蒐集的個人資料。<br/>
-This Privacy Policy applies to personal data collected through the Cheng Zhen Living website, online store, official LINE, and customer service email.</p>
-
-<h5 style="text-align:center;">資料蒐集與使用 Data Collection &amp; Use</h5>
-
-<p>為完成訂單、提供客服與會員服務，誠真生活將蒐集必要的個人資料（如姓名、聯絡方式、收件資訊）。<br/>
-To process orders and provide customer and membership services, RealReal Living collects necessary personal information (such as name, contact details, and shipping information).</p>
-
-<p>個人資料僅用於<strong>訂單處理、會員管理、服務通知與品牌相關溝通</strong>。<br/>
-Personal data is used solely for order processing, membership management, service notifications, and brand-related communications.</p>
-
-<h5 style="text-align:center;">資料保護 Data Protection</h5>
-
-<p>誠真生活將採取合理之安全措施，保護你的個人資料不被未經授權存取、使用或洩漏。<br/>
-RealReal Living implements reasonable security measures to protect your personal data from unauthorized access, use, or disclosure.</p>
-
-<h5 style="text-align:center;">資料分享 Data Sharing</h5>
-
-<p>除法律規定或完成訂單所必要（如物流、金流服務）外，誠真生活<strong>不會向第三方揭露、出售或交換你的個人資料</strong>。<br/>
-Except as required by law or necessary to fulfill orders (e.g., logistics and payment services), RealReal Living does not sell, trade, or disclose personal data to third parties.</p>
-
-<h5 style="text-align:center;">使用者權利 Your Rights</h5>
-
-<p>你可依法查詢、更正或請求停止使用你的個人資料。<br/>
-You have the right to access, correct, or request cessation of the use of your personal data in accordance with applicable laws.</p>
-
-<h5 style="text-align:center;">條款更新 Policy Updates</h5>
-
-<p>本隱私權條款如有調整，將公布於官網，不另行個別通知。<br/>
-Any updates to this Privacy Policy will be posted on the website without individual notice.</p>
-`
-
-export default async function PrivacyPage() {
-  const content = await getSiteContent<PrivacyContent>("privacy_policy")
-  const hasCustomContent =
-    content?.content_html && content.content_html.trim().length > 0
-
-  const updatedDate = content?.updated_at
-    ? new Date(content.updated_at).toLocaleDateString("zh-TW", {
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-      })
-    : "2025 年 1 月 1 日"
-
-  if (hasCustomContent) {
-    return (
-      <div className="container mx-auto px-4 py-12 max-w-3xl">
-        <h1 className="text-3xl font-bold mb-2 text-center text-[#10305a]">隱私權政策</h1>
-        <p className="text-[#687279] text-center mb-10">
-          最後更新日期：{updatedDate}
-        </p>
-        <div
-          className="prose prose-zinc max-w-none
-            prose-headings:text-[#10305a] prose-headings:font-bold
-            prose-p:text-[#687279] prose-p:leading-relaxed
-            prose-a:text-[#10305a] prose-a:underline
-            prose-img:rounded-[10px]
-            prose-li:text-[#687279]
-            prose-blockquote:border-[#10305a]/30 prose-blockquote:text-[#687279]
-            prose-strong:text-[#10305a]"
-          dangerouslySetInnerHTML={{ __html: content!.content_html! }}
-        />
-      </div>
-    )
-  }
-
+export default function PrivacyPage() {
   return (
     <div className="container mx-auto px-4 py-12 max-w-3xl">
-      <h1 className="text-3xl font-bold mb-2 text-center text-[#10305a]">隱私權政策</h1>
-      <p className="text-[#687279] text-center mb-10">
-        最後更新日期：{updatedDate}
-      </p>
+      <h1 className="text-3xl font-bold mb-2 text-center text-[#10305a]">隱私權政策與服務條款</h1>
+      <p className="text-[#687279] text-center mb-10">最後更新日期：2025年6月</p>
 
-      <div
-        className="prose prose-headings:text-[#10305a] prose-p:text-[#687279] prose-strong:text-[#10305a] prose-h5:text-xl prose-h5:font-semibold prose-h5:mt-10 prose-h5:mb-4 prose-p:leading-relaxed max-w-none"
-        dangerouslySetInnerHTML={{ __html: fallbackPrivacyHtml }}
-      />
+      <div className="prose prose-zinc max-w-none prose-headings:text-[#10305a] prose-headings:font-bold prose-p:text-[#687279] prose-p:leading-relaxed prose-a:text-[#10305a] prose-a:underline prose-li:text-[#687279] prose-strong:text-[#10305a]">
+
+        <p>感謝您使用誠真生活（realreal.cc，以下簡稱「本品牌」、「我們」）的網站及服務。本文件涵蓋隱私權政策與服務條款，旨在說明我們如何蒐集、使用及保護您的個人資料，以及您使用本網站時應遵守的相關規範。</p>
+        <p>本品牌依據中華民國《個人資料保護法》、《消費者保護法》及相關法律規定，承諾保護您的個人隱私與消費權益。請您在使用本網站或購買商品前，詳細閱讀以下條款。</p>
+        <p>當您完成會員註冊、或開始使用本服務時，即表示您已閱讀、瞭解並同意接受本條款之所有內容。本品牌保留修改本條款之權利，重大變更將公告於網站首頁；您於修改後繼續使用本服務，視為同意修改後之條款。</p>
+
+        <h2>一、隱私權政策</h2>
+
+        <h3>1.1 蒐集資料的範圍</h3>
+        <p>當您瀏覽本網站、加入會員、填寫表單或完成購物時，我們可能蒐集以下資料：</p>
+        <ul>
+          <li><strong>識別資料（C001）</strong>：姓名、電子郵件地址、聯絡電話</li>
+          <li><strong>配送資料</strong>：收件地址（超商取貨或宅配地址）</li>
+          <li><strong>財務資料（C002）</strong>：付款方式、金融機構帳號資訊（由金流合作夥伴處理，本品牌不儲存卡號）</li>
+          <li><strong>個人描述（C011）</strong>：性別、出生年月日（若會員填寫）</li>
+          <li><strong>交易資料</strong>：訂單內容、消費紀錄</li>
+          <li><strong>技術資料</strong>：IP 位址、瀏覽器類型、瀏覽行為（透過 Cookie 蒐集）</li>
+          <li><strong>行銷互動資料</strong>：與本品牌 Facebook 粉絲頁、LINE 社群的互動紀錄</li>
+        </ul>
+
+        <h3>1.2 資料蒐集的目的</h3>
+        <p>蒐集目的包括：行銷業務（法定目的編號040）、消費者與客戶管理（090）、網路購物及電子商務服務（148）、調查統計與研究分析（157）。具體用途如下：</p>
+        <ul>
+          <li>處理訂單及安排商品配送</li>
+          <li>提供售後服務與客戶支援</li>
+          <li>寄送訂單確認通知及出貨通知</li>
+          <li>發送品牌電子報、新品資訊或優惠活動</li>
+          <li>改善本網站使用體驗及商品服務</li>
+          <li>依法律規定保存交易憑證</li>
+        </ul>
+
+        <h3>1.3 資料的利用與分享</h3>
+        <p>我們承諾不會將您的個人資料出售或出租予第三方。我們可能在以下情況下分享您的資料：</p>
+        <ul>
+          <li><strong>物流與配送業者</strong>：提供您的姓名、電話、地址，以完成商品配送（如郵局、7-11 超商取貨等）</li>
+          <li><strong>金流服務商</strong>：提供必要的交易資訊以完成付款處理（如 LINE Pay）</li>
+          <li><strong>法律要求</strong>：當法律規定或主管機關要求時，我們將依法提供相關資料</li>
+        </ul>
+        <p>上述合作夥伴均受保密義務約束，不得將資料用於其他用途。</p>
+
+        <h3>1.4 Cookie 使用說明</h3>
+        <p>本網站使用 Cookie 及類似技術以提升瀏覽體驗，包括：</p>
+        <ul>
+          <li>記錄購物車內容及登入狀態</li>
+          <li>分析網站流量及使用行為（Google Analytics）</li>
+          <li>提供個人化廣告投放（Facebook Pixel）</li>
+        </ul>
+        <p>您可透過瀏覽器設定拒絕或刪除 Cookie，但部分功能可能因此受限。</p>
+
+        <h3>1.5 資料保存期限</h3>
+        <p>我們依據資料蒐集目的的存續期間保存您的個人資料，以「會員當事人要求停止使用或本品牌停止提供服務之日」為止。</p>
+        <p>交易相關資料（訂單紀錄、發票憑證）依《商業會計法》及稅務法規法定保存 5 年；此係法律義務，即使您要求刪除帳號，交易金額與品項紀錄仍須保留，但我們將於訂單完成後 1 年內自動刪除您的配送地址等個人識別資料，僅保留符合稅務要求的最低必要資訊。</p>
+
+        <h3>1.6 您的資料權利</h3>
+        <p>依據《個人資料保護法》第 3 條，您享有以下權利：</p>
+        <ul>
+          <li>查詢或請求閱覽您的個人資料</li>
+          <li>請求製給複製本</li>
+          <li>請求補充或更正不正確的資料</li>
+          <li>請求停止蒐集、處理或利用您的個人資料</li>
+          <li>請求刪除您的個人資料（於法律許可範圍內）</li>
+        </ul>
+        <p>如需行使上述權利，請透過本文件末尾所載之聯絡方式與我們聯繫，我們將於 15 個工作日內回覆。請注意：如拒絕提供加入會員所需必要資料，可能導致無法享受完整服務。</p>
+
+        <h3>1.7 未成年人保護</h3>
+        <p>本網站服務適用於所有年齡層。若您未滿 18 歲，依中華民國《民法》規定：</p>
+        <ul>
+          <li><strong>未滿 7 歲（無行為能力）</strong>：購買行為須由法定代理人代為辦理</li>
+          <li><strong>7 歲以上未滿 18 歲（限制行為能力）</strong>：須取得法定代理人同意，方得下單購物</li>
+        </ul>
+        <p>當未成年會員使用或繼續使用本服務時，即推定其法定代理人（家長或監護人）已閱讀、瞭解並同意接受本條款所有內容。本品牌保留在發現未經監護人同意的未成年人購買行為時，取消訂單並退款的權利。家長應盡到督導義務：未滿 12 歲之兒童使用本服務時，建議全程陪同；12 歲以上未滿 18 歲之青少年，家長應斟酌是否給予同意。</p>
+
+        <h2>二、服務條款</h2>
+
+        <h3>2.1 服務範圍</h3>
+        <p>本品牌透過官方網站（realreal.cc）及實體市集活動，販售植物性蛋白粉及相關產品。本服務條款適用於您透過本官方網站進行的所有瀏覽及購買行為。</p>
+
+        <h3>2.2 會員資格與帳號安全</h3>
+        <p><strong>會員資格義務：</strong></p>
+        <ul>
+          <li>依本服務註冊表之提示提供本人正確、最新的資料，不得以第三人名義註冊，且每人僅能擁有一個帳號</li>
+          <li>即時維持並更新個人資料，確保其正確性</li>
+          <li>若提供錯誤或不實資料、重複註冊帳號，本品牌有權不經事先通知，逕行暫停或終止帳號</li>
+        </ul>
+        <p><strong>帳號安全義務：</strong></p>
+        <ul>
+          <li>維持密碼及帳號之機密安全，任何憑正確帳密登入的操作，均推定為會員本人所為，會員應負完全責任</li>
+          <li>帳號或密碼遭盜用時，應立即通知本品牌，並自行承擔通知前已發生之損害（除可歸責於本品牌之事由外）</li>
+          <li>帳號、密碼及會員權益僅供本人使用，不得轉借、轉讓或與他人合用</li>
+          <li>每次連線完畢應結束帳號使用（登出）</li>
+        </ul>
+
+        <h3>2.3 會員守法義務與禁止行為</h3>
+        <p>會員承諾遵守中華民國相關法規及網際網路使用慣例，並保證不得利用本服務從事以下行為：</p>
+        <ul>
+          <li>公布或傳送誹謗、侮辱、威脅、攻擊性、不雅、猥褻、不實或違反公序良俗之內容</li>
+          <li>侵害本品牌或他人之名譽、隱私權、商標權、著作權、專利權或其他智慧財產權</li>
+          <li>冒用他人名義使用本服務或進行購物</li>
+          <li>傳輸或散佈電腦病毒或任何具破壞性之程式</li>
+          <li>從事未經本品牌事前授權的商業行為（包括但不限於爬取資料、轉售商品資訊）</li>
+          <li>發送垃圾郵件、連鎖信或未經許可的多層次傳銷訊息</li>
+          <li>利用本服務進行任何非法用途或對其他用戶產生困擾之行為</li>
+        </ul>
+        <p>如有違反上述義務，本品牌得視情況暫停或永久終止會員資格，並保留依法追訴之權利。</p>
+
+        <h3>2.4 商品描述與規格</h3>
+        <p>本品牌致力於提供正確的商品資訊，包括成分、規格、保存期限及建議用法。如商品資訊有任何更新，將以官網公告為準。商品圖片僅供參考，實際外觀以實品為準（凍乾水果因天然材料特性，每批外觀略有差異，屬正常現象）。</p>
+
+        <h3>2.5 訂購、付款與交易成立</h3>
+        <p>您完成線上訂購即表示同意本服務條款。系統自動發出之接受通知並非最終訂單確認，本品牌仍保有於下單後 2 個工作日內，因以下原因拒絕或取消訂單的權利：</p>
+        <ul>
+          <li>商品資訊（規格、價格）有誤</li>
+          <li>商品缺貨或無法向供應商調貨</li>
+          <li>付款驗證未通過</li>
+        </ul>
+        <p>本品牌接受以下付款方式：</p>
+        <ul>
+          <li>信用卡（Visa、Mastercard、JCB）</li>
+          <li>LINE Pay、街口支付（依平台支援調整）</li>
+        </ul>
+
+        <h3>2.6 服務內容之變更與電子報發送</h3>
+        <p>本品牌得視業務需要，增減、變更或終止相關服務項目或活動內容，且無需個別通知會員。</p>
+        <p>本品牌得不定期發送電子報或商品訊息（EDM）至會員登錄之電子郵件或 LINE 帳號。當會員收到訊息後表示拒絕接受行銷時，本品牌將立即停止發送。</p>
+
+        <h3>2.7 服務之停止與中斷</h3>
+        <p>本品牌將以合理技術維持系統正常運作，但以下情況得暫停或中斷服務，且不負損害賠償責任：</p>
+        <ul>
+          <li>系統設備進行必要保養或施工</li>
+          <li>發生突發性設備故障</li>
+          <li>天災、停電或其他不可抗力因素</li>
+          <li>網路服務供應商之中斷或限制</li>
+        </ul>
+
+        <h3>2.8 責任限制</h3>
+        <p>本品牌商品屬食品類，不具醫療功效，不得替代醫療診斷或治療。若您有特定健康狀況、過敏史或正在服藥，建議購買前諮詢醫療專業人員。</p>
+        <p>本品牌對於本服務之效能、速度、完整性、可靠性及安全性，不負擔任何明示或默示之擔保責任。對於因使用本網站或商品所產生的直接或間接損失，在法律許可範圍內，本品牌之賠償責任以您實際支付之商品金額為上限。</p>
+        <p>本品牌不保證網站所傳送之電子郵件或內容不含電腦病毒等有害物；因郵件、檔案或資料傳送失敗、遺失或錯誤所致之損害，本品牌不負賠償責任。</p>
+
+        <h3>2.9 智慧財產權保護</h3>
+        <p>「誠真生活」品牌名稱、商標、網站所有內容（包括文字、圖片、影片、設計、軟體程式及網站架構）均為本品牌所有，受《著作權法》、《商標法》及相關智慧財產權法律保護。</p>
+        <p>任何人未經本品牌書面授權，不得逕自使用、修改、重製、公開播送、改作、散布、發行、還原工程、解編或反向組譯。如需引用或轉載，必須依法取得本品牌事前書面同意。</p>
+        <p>若會員有侵害本品牌智慧財產權之情事，本品牌得暫停或取消其會員帳號，並依法請求損害賠償（包含訴訟費用及律師費用）。</p>
+
+        <h3>2.10 免責聲明</h3>
+        <p>本品牌對以下情形不負擔保責任：</p>
+        <ul>
+          <li>因會員提供不實資料所造成的任何損失</li>
+          <li>因第三方物流或金流業者所造成的延誤、遺失或損害</li>
+          <li>因不可抗力因素（天災、停電、疫情等）導致之服務中斷</li>
+          <li>因會員個人設備或網路問題所造成的瀏覽異常</li>
+        </ul>
+        <p>本品牌保留對本條款最終解釋權，因本條款產生疑義時，應作有利於消費者之解釋。</p>
+
+        <hr />
+        <p className="text-sm">如有任何問題，歡迎透過 <a href="/contact">聯絡我們</a> 頁面與我們聯繫。</p>
+
+      </div>
     </div>
   )
 }

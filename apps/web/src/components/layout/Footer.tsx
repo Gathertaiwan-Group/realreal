@@ -110,7 +110,7 @@ export function Footer() {
         <div className="container mx-auto flex flex-col items-center justify-between gap-3 px-6 py-5 text-xs opacity-60 md:flex-row">
           <p>&copy; 2026 誠真生活 All Rights Reserved</p>
           <div className="flex gap-6">
-            <Link href="/privacy-policy" className="transition-opacity hover:opacity-100">
+            <Link href="/privacy" className="transition-opacity hover:opacity-100">
               隱私權條款
             </Link>
           </div>
