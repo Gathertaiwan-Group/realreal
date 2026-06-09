@@ -45,28 +45,6 @@ async function findCategorySlug(needle: string): Promise<string | undefined> {
 
 /* ---------- sections ---------- */
 
-function AnnouncementBar() {
-  const messages = [
-    "消費滿 499 超取免運",
-    "消費滿 999 宅配免運",
-  ]
-  // Duplicate messages so the marquee loops seamlessly
-  const items = [...messages, ...messages]
-
-  return (
-    <div className="overflow-hidden bg-[#10305a] text-white py-2 text-sm">
-      <div className="flex animate-marquee whitespace-nowrap">
-        {items.map((msg, i) => (
-          <span key={i} className="mx-8 inline-flex items-center gap-2">
-            <span className="text-yellow-300">★</span>
-            {msg}
-          </span>
-        ))}
-      </div>
-    </div>
-  )
-}
-
 type HeroContent = {
   heading?: string
   subheading?: string
@@ -279,7 +257,7 @@ function BlogSection({ posts }: { posts: Post[] }) {
   const hasPosts = posts.length > 0
 
   return (
-    <section className="bg-[#fffeee] py-10 sm:py-14">
+    <section className="py-10 sm:py-14">
       <div className="px-3 sm:px-4">
         <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl">
           聰明過生活
@@ -533,9 +511,6 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen">
-      {/* 0. Announcement bar (marquee) */}
-      <AnnouncementBar />
-
       {/* 1. Hero */}
       <HeroSection content={heroContent} />
 
@@ -551,17 +526,15 @@ export default async function HomePage() {
       />
 
       {/* 4. Product section: 原相凍乾水果 */}
-      <div className="bg-[#fffeee]">
-        <ProductSection
-          title="原相凍乾水果"
-          products={fruitProducts}
-          moreLabel="查看更多凍乾水果 →"
-          moreHref={fruitSlug ? `/shop/${fruitSlug}` : "/shop"}
-        />
-      </div>
+      <ProductSection
+        title="原相凍乾水果"
+        products={fruitProducts}
+        moreLabel="查看更多凍乾水果 →"
+        moreHref={fruitSlug ? `/shop/${fruitSlug}` : "/shop"}
+      />
 
       {/* 6. Customer reviews carousel */}
-      <section className="bg-[#fffeee] py-10 sm:py-12">
+      <section className="py-10 sm:py-12">
         <div className="px-3 sm:px-4">
           <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl mb-2">
             顧客真實回饋
