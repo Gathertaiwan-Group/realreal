@@ -16,8 +16,6 @@ export function Footer() {
       links: [
         { href: "/contact", label: "聯絡我們" },
         { href: "/faq", label: "常見問題" },
-        { href: "/shipping", label: "配送說明" },
-        { href: "/returns", label: "購物須知" },
       ],
     },
   ]
@@ -146,8 +144,8 @@ export function Footer() {
             <Link href="/privacy-policy" className="transition-opacity hover:opacity-100">
               隱私權條款
             </Link>
-            <Link href="/returns" className="transition-opacity hover:opacity-100">
-              購物須知
+            <Link href="/faq" className="transition-opacity hover:opacity-100">
+              常見問題
             </Link>
           </div>
         </div>
