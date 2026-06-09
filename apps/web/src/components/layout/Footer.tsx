@@ -12,21 +12,18 @@ export function Footer() {
 
           {/* Column 1: Brand */}
           <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
-            <div className="mb-5 flex items-center gap-4">
-              <Image
-                src="/logo.svg"
-                alt="誠真生活"
-                width={64}
-                height={64}
-                className="brightness-0 invert"
-              />
-              <div>
-                <p className="text-2xl font-bold tracking-wide">誠真生活</p>
-                <p className="text-sm tracking-widest opacity-70">RealReal</p>
-              </div>
-            </div>
-            <p className="text-sm leading-relaxed opacity-70">
-              純淨植物力，為你的生活加分。<br />台灣在地品牌。
+            <Image
+              src="/logo-full.jpg"
+              alt="誠真生活 RealReal"
+              width={160}
+              height={160}
+              className="mb-4"
+              style={{ mixBlendMode: "screen" }}
+            />
+            <p className="text-base leading-loose opacity-80">
+              純淨植物力<br />
+              為你的生活加分<br />
+              台灣在地品牌
             </p>
           </div>
 
