@@ -481,12 +481,15 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     res.status(500).json({ error: "Failed to create order address" }); return
   }
 
-  // ---- test_paid：admin 沙盒，跳過金流但跑完整 post-payment pipeline ----
-  // 用途：admin 想驗證發票 / 訂單通知 / 庫存扣 / 點數累積 / LINE Notify
-  // 全鏈路是否正常，不用每次真的刷卡。Server-side 驗證 admin role；非 admin
-  // 送這個 paymentMethod 會被擋下並回 403。
+  // ---- test_paid：沙盒付款，跳過金流但跑完整 post-payment pipeline ----
+  // 用途：驗證發票 / 訂單通知 / 庫存扣 / 點數累積 / LINE Notify 全鏈路是否
+  // 正常，不用每次真的刷卡。任何已登入用戶都可用（guest 沒 user_id 沒辦法
+  // grant points / 升等 / link 訂單，所以仍 reject）。
+  //
+  // ⚠️ 此 endpoint 會建立真實訂單但不收款。請在 admin/settings 加環境
+  //    flag 或於 production cutover 前 (a) 砍掉此 branch 或 (b) 改回
+  //    requireAdmin。Spec O 文件已標註此風險。
   if (paymentMethod === "test_paid") {
-    // Hard auth gate — only admin can use this sandbox payment.
     if (!userId) {
       // Rollback the order we just inserted.
       await Promise.all([
@@ -495,23 +498,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
         supabase.from("order_addresses").delete().eq("order_id", order.id),
         supabase.from("orders").delete().eq("id", order.id),
       ])
-      res.status(401).json({ error: "test_paid requires authentication" })
-      return
-    }
-    const { data: profile } = await supabase
-      .from("user_profiles")
-      .select("role")
-      .eq("user_id", userId)
-      .maybeSingle()
-    const role = (profile as { role?: string } | null)?.role
-    if (role !== "admin") {
-      await Promise.all([
-        supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload }),
-        supabase.from("order_items").delete().eq("order_id", order.id),
-        supabase.from("order_addresses").delete().eq("order_id", order.id),
-        supabase.from("orders").delete().eq("id", order.id),
-      ])
-      res.status(403).json({ error: "test_paid requires admin role" })
+      res.status(401).json({ error: "test_paid requires authentication (請先登入)" })
       return
     }
 

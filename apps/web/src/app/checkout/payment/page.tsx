@@ -115,26 +115,19 @@ export default function PaymentPage() {
     return () => window.removeEventListener(PROMO_EVENT, handler)
   }, [])
 
-  // Admin role detection — controls visibility of the "test_paid" sandbox
+  // Logged-in detection — controls visibility of the "test_paid" sandbox
   // payment method (skips gateway but runs full post-payment pipeline:
-  // invoice / email / stock / points / LINE Notify).
-  const [isAdmin, setIsAdmin] = useState(false)
+  // invoice / email / stock / points / LINE Notify). Available to any
+  // authenticated user (not just admin) so the team can self-test end-to-end.
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
-        if (cancelled || !user) return
-        const { data: profile } = await supabase
-          .from("user_profiles")
-          .select("role")
-          .eq("user_id", user.id)
-          .maybeSingle()
-        if (!cancelled && (profile as { role?: string } | null)?.role === "admin") {
-          setIsAdmin(true)
-        }
-      } catch { /* silently fail — non-admin path */ }
+        if (!cancelled && user) setIsLoggedIn(true)
+      } catch { /* guest path */ }
     })()
     return () => { cancelled = true }
   }, [])
@@ -152,14 +145,15 @@ export default function PaymentPage() {
       color: "bg-zinc-50 border-zinc-200",
       note: "到店取貨時付款，由綠界代收"
     }] : []),
-    // Admin-only sandbox: skip gateway, run full pipeline (invoice / email /
-    // stock / points / LINE Notify). Server enforces admin role too.
-    ...(isAdmin ? [{
+    // Sandbox: skip gateway, run full pipeline (invoice / email / stock /
+    // points / LINE Notify). Requires login (guest can't earn points / link
+    // order to a user). Server enforces same auth check.
+    ...(isLoggedIn ? [{
       value: "test_paid" as PaymentMethod,
       label: "🧪 沙盒測試付款",
       icon: "🧪",
       color: "bg-amber-50 border-amber-300",
-      note: "Admin 限定：不過金流但跑完整流程（發票/通知/庫存/點數）"
+      note: "不過金流但跑完整流程（發票/通知/庫存/點數）— 需登入"
     }] : []),
   ]
 
