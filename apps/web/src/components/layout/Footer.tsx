@@ -8,9 +8,10 @@ export function Footer() {
       style={{ backgroundColor: "#10305a", fontFamily: "'Gill Sans', 'Gill Sans MT', Calibri, sans-serif" }}
     >
       <div className="container mx-auto px-6 py-16">
-        <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
-          {/* Brand / Logo */}
-          <div>
+        <div className="grid grid-cols-1 gap-12 sm:grid-cols-3 sm:gap-8 max-w-4xl mx-auto">
+
+          {/* Column 1: Brand */}
+          <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
             <div className="mb-4 flex items-center gap-3">
               <Image
                 src="/logo.svg"
@@ -24,12 +25,37 @@ export function Footer() {
                 <p className="text-xs tracking-widest opacity-70">RealReal</p>
               </div>
             </div>
-            <p className="mt-4 max-w-xs text-sm leading-relaxed opacity-70">
-              純淨植物力，為你的生活加分。台灣在地品牌。
+            <p className="text-sm leading-relaxed opacity-70">
+              純淨植物力，為你的生活加分。<br />台灣在地品牌。
             </p>
+          </div>
 
-            {/* Social icons */}
-            <div className="mt-6 flex gap-4">
+          {/* Column 2: Links */}
+          <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
+            <p className="mb-4 text-sm font-semibold tracking-wide">連結</p>
+            <ul className="space-y-3">
+              <li>
+                <Link href="/my-account" className="text-sm opacity-70 transition-opacity hover:opacity-100">
+                  我的帳戶
+                </Link>
+              </li>
+              <li>
+                <Link href="/contact" className="text-sm opacity-70 transition-opacity hover:opacity-100">
+                  聯絡我們
+                </Link>
+              </li>
+              <li>
+                <Link href="/privacy" className="text-sm opacity-70 transition-opacity hover:opacity-100">
+                  隱私條款
+                </Link>
+              </li>
+            </ul>
+          </div>
+
+          {/* Column 3: Social */}
+          <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
+            <p className="mb-4 text-sm font-semibold tracking-wide">追蹤我們</p>
+            <div className="flex gap-4">
               <a
                 href="https://www.instagram.com/realreal.yinsin/"
                 target="_blank"
@@ -66,24 +92,12 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Quick links — single row */}
-          <div className="flex gap-8 text-sm">
-            <Link href="/my-account" className="opacity-70 transition-opacity hover:opacity-100">
-              我的帳戶
-            </Link>
-            <Link href="/contact" className="opacity-70 transition-opacity hover:opacity-100">
-              聯絡我們
-            </Link>
-            <Link href="/privacy" className="opacity-70 transition-opacity hover:opacity-100">
-              隱私條款
-            </Link>
-          </div>
         </div>
       </div>
 
       {/* Bottom bar */}
       <div className="border-t border-white/10">
-        <div className="container mx-auto px-6 py-5 text-center text-xs opacity-60">
+        <div className="container mx-auto px-6 py-5 text-xs opacity-60">
           <p>&copy; 2026 誠真生活 All Rights Reserved</p>
         </div>
       </div>
