@@ -25,7 +25,7 @@ export function Footer() {
       style={{ backgroundColor: "#10305a", fontFamily: "'Gill Sans', 'Gill Sans MT', Calibri, sans-serif" }}
     >
       <div className="container mx-auto px-6 py-16">
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-5">
+        <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
           {/* Brand / Logo */}
           <div className="col-span-2">
             <div className="mb-4 flex items-center gap-3">
@@ -102,17 +102,6 @@ export function Footer() {
             </div>
           ))}
 
-          {/* Company info */}
-          <div>
-            <p className="mb-4 text-sm font-semibold tracking-wide">公司資訊</p>
-            <ul className="space-y-2 text-sm opacity-70">
-              <li>誠真生活有限公司</li>
-              <li>統編 60515111</li>
-              <li>電話 02-66093066</li>
-              <li>食品業者登錄字號</li>
-              <li>A-202321704-00000-8</li>
-            </ul>
-          </div>
         </div>
       </div>
 

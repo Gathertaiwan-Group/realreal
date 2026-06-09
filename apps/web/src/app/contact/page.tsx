@@ -13,7 +13,7 @@ export default async function ContactPage() {
   const info = await getSiteContent<ContactInfo>("contact_info")
 
   const email = info?.email ?? "love@realreal.cc"
-  const phone = info?.phone ?? "(02) 2345-6789"
+  const phone = info?.phone ?? "02-66093066"
   const address = info?.address ?? "100 台北市仁愛路二段 25 號"
   const hours = info?.hours ?? null
 
@@ -52,6 +52,16 @@ export default async function ContactPage() {
                 <dt className="font-medium text-[#10305a]">公司地址</dt>
                 <dd>{address}（非對外門市）</dd>
               </div>
+            </dl>
+          </div>
+
+          <div>
+            <h2 className="font-semibold mb-3 text-[#10305a]">公司資訊</h2>
+            <dl className="space-y-1 text-sm text-[#687279]">
+              <dd>誠真生活有限公司</dd>
+              <dd>統一編號：60515111</dd>
+              <dd>食品業者登錄字號</dd>
+              <dd>A-202321704-00000-8</dd>
             </dl>
           </div>
 
