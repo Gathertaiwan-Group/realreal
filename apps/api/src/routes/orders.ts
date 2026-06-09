@@ -18,6 +18,7 @@ import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
 import { computeShipping } from "../lib/shipping"
 import { inventoryQueue } from "../lib/queue"
 import { enqueuePostPaymentJobs } from "../lib/enqueue-post-payment"
+import { calcPointsDiscount, loadPointsSettings, type CartForPoints } from "../lib/points"
 
 export const ordersRouter = Router()
 
@@ -66,10 +67,12 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
     items: z.array(orderItemSchema).min(1),
     shippingMethod: z.enum(["home_delivery", "cvs_711", "cvs_family", "overseas_cod"]).default("home_delivery"),  // 新增 overseas_cod
     couponCode: z.string().optional(),
+    points_used: z.number().int().min(0).optional(),
   })
   const parsed = previewSchema.safeParse(req.body)
   if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return }
   const { items, shippingMethod } = parsed.data
+  const previewPointsUsed = parsed.data.points_used ?? 0
   const userId: string | undefined = res.locals.userId
 
   const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
@@ -160,15 +163,32 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
     }
   }
 
-  const totalCents = Math.max(0, subtotalCents + shippingFeeCents - discountCents)
+  // Apply points discount (preview only — no balance check, no ledger write).
+  // calcPointsDiscount returns dollar amount; convert to cents for consistency.
+  let pointsDiscountCents = 0
+  if (previewPointsUsed > 0) {
+    const settings = await loadPointsSettings()
+    const cart: CartForPoints = {
+      subtotal: subtotalCents / 100,
+      shipping: shippingFeeCents / 100,
+      sale_item_total: 0,
+      total: (subtotalCents + shippingFeeCents) / 100,
+    }
+    const r = calcPointsDiscount(cart, previewPointsUsed, settings)
+    if (r.allowed) pointsDiscountCents = Math.round(r.discount * 100)
+  }
+
+  const totalCents = Math.max(0, subtotalCents + shippingFeeCents - discountCents - pointsDiscountCents)
   res.json({
     data: {
       subtotal: subtotalCents / 100,
       shipping: shippingFeeCents / 100,
-      discount_total: discountCents / 100,
+      discount_total: (discountCents + pointsDiscountCents) / 100,
       discounts,
       free_items: freeItems,
       free_shipping_names: freeShippingNames,
+      points_used: previewPointsUsed,
+      points_discount: pointsDiscountCents / 100,
       total: totalCents / 100,
     },
   })
@@ -186,6 +206,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
 
   const { items, address, shippingMethod, paymentMethod, guestEmail } = parsed.data
   let { couponCode } = parsed.data
+  const requestedPointsUsed = parsed.data.points_used ?? 0
   const userId: string | undefined = res.locals.userId
 
   const orderNumber = "RR" + Date.now() + randomBytes(4).toString("hex")
@@ -366,15 +387,51 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     }
   }
 
+  // -------------------------------------------------------------------------
+  // Points redemption — verify balance, recompute discount server-side.
+  // We never trust the client's reported discount amount; the client only
+  // tells us HOW MANY points to spend, and we compute the NT$ value here.
+  // Insufficient balance / invalid → silently fall back to 0 (FE PromoWidget
+  // gates on /points/apply which would have shown an error already).
+  // -------------------------------------------------------------------------
+  let pointsUsed = 0
+  let pointsDiscountCents = 0
+  if (userId && requestedPointsUsed > 0) {
+    const { data: ledgerRows } = await supabase
+      .from("points_ledger")
+      .select("delta")
+      .eq("user_id", userId)
+    const balance = (ledgerRows ?? []).reduce(
+      (acc: number, r: any) => acc + Number(r.delta ?? 0),
+      0,
+    )
+    if (balance >= requestedPointsUsed) {
+      const settings = await loadPointsSettings()
+      const cart: CartForPoints = {
+        subtotal: subtotalCents / 100,
+        shipping: shippingFeeCents / 100,
+        sale_item_total: 0,
+        total: (subtotalCents + shippingFeeCents) / 100,
+      }
+      const r = calcPointsDiscount(cart, requestedPointsUsed, settings)
+      if (r.allowed) {
+        pointsUsed = requestedPointsUsed
+        pointsDiscountCents = Math.round(r.discount * 100)
+      }
+    }
+  }
+
   const totalCents = Math.max(
     0,
     subtotalCents
       - memberDiscountCents
       - campaignDiscountCents
       - couponDiscountCents
+      - pointsDiscountCents
       + shippingFeeCents,
   )
-  const totalDiscount = memberDiscountCents + campaignDiscountCents + couponDiscountCents
+  const totalDiscount =
+    memberDiscountCents + campaignDiscountCents + couponDiscountCents + pointsDiscountCents
 
   // Atomically deduct stock BEFORE creating the order — single RPC that
   // locks all variants and either succeeds or rejects with insufficient_stock.
@@ -406,6 +463,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       free_items: freeItems,
       first_purchase_applied: firstPurchaseApplied,
       shipping_zeroed_by_campaign: shippingZeroedByCampaign,
+      points_used: pointsUsed,
       attributed_kol_id: attributedKolId,
       attributed_kol_slug: attributedKolSlug,
       metadata: couponCode
