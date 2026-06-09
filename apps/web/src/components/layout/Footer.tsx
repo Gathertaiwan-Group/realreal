@@ -10,15 +10,20 @@ export function Footer() {
       <div className="container mx-auto px-6 py-16">
         <div className="grid grid-cols-1 gap-12 sm:grid-cols-3 sm:gap-8 max-w-4xl mx-auto">
 
-          {/* Column 1: Brand */}
+          {/* Column 1: Brand + Tagline */}
           <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
             <Image
-              src="/logo-full.jpg"
+              src="/logo-footer.png"
               alt="誠真生活 RealReal"
               width={160}
               height={160}
-              style={{ mixBlendMode: "screen" }}
+              className="mb-4 rounded-lg"
             />
+            <p className="text-sm leading-loose opacity-80">
+              純淨植物力<br />
+              為你的生活加分<br />
+              台灣在地品牌
+            </p>
           </div>
 
           {/* Column 2: Links — centered */}
@@ -48,13 +53,8 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Column 3: Tagline + Social */}
+          {/* Column 3: Social */}
           <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
-            <p className="mb-6 text-sm leading-loose opacity-80">
-              純淨植物力<br />
-              為你的生活加分<br />
-              台灣在地品牌
-            </p>
             <p className="mb-4 text-xl font-bold tracking-wide">
               追蹤我們
               <span className="block text-sm font-normal opacity-60 tracking-widest mt-0.5">Follow us</span>
