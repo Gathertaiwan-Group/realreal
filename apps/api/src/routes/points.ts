@@ -34,10 +34,16 @@ const cartSchema = z.object({
   total: z.number().nonnegative(),
 })
 
+// Accept BOTH `requested` (new PromoWidget) and `requested_points` (legacy)
+// so the schema doesn't reject either caller. Backend normalises to one var.
 const applySchema = z.object({
   cart: cartSchema,
-  requested_points: z.number().int(),
-})
+  requested: z.number().int().optional(),
+  requested_points: z.number().int().optional(),
+}).refine(
+  (v) => v.requested !== undefined || v.requested_points !== undefined,
+  { message: "must provide `requested` or `requested_points`" },
+)
 
 const ledgerQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(100).optional().default(20),
@@ -55,7 +61,8 @@ pointsRouter.post("/apply", requireAuth, async (req, res) => {
     return
   }
 
-  const { cart, requested_points } = parsed.data
+  const { cart } = parsed.data
+  const requested = parsed.data.requested ?? parsed.data.requested_points ?? 0
 
   let settings
   try {
@@ -65,13 +72,25 @@ pointsRouter.post("/apply", requireAuth, async (req, res) => {
     return
   }
 
-  const result = calcPointsDiscount(cart as CartForPoints, requested_points, settings)
+  const result = calcPointsDiscount(cart as CartForPoints, requested, settings)
 
+  // Response wrapped in `{data: ...}` to match the /points/balance convention
+  // and the PromoWidget reader (body.data.allowed / body.data.discount /
+  // body.data.reason). Kept legacy flat fields for any legacy caller.
   if (result.allowed) {
-    res.json({ allowed: true, discount: result.discount })
+    res.json({
+      data: { allowed: true, discount: result.discount, reason: "" },
+      allowed: true,
+      discount: result.discount,
+    })
     return
   }
-  res.json({ allowed: false, discount: 0, reason: result.reason })
+  res.json({
+    data: { allowed: false, discount: 0, reason: result.reason },
+    allowed: false,
+    discount: 0,
+    reason: result.reason,
+  })
 })
 
 // ---------------------------------------------------------------------------
