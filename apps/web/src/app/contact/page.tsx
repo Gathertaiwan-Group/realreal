@@ -14,7 +14,7 @@ export default async function ContactPage() {
 
   const email = info?.email ?? "love@realreal.cc"
   const phone = info?.phone ?? "02-66093066"
-  const address = info?.address ?? "100 台北市仁愛路二段 25 號"
+  const address = info?.address ?? "100 台北市仁愛路二段 25 號 5 樓"
   const hours = info?.hours ?? null
 
   return (
