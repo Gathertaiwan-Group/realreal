@@ -429,7 +429,7 @@ function RetailSection() {
             在生活裡相遇
           </h2>
           <p className="mt-2 text-sm" style={{ color: "#687279" }}>
-            從螢幕到街角，把誠真生活帶回家
+            從螢幕到街角，把誠真生活帶回家。
           </p>
         </div>
 
@@ -527,7 +527,7 @@ export default async function HomePage() {
       {/* 1a. Bestsellers */}
       <ProductSection
         title="暢銷排行"
-        subtitle="最多人回購的日常營養補給"
+        subtitle="最多人回購的日常營養補給。"
         products={bestSellers}
         moreLabel="查看全部商品 →"
         moreHref="/shop"
@@ -542,7 +542,7 @@ export default async function HomePage() {
           <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl mb-2">
             真實見證
           </h2>
-          <p className="text-center text-sm text-zinc-500 mb-0">不同人生階段的共同選擇</p>
+          <p className="text-center text-sm text-zinc-500 mb-0">從學生到退休生活，不同人生階段的共同選擇。</p>
           <ReviewImagesCarousel />
         </div>
       </section>
