@@ -160,11 +160,13 @@ function FeatureCardsSection() {
 
 function ProductSection({
   title,
+  subtitle,
   products,
   moreLabel,
   moreHref,
 }: {
   title: string
+  subtitle?: string
   products: Product[]
   moreLabel: string
   moreHref: string
@@ -175,6 +177,9 @@ function ProductSection({
         <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl">
           {title}
         </h2>
+        {subtitle && (
+          <p className="text-center text-sm text-zinc-500 mt-1">{subtitle}</p>
+        )}
 
         <div className="mt-7 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
           {products.map((product) => {
@@ -261,8 +266,9 @@ function BlogSection({ posts }: { posts: Post[] }) {
     <section className="py-10 sm:py-14">
       <div className="px-3 sm:px-4">
         <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl">
-          聰明過生活
+          聰明生活
         </h2>
+        <p className="text-center text-sm text-zinc-500 mt-1">把複雜的健康知識，變成簡單的生活選擇。</p>
 
         <div className="mt-7 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {hasPosts
@@ -419,12 +425,11 @@ function RetailSection() {
     <section className="py-10 sm:py-14 bg-white border-t border-gray-100">
       <div className="px-3 sm:px-4">
         <div className="text-center mb-10">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[#10305a]/40 mb-2">線下也找得到我們</p>
           <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ color: "#10305a" }}>
-            實體通路
+            在生活裡相遇
           </h2>
           <p className="mt-2 text-sm" style={{ color: "#687279" }}>
-            在誠真的合作夥伴門市，也能選購我們的商品
+            從螢幕到街角，把誠真生活帶回家
           </p>
         </div>
 
@@ -522,6 +527,7 @@ export default async function HomePage() {
       {/* 1a. Bestsellers */}
       <ProductSection
         title="暢銷排行"
+        subtitle="最多人回購的日常營養補給"
         products={bestSellers}
         moreLabel="查看全部商品 →"
         moreHref="/shop"
@@ -534,9 +540,9 @@ export default async function HomePage() {
       <section className="py-10 sm:py-12">
         <div className="px-3 sm:px-4">
           <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl mb-2">
-            用戶回饋
+            真實見證
           </h2>
-          <p className="text-center text-sm text-zinc-500 mb-0">來自真實購買者的分享</p>
+          <p className="text-center text-sm text-zinc-500 mb-0">不同人生階段的共同選擇</p>
           <ReviewImagesCarousel />
         </div>
       </section>
