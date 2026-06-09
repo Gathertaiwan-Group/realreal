@@ -534,9 +534,9 @@ export default async function HomePage() {
       <section className="py-10 sm:py-12">
         <div className="px-3 sm:px-4">
           <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl mb-2">
-            顧客真實回饋
+            用戶回饋
           </h2>
-          <p className="text-center text-sm text-zinc-500 mb-0">來自真實購買顧客的分享</p>
+          <p className="text-center text-sm text-zinc-500 mb-0">來自真實購買者的分享</p>
           <ReviewImagesCarousel />
         </div>
       </section>
