@@ -117,7 +117,7 @@ export default async function BlogPage({
             聰明生活
           </h1>
           <p className="mt-4 text-[#687279] text-lg max-w-2xl mx-auto">
-            探索純素生活、植物營養、健康飲食的最新知識與靈感
+            從飲食到日常，陪你活得更清醒、更自在
           </p>
         </div>
       </section>
