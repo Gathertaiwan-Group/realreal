@@ -30,16 +30,16 @@ export function Header({
 
   const NAV_LINKS = useMemo(
     () => [
-      { href: "/about", label: "品牌故事" },
       {
         href: "/shop",
-        label: "了解產品",
+        label: "商品選購",
         children: productChildren,
       },
-      { href: "/faq", label: "常見問題" },
+      { href: "/about", label: "品牌故事" },
       { href: "/blog", label: "聰明生活" },
-      { href: "/idea", label: "公益里程" },
+      { href: "/idea", label: "公益存款" },
       { href: "/membership", label: "會員制度" },
+      { href: "/faq", label: "常見問題" },
     ],
     [productChildren],
   )
