@@ -2,8 +2,8 @@ import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { getProducts, getCategories } from "@/lib/catalog"
-import type { Product, Category } from "@/lib/catalog"
+import { getProducts } from "@/lib/catalog"
+import type { Product } from "@/lib/catalog"
 import { getSiteContent, getPosts } from "@/lib/content"
 import type { Post } from "@/lib/content"
 import type { Metadata } from "next"
@@ -44,23 +44,6 @@ async function getBestSellers(): Promise<Product[]> {
   }
 }
 
-async function getProductsByCategory(categorySlug: string): Promise<Product[]> {
-  try {
-    const { data } = await getProducts({ category: categorySlug, limit: 4 })
-    return data
-  } catch {
-    return []
-  }
-}
-
-async function findCategorySlug(needle: string): Promise<string | undefined> {
-  const categories = await getCategories()
-  return categories.find(
-    (c: Category) =>
-      c.name.includes(needle) || c.slug.includes(needle)
-  )?.slug
-}
-
 /* ---------- sections ---------- */
 
 type HeroContent = {
@@ -93,7 +76,7 @@ const HOME_BLOCKS = [
 
 function HomeSquareImages() {
   return (
-    <section className="px-3 sm:px-4 pt-3 pb-0">
+    <section className="px-3 sm:px-4 py-3">
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-2.5">
         {HOME_BLOCKS.map((block) => (
           <Link
@@ -513,16 +496,9 @@ function RetailSection() {
 
 export default async function HomePage() {
   // Resolve category slugs for the two product sections
-  const [proteinSlug, fruitSlug] = await Promise.all([
-    findCategorySlug("蛋白"),
-    findCategorySlug("凍乾"),
-  ])
-
   // Fetch products, content and blog posts in parallel
-  const [proteinProducts, fruitProducts, bestSellers, heroContent, blogResult] =
+  const [bestSellers, heroContent, blogResult] =
     await Promise.all([
-      getProductsByCategory(proteinSlug ?? "protein"),
-      getProductsByCategory(fruitSlug ?? "freeze-dried"),
       getBestSellers(),
       getSiteContent<HeroContent>("homepage_hero"),
       getPosts({ limit: 3 }),
@@ -543,22 +519,6 @@ export default async function HomePage() {
 
       {/* 1b. Square images */}
       <HomeSquareImages />
-
-      {/* 2. Product section: 純植物蛋白粉 */}
-      <ProductSection
-        title="純植物蛋白粉"
-        products={proteinProducts}
-        moreLabel="查看更多植物蛋白 →"
-        moreHref={proteinSlug ? `/shop/${proteinSlug}` : "/shop"}
-      />
-
-      {/* 4. Product section: 原相凍乾水果 */}
-      <ProductSection
-        title="原相凍乾水果"
-        products={fruitProducts}
-        moreLabel="查看更多凍乾水果 →"
-        moreHref={fruitSlug ? `/shop/${fruitSlug}` : "/shop"}
-      />
 
       {/* 6. Customer reviews carousel */}
       <section className="py-10 sm:py-12">
