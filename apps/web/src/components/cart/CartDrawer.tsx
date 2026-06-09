@@ -15,7 +15,7 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet"
 
-const FREE_SHIPPING_THRESHOLD = 999
+const FREE_SHIPPING_THRESHOLD = 1499
 
 function FreeShippingBar({ subtotal }: { subtotal: number }) {
   const reached = subtotal >= FREE_SHIPPING_THRESHOLD

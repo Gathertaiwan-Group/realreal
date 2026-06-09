@@ -66,7 +66,7 @@ const SHIPPING_FEES: Record<ShippingMethod, number> = {
 const FREE_SHIPPING_THRESHOLD: Record<ShippingMethod, number> = {
   "711": 499,
   "family": 499,
-  "home_delivery": 999,
+  "home_delivery": 1499,
   "overseas_cod": 0,
 }
 

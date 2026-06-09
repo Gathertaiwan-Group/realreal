@@ -8,7 +8,7 @@ export type ShippingConfig = {
 export const DEFAULT_SHIPPING: ShippingConfig = {
   fee_home_delivery: 100,
   fee_cvs: 60,
-  free_threshold_home: 999,
+  free_threshold_home: 1499,
   free_threshold_cvs: 499,
 };
 
