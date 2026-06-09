@@ -501,10 +501,11 @@ export default async function HomePage() {
   ])
 
   // Fetch products, content and blog posts in parallel
-  const [proteinProducts, fruitProducts, heroContent, blogResult] =
+  const [proteinProducts, fruitProducts, bestSellersResult, heroContent, blogResult] =
     await Promise.all([
       getProductsByCategory(proteinSlug ?? "protein"),
       getProductsByCategory(fruitSlug ?? "freeze-dried"),
+      getProducts({ sort: "best_selling", limit: 4 }),
       getSiteContent<HeroContent>("homepage_hero"),
       getPosts({ limit: 3 }),
     ])
@@ -513,6 +514,17 @@ export default async function HomePage() {
     <main className="min-h-screen">
       {/* 1. Hero */}
       <HeroSection content={heroContent} />
+
+      {/* 1a. Bestsellers */}
+      <ProductSection
+        title="暢銷排行"
+        products={bestSellersResult.data}
+        moreLabel="查看全部商品 →"
+        moreHref="/shop"
+      />
+
+      {/* 1b. Square images */}
+      <HomeSquareImages />
 
       {/* 2. Product section: 純植物蛋白粉 */}
       <ProductSection
@@ -529,9 +541,6 @@ export default async function HomePage() {
         moreLabel="查看更多凍乾水果 →"
         moreHref={fruitSlug ? `/shop/${fruitSlug}` : "/shop"}
       />
-
-      {/* 4a. Square images (between freeze-dried fruit and reviews) */}
-      <HomeSquareImages />
 
       {/* 6. Customer reviews carousel */}
       <section className="py-10 sm:py-12">
