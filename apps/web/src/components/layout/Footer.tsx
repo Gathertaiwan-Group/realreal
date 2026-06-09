@@ -2,32 +2,15 @@ import Link from "next/link"
 import Image from "next/image"
 
 export function Footer() {
-  const FOOTER_LINKS = [
-    {
-      title: "會員",
-      links: [
-        { href: "/membership", label: "會員制度" },
-        { href: "/my-account", label: "我的帳戶" },
-        { href: "/my-account/orders", label: "我的訂單" },
-      ],
-    },
-    {
-      title: "客服",
-      links: [
-        { href: "/contact", label: "聯絡我們" },
-      ],
-    },
-  ]
-
   return (
     <footer
       className="text-white"
       style={{ backgroundColor: "#10305a", fontFamily: "'Gill Sans', 'Gill Sans MT', Calibri, sans-serif" }}
     >
       <div className="container mx-auto px-6 py-16">
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-4">
+        <div className="flex flex-col gap-10 md:flex-row md:items-start md:justify-between">
           {/* Brand / Logo */}
-          <div className="col-span-2">
+          <div>
             <div className="mb-4 flex items-center gap-3">
               <Image
                 src="/logo.svg"
@@ -83,37 +66,25 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Link columns */}
-          {FOOTER_LINKS.map((group) => (
-            <div key={group.title}>
-              <p className="mb-4 text-sm font-semibold tracking-wide">{group.title}</p>
-              <ul className="space-y-2.5">
-                {group.links.map((link) => (
-                  <li key={link.href}>
-                    <Link
-                      href={link.href}
-                      className="text-sm opacity-70 transition-opacity hover:opacity-100"
-                    >
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-
+          {/* Quick links — single row */}
+          <div className="flex gap-8 text-sm">
+            <Link href="/my-account" className="opacity-70 transition-opacity hover:opacity-100">
+              我的帳戶
+            </Link>
+            <Link href="/contact" className="opacity-70 transition-opacity hover:opacity-100">
+              聯絡我們
+            </Link>
+            <Link href="/privacy" className="opacity-70 transition-opacity hover:opacity-100">
+              隱私條款
+            </Link>
+          </div>
         </div>
       </div>
 
       {/* Bottom bar */}
       <div className="border-t border-white/10">
-        <div className="container mx-auto flex flex-col items-center justify-between gap-3 px-6 py-5 text-xs opacity-60 md:flex-row">
+        <div className="container mx-auto px-6 py-5 text-center text-xs opacity-60">
           <p>&copy; 2026 誠真生活 All Rights Reserved</p>
-          <div className="flex gap-6">
-            <Link href="/privacy" className="transition-opacity hover:opacity-100">
-              隱私權條款
-            </Link>
-          </div>
         </div>
       </div>
     </footer>
