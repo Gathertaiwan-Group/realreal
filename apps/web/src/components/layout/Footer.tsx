@@ -17,45 +17,44 @@ export function Footer() {
               alt="誠真生活 RealReal"
               width={160}
               height={160}
-              className="mb-4"
               style={{ mixBlendMode: "screen" }}
             />
-            <p className="text-base leading-loose opacity-80">
-              純淨植物力<br />
-              為你的生活加分<br />
-              台灣在地品牌
-            </p>
           </div>
 
           {/* Column 2: Links — centered */}
           <div className="flex flex-col items-center text-center">
-            <p className="mb-4 text-sm font-semibold tracking-wide">連結</p>
+            <p className="mb-4 text-base font-semibold tracking-wide">連結</p>
             <ul className="space-y-3">
               <li>
-                <Link href="/my-account" className="text-sm opacity-70 transition-opacity hover:opacity-100">
+                <Link href="/my-account" className="text-base opacity-75 transition-opacity hover:opacity-100">
                   會員帳戶
                 </Link>
               </li>
               <li>
-                <Link href="/contact" className="text-sm opacity-70 transition-opacity hover:opacity-100">
+                <Link href="/contact" className="text-base opacity-75 transition-opacity hover:opacity-100">
                   聯絡我們
                 </Link>
               </li>
               <li>
-                <Link href="/faq" className="text-sm opacity-70 transition-opacity hover:opacity-100">
+                <Link href="/faq" className="text-base opacity-75 transition-opacity hover:opacity-100">
                   常見問題
                 </Link>
               </li>
               <li>
-                <Link href="/privacy" className="text-sm opacity-70 transition-opacity hover:opacity-100">
+                <Link href="/privacy" className="text-base opacity-75 transition-opacity hover:opacity-100">
                   隱私條款
                 </Link>
               </li>
             </ul>
           </div>
 
-          {/* Column 3: Social */}
+          {/* Column 3: Tagline + Social */}
           <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
+            <p className="mb-6 text-sm leading-loose opacity-80">
+              純淨植物力<br />
+              為你的生活加分<br />
+              台灣在地品牌
+            </p>
             <p className="mb-4 text-xl font-bold tracking-wide">
               追蹤我們
               <span className="block text-sm font-normal opacity-60 tracking-widest mt-0.5">Follow us</span>
