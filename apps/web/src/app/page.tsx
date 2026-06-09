@@ -375,16 +375,8 @@ function BlogSection({ posts }: { posts: Post[] }) {
 }
 
 function RetailSection() {
+  // 由右至左 = 陣列由南至北（最南在左、最北在右）
   const stores = [
-    {
-      name: "新埔健保藥局",
-      type: "藥局",
-      address: "新北市板橋區自由路2號",
-      phone: "(02) 2255-8878",
-      mapUrl: "https://maps.app.goo.gl/Ug2Jy4SVUDupV4TN8?g_st=ic",
-      fbUrl: null,
-      icon: "💊",
-    },
     {
       name: "仙卉生機園地",
       type: "生機店",
@@ -393,6 +385,15 @@ function RetailSection() {
       mapUrl: null,
       fbUrl: "https://www.facebook.com/share/1C9Wk8UDW8/?mibextid=wwXIfr",
       icon: "🌿",
+    },
+    {
+      name: "夢田藥局",
+      type: "藥局",
+      address: "桃園市中壢區龍慈路91號1樓",
+      phone: "03-4601966",
+      mapUrl: "https://share.google/vZ79fBx7uAgcFZUMx",
+      fbUrl: null,
+      icon: "💊",
     },
     {
       name: "原粹蔬食作",
@@ -404,11 +405,11 @@ function RetailSection() {
       icon: "🥗",
     },
     {
-      name: "夢田藥局",
+      name: "新埔健保藥局",
       type: "藥局",
-      address: "桃園市中壢區龍慈路91號1樓",
-      phone: "03-4601966",
-      mapUrl: "https://share.google/vZ79fBx7uAgcFZUMx",
+      address: "新北市板橋區自由路2號",
+      phone: "(02) 2255-8878",
+      mapUrl: "https://maps.app.goo.gl/Ug2Jy4SVUDupV4TN8?g_st=ic",
       fbUrl: null,
       icon: "💊",
     },
