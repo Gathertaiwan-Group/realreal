@@ -77,9 +77,18 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
     authoritative = await queryPayment(orderNumber)
   } catch (err) {
     console.error("[webhooks/pchomepay] queryPayment failed:", err)
-    // Still ack so PChomePay doesn't keep retrying for an unbounded time;
-    // the order will be reconciled by the order-status admin tool.
-    res.send("success")
+    // Audit H18: previously silently acked, leaving real failed payments
+    // stuck in pending forever. Now: rewind the webhook_events dedupe row
+    // (so PChomePay's retry can re-attempt) and return 500. PChomePay's
+    // retry policy will keep delivering until 2xx, giving queryPayment
+    // multiple chances. If PChomePay eventually gives up, the order shows
+    // pending and admin reconciles via /admin/orders.
+    await supabase
+      .from("webhook_events")
+      .delete()
+      .eq("gateway", "pchomepay")
+      .eq("merchant_trade_no", merchantTradeNo)
+    res.status(500).send("queryPayment failed; please retry")
     return
   }
 

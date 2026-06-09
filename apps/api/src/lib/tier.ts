@@ -180,21 +180,35 @@ export async function incrementSpendAndUpgrade(userId: string, amount: number) {
 export async function getMemberDiscountRate(userId: string | undefined): Promise<number> {
   if (!userId) return 0
 
+  // Runtime expire check (audit H4) — even if tier-expire-worker hasn't swept
+  // yet, an expired tier should give 0 discount. .single() can also throw on
+  // missing profile; swap to .maybeSingle() so we silently return 0 rather
+  // than 500 (audit L8).
   const { data: profile } = await supabase
     .from("user_profiles")
-    .select("membership_tier_id")
+    .select("membership_tier_id, tier_expires_at")
     .eq("user_id", userId)
-    .single()
+    .maybeSingle()
 
   if (!profile?.membership_tier_id) return 0
+  const expiresAt = (profile as { tier_expires_at?: string | null }).tier_expires_at
+  if (expiresAt && new Date(expiresAt) < new Date()) return 0
 
   const { data: tier } = await supabase
     .from("membership_tiers")
     .select("discount_rate")
     .eq("id", profile.membership_tier_id)
-    .single()
+    .maybeSingle()
 
-  return tier ? Number(tier.discount_rate) : 0
+  // Invariant guard (audit H5) — clamp discount_rate to [0, 1] so an admin
+  // typo (e.g. 95 instead of 0.95) can't price an order to NT$0 or negative.
+  const raw = tier ? Number(tier.discount_rate) : 0
+  if (!Number.isFinite(raw) || raw <= 0) return 0
+  if (raw >= 1) {
+    console.warn(`[getMemberDiscountRate] discount_rate=${raw} for user=${userId} is invalid (must be < 1); clamping to 0`)
+    return 0
+  }
+  return raw
 }
 
 /** Pure helper — compute which tier name applies given a spend amount and a sorted tiers list */
