@@ -72,8 +72,29 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
   const parsed = previewSchema.safeParse(req.body)
   if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return }
   const { items, shippingMethod } = parsed.data
+  let { couponCode } = parsed.data
   const previewPointsUsed = parsed.data.points_used ?? 0
   const userId: string | undefined = res.locals.userId
+
+  // KOL coupon override — mirrors POST / so /preview shows the correct
+  // discounted price when a kol_ref cookie is set. Audit (H17).
+  const kolRefCookie = req.cookies?.kol_ref
+  if (kolRefCookie && /^[a-z0-9-]+$/.test(kolRefCookie)) {
+    const { data: kol } = await supabase
+      .from("kols")
+      .select("coupon_id, is_active")
+      .eq("slug", kolRefCookie)
+      .eq("is_active", true)
+      .maybeSingle()
+    if (kol?.coupon_id) {
+      const { data: kolCoupon } = await supabase
+        .from("coupons")
+        .select("code")
+        .eq("id", kol.coupon_id)
+        .maybeSingle()
+      if (kolCoupon?.code) couponCode = kolCoupon.code as string
+    }
+  }
 
   const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
   const feeDollars = await computeShipping(shippingMethod, subtotalCents / 100)
@@ -141,14 +162,14 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
   }
   const campaignResults = await evaluateAllCampaigns(evaluatorCtx)
 
-  let discountCents = 0
+  let campaignDiscountCents = 0
   const freeItems: FreeItem[] = []
   const discounts: Array<{ campaign_id: string; name: string; amount: number; type: string }> = []
   const freeShippingNames: string[] = []
   for (const r of campaignResults) {
     if (!r.applied) continue
     if (r.discount_amount && r.discount_amount > 0) {
-      discountCents += Math.round(r.discount_amount * 100)
+      campaignDiscountCents += Math.round(r.discount_amount * 100)
       discounts.push({
         campaign_id: r.campaign_id,
         name: r.campaign_name,
@@ -163,27 +184,72 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
     }
   }
 
-  // Apply points discount (preview only — no balance check, no ledger write).
-  // calcPointsDiscount returns dollar amount; convert to cents for consistency.
+  // Member tier discount — mirrors POST / precedence (subtotal → tier →
+  // campaign → coupon → points). Audit H15 fix.
+  const memberDiscountRate = await getMemberDiscountRate(userId)
+  const memberDiscountCents = Math.round(subtotalCents * memberDiscountRate)
+
+  // Coupon — preview validates read-only; does NOT call atomic_increment.
+  // Audit H16. Same logic as POST / so the displayed discount matches.
+  let couponDiscountCents = 0
+  let couponPreviewInfo: { code: string; amount: number } | null = null
+  if (couponCode) {
+    const { data: coupon } = await supabase
+      .from("coupons")
+      .select("type, value, min_order, expires_at, max_uses, used_count, tier_id")
+      .eq("code", couponCode)
+      .maybeSingle()
+    const now = new Date()
+    const usable =
+      coupon &&
+      (!coupon.expires_at || new Date(coupon.expires_at) >= now) &&
+      (coupon.min_order == null || subtotalCents >= coupon.min_order) &&
+      (coupon.max_uses == null || Number(coupon.used_count ?? 0) < coupon.max_uses)
+    if (usable && coupon) {
+      const baseAfter = Math.max(0, subtotalCents - memberDiscountCents - campaignDiscountCents)
+      if (coupon.type === "percentage") {
+        couponDiscountCents = Math.round(baseAfter * (Number(coupon.value) / 100))
+      } else if (coupon.type === "fixed") {
+        couponDiscountCents = Math.min(baseAfter, Math.round(Number(coupon.value)))
+      } else if (coupon.type === "free_shipping") {
+        shippingFeeCents = 0
+      }
+      couponPreviewInfo = { code: couponCode, amount: couponDiscountCents / 100 }
+    }
+  }
+
+  // Points discount — preview only (no balance check / no ledger).
+  // Base = subtotal - member - campaign - coupon to match POST / cap math
+  // (audit H3 — was previously using raw subtotal as base).
   let pointsDiscountCents = 0
   if (previewPointsUsed > 0) {
     const settings = await loadPointsSettings()
+    const baseAfterAllOtherDiscounts = Math.max(
+      0,
+      subtotalCents - memberDiscountCents - campaignDiscountCents - couponDiscountCents,
+    )
     const cart: CartForPoints = {
-      subtotal: subtotalCents / 100,
+      subtotal: baseAfterAllOtherDiscounts / 100,
       shipping: shippingFeeCents / 100,
       sale_item_total: 0,
-      total: (subtotalCents + shippingFeeCents) / 100,
+      total: (baseAfterAllOtherDiscounts + shippingFeeCents) / 100,
     }
     const r = calcPointsDiscount(cart, previewPointsUsed, settings)
     if (r.allowed) pointsDiscountCents = Math.round(r.discount * 100)
   }
 
-  const totalCents = Math.max(0, subtotalCents + shippingFeeCents - discountCents - pointsDiscountCents)
+  const totalDiscountCents =
+    memberDiscountCents + campaignDiscountCents + couponDiscountCents + pointsDiscountCents
+  const totalCents = Math.max(0, subtotalCents + shippingFeeCents - totalDiscountCents)
   res.json({
     data: {
       subtotal: subtotalCents / 100,
       shipping: shippingFeeCents / 100,
-      discount_total: (discountCents + pointsDiscountCents) / 100,
+      member_discount: memberDiscountCents / 100,
+      campaign_discount: campaignDiscountCents / 100,
+      coupon_discount: couponDiscountCents / 100,
+      coupon: couponPreviewInfo,
+      discount_total: totalDiscountCents / 100,
       discounts,
       free_items: freeItems,
       free_shipping_names: freeShippingNames,
@@ -365,24 +431,36 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       (!coupon.expires_at || new Date(coupon.expires_at) >= now) &&
       (coupon.min_order == null || subtotalCents >= coupon.min_order)
     if (validPrecheck && coupon) {
-      // Atomically increment used_count; RPC returns false if already at max_uses or expired.
-      const incResp = await supabase.rpc("atomic_increment_coupon_usage", { p_coupon_id: coupon.id })
-      if (incResp.error || !incResp.data) {
-        // Silently skip the coupon — claim race lost or expired.
+      // Pre-check redundancy: if shipping is already 0 (zeroed by a
+      // free_shipping campaign) and this coupon is type='free_shipping',
+      // the coupon would deliver nothing yet still consume used_count.
+      // Skip silently so the user can use it on a future order.
+      // Audit M3 fix.
+      const couponWouldBeRedundant =
+        coupon.type === "free_shipping" && shippingFeeCents === 0
+
+      if (couponWouldBeRedundant) {
+        // No-op: don't atomic_increment, don't set appliedCouponId.
       } else {
-        const baseAfterCampaigns = Math.max(
-          0,
-          subtotalCents - memberDiscountCents - campaignDiscountCents,
-        )
-        if (coupon.type === "percentage") {
-          couponDiscountCents = Math.round(baseAfterCampaigns * (Number(coupon.value) / 100))
-        } else if (coupon.type === "fixed") {
-          couponDiscountCents = Math.min(baseAfterCampaigns, Math.round(Number(coupon.value)))
-        } else if (coupon.type === "free_shipping") {
-          // Don't deduct from items; zero the shipping fee instead.
-          shippingFeeCents = 0
+        // Atomically increment used_count; RPC returns false if already at max_uses or expired.
+        const incResp = await supabase.rpc("atomic_increment_coupon_usage", { p_coupon_id: coupon.id })
+        if (incResp.error || !incResp.data) {
+          // Silently skip the coupon — claim race lost or expired.
+        } else {
+          const baseAfterCampaigns = Math.max(
+            0,
+            subtotalCents - memberDiscountCents - campaignDiscountCents,
+          )
+          if (coupon.type === "percentage") {
+            couponDiscountCents = Math.round(baseAfterCampaigns * (Number(coupon.value) / 100))
+          } else if (coupon.type === "fixed") {
+            couponDiscountCents = Math.min(baseAfterCampaigns, Math.round(Number(coupon.value)))
+          } else if (coupon.type === "free_shipping") {
+            // Don't deduct from items; zero the shipping fee instead.
+            shippingFeeCents = 0
+          }
+          appliedCouponId = coupon.id
         }
-        appliedCouponId = coupon.id
       }
     }
   }
@@ -407,11 +485,20 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     )
     if (balance >= requestedPointsUsed) {
       const settings = await loadPointsSettings()
+      // Spec D precedence: subtotal → tier → campaign → coupon → points.
+      // Points cap must use the base AFTER member/campaign/coupon, otherwise
+      // a 100%-cap rule lets points cover discounts that already applied
+      // (audit H3). E.g. cart 1000 + member 5% (-50) + coupon 100 (-100)
+      // → base for points = 850, not 1000.
+      const baseAfterOtherDiscounts = Math.max(
+        0,
+        subtotalCents - memberDiscountCents - campaignDiscountCents - couponDiscountCents,
+      )
       const cart: CartForPoints = {
-        subtotal: subtotalCents / 100,
+        subtotal: baseAfterOtherDiscounts / 100,
         shipping: shippingFeeCents / 100,
         sale_item_total: 0,
-        total: (subtotalCents + shippingFeeCents) / 100,
+        total: (baseAfterOtherDiscounts + shippingFeeCents) / 100,
       }
       const r = calcPointsDiscount(cart, requestedPointsUsed, settings)
       if (r.allowed) {

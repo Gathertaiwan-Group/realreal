@@ -261,10 +261,10 @@ export async function evalDiscount(
 }
 
 // 2. freebie — gift when subtotal hits threshold
-export function evalFreebie(
+export async function evalFreebie(
   c: CampaignRow,
   ctx: EvaluatorContext,
-): EvaluatorResult {
+): Promise<EvaluatorResult> {
   const cfg = getConfig(c)
   const minOrder = asNumber(cfg.min_order_amount)
   const giftSku = asString(cfg.gift_sku)
@@ -281,9 +281,27 @@ export function evalFreebie(
     return notApplied(c, "subtotal 未達門檻")
   }
 
+  // Fetch gift retail price so pickBestPerType can score 同 type 多 freebie
+  // 競爭時用實際價值決勝負（audit H1/H2 — 之前不寫 unit_price 全部以 0 分
+  // 平手，第一筆任意勝出）。Use sale_price 如果有設，否則 price。
+  let unitPrice = 0
+  try {
+    const { data: variant } = await supabase
+      .from("product_variants")
+      .select("price, sale_price")
+      .eq("sku", giftSku)
+      .maybeSingle()
+    if (variant) {
+      const v = variant as { price: number | string | null; sale_price: number | string | null }
+      unitPrice = Number(v.sale_price ?? v.price ?? 0)
+    }
+  } catch {
+    /* keep 0 — pickBestPerType will tiebreak elsewhere */
+  }
+
   return {
     ...applied(c),
-    free_items: [{ sku: giftSku, qty: giftQty, name: giftName }],
+    free_items: [{ sku: giftSku, qty: giftQty, name: giftName, unit_price: unitPrice }],
   }
 }
 
