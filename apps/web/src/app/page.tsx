@@ -408,7 +408,7 @@ function RetailSection() {
       type: "藥局",
       address: "桃園市中壢區龍慈路91號1樓",
       phone: "03-4601966",
-      mapUrl: null,
+      mapUrl: "https://share.google/vZ79fBx7uAgcFZUMx",
       fbUrl: null,
       icon: "💊",
     },
@@ -427,7 +427,7 @@ function RetailSection() {
           </p>
         </div>
 
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl mx-auto">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
           {stores.map(store => (
             <div
               key={store.name}
