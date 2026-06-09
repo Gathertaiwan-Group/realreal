@@ -20,10 +20,9 @@ export function Footer() {
               className="mb-5"
               style={{ filter: "invert(1)", mixBlendMode: "screen" }}
             />
-            <p className="text-sm leading-loose opacity-80">
-              純淨植物力<br />
-              為你的生活加分<br />
-              台灣在地品牌
+            <p className="text-sm leading-relaxed opacity-80">
+              純淨植物力，為你的生活加分。<br />
+              台灣在地品牌。
             </p>
           </div>
 
@@ -105,8 +104,10 @@ export function Footer() {
 
       {/* Bottom bar */}
       <div className="border-t border-white/10">
-        <div className="container mx-auto px-6 py-5 text-xs opacity-60 text-center">
-          <p>&copy; 2026 誠真生活 All Rights Reserved</p>
+        <div className="container mx-auto px-6 py-5 text-xs opacity-60">
+          <div className="max-w-5xl mx-auto">
+            <p>&copy; 2026 誠真生活 All Rights Reserved</p>
+          </div>
         </div>
       </div>
     </footer>
