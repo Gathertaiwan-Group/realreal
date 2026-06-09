@@ -49,6 +49,19 @@ export default async function ContactPage() {
                 <dd>{phone}</dd>
               </div>
               <div>
+                <dt className="font-medium text-[#10305a]">LINE</dt>
+                <dd>
+                  <a
+                    href="https://line.me/ti/p/@900kevgi"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline"
+                  >
+                    @900kevgi
+                  </a>
+                </dd>
+              </div>
+              <div>
                 <dt className="font-medium text-[#10305a]">公司地址</dt>
                 <dd>{address}（非對外門市）</dd>
               </div>
