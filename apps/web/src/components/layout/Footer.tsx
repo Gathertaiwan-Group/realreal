@@ -13,11 +13,12 @@ export function Footer() {
           {/* Column 1: Brand + Tagline */}
           <div className="flex flex-col items-center sm:items-start text-center sm:text-left">
             <Image
-              src="/logo-footer.png"
+              src="/logo-footer-v2.jpg"
               alt="誠真生活 RealReal"
               width={160}
               height={160}
-              className="mb-4 rounded-lg"
+              className="mb-4"
+              style={{ filter: "invert(1)", mixBlendMode: "screen" }}
             />
             <p className="text-sm leading-loose opacity-80">
               純淨植物力<br />
