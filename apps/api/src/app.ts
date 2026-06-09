@@ -42,6 +42,8 @@ import { adminCustomersRouter } from "./routes/admin-customers"
 import { pointsRouter } from "./routes/points"
 import { kolsRouter } from "./routes/kols"
 import { adminKolsRouter } from "./routes/admin-kols"
+import { requireInternal } from "./middleware/internal"
+import { supabase } from "./lib/supabase"
 
 export const app = express()
 
@@ -116,6 +118,13 @@ app.use("/points", pointsRouter)
 app.use("/kols", kolsRouter)
 app.use("/admin/kols", adminKolsRouter)
 
+
+// TEMP: internal post-create endpoint — remove after use
+app.post("/internal/create-post", requireInternal, async (req: Request, res: Response) => {
+  const { data, error } = await supabase.from("posts").insert(req.body).select().single()
+  if (error) { res.status(500).json({ error: error.message }); return }
+  res.status(201).json({ data })
+})
 
 app.use((_req, res) => { res.status(404).json({ error: "Not found" }) })
 // Sentry error handler — must come before any other error middleware and after all controllers
