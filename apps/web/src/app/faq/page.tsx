@@ -69,7 +69,7 @@ const hardcodedSections: FaqSection[] = [
     items: [
       {
         q: "可以使用哪些付款方式？",
-        a: "目前支援信用卡付款。",
+        a: "目前支援信用卡、LinePay、街口支付、國內超商取貨付款。",
       },
       {
         q: "發票如何開立？",
