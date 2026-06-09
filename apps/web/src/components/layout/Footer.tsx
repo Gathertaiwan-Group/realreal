@@ -11,7 +11,7 @@ export function Footer() {
         <div className="grid grid-cols-1 gap-12 sm:grid-cols-3 sm:gap-8 max-w-5xl mx-auto">
 
           {/* Column 1: Brand */}
-          <div className="flex flex-col items-center text-center">
+          <div className="flex flex-col items-start text-left">
             <Image
               src="/logo-horizontal.jpg"
               alt="誠真生活 RealReal"
@@ -105,7 +105,7 @@ export function Footer() {
       {/* Bottom bar */}
       <div className="border-t border-white/10">
         <div className="container mx-auto px-6 py-5 text-xs opacity-60">
-          <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-3 gap-8 max-w-5xl mx-auto">
             <p>&copy; 2026 誠真生活 All Rights Reserved</p>
           </div>
         </div>
