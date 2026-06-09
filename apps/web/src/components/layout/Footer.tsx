@@ -15,7 +15,6 @@ export function Footer() {
       title: "客服",
       links: [
         { href: "/contact", label: "聯絡我們" },
-        { href: "/faq", label: "常見問題" },
       ],
     },
   ]
@@ -45,25 +44,6 @@ export function Footer() {
             <p className="mt-4 max-w-xs text-sm leading-relaxed opacity-70">
               純淨植物力，為你的生活加分。台灣在地品牌。
             </p>
-
-            {/* Newsletter placeholder */}
-            <div className="mt-6">
-              <p className="mb-2 text-sm font-medium">訂閱電子報</p>
-              <div className="flex max-w-xs">
-                <input
-                  type="email"
-                  placeholder="輸入您的 Email"
-                  className="w-full rounded-l border border-white/20 bg-white/10 px-3 py-2 text-sm text-white placeholder-white/50 outline-none focus:border-white/40"
-                />
-                <button
-                  type="button"
-                  className="whitespace-nowrap rounded-r bg-white px-4 py-2 text-sm font-medium transition-opacity hover:opacity-90"
-                  style={{ color: "#10305a" }}
-                >
-                  訂閱
-                </button>
-              </div>
-            </div>
 
             {/* Social icons */}
             <div className="mt-6 flex gap-4">
@@ -143,9 +123,6 @@ export function Footer() {
           <div className="flex gap-6">
             <Link href="/privacy-policy" className="transition-opacity hover:opacity-100">
               隱私權條款
-            </Link>
-            <Link href="/faq" className="transition-opacity hover:opacity-100">
-              常見問題
             </Link>
           </div>
         </div>
