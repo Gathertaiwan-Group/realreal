@@ -26,6 +26,24 @@ export const metadata: Metadata = {
 
 /* ---------- data fetching ---------- */
 
+// Ordered list of slugs to show in 暢銷排行 — update this list as needed
+const BESTSELLER_SLUGS = [
+  "60-day-vegan-protein",
+  "protein-10pack-sampler",
+  "fruit-set2",
+  "protein-30pack-mix",
+]
+
+async function getBestSellers(): Promise<Product[]> {
+  try {
+    const { data } = await getProducts({ limit: 50 })
+    const bySlug = new Map(data.map((p) => [p.slug, p]))
+    return BESTSELLER_SLUGS.map((s) => bySlug.get(s)).filter(Boolean) as Product[]
+  } catch {
+    return []
+  }
+}
+
 async function getProductsByCategory(categorySlug: string): Promise<Product[]> {
   try {
     const { data } = await getProducts({ category: categorySlug, limit: 4 })
@@ -501,11 +519,11 @@ export default async function HomePage() {
   ])
 
   // Fetch products, content and blog posts in parallel
-  const [proteinProducts, fruitProducts, bestSellersResult, heroContent, blogResult] =
+  const [proteinProducts, fruitProducts, bestSellers, heroContent, blogResult] =
     await Promise.all([
       getProductsByCategory(proteinSlug ?? "protein"),
       getProductsByCategory(fruitSlug ?? "freeze-dried"),
-      getProducts({ sort: "best_selling", limit: 4 }),
+      getBestSellers(),
       getSiteContent<HeroContent>("homepage_hero"),
       getPosts({ limit: 3 }),
     ])
@@ -518,7 +536,7 @@ export default async function HomePage() {
       {/* 1a. Bestsellers */}
       <ProductSection
         title="暢銷排行"
-        products={bestSellersResult.data}
+        products={bestSellers}
         moreLabel="查看全部商品 →"
         moreHref="/shop"
       />
