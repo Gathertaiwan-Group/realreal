@@ -30,7 +30,6 @@ export function Header({
 
   const NAV_LINKS = useMemo(
     () => [
-      { href: "/", label: "首頁" },
       { href: "/about", label: "品牌故事" },
       {
         href: "/shop",
