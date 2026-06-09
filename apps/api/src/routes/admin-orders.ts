@@ -66,12 +66,26 @@ adminOrdersRouter.patch("/:id/status", async (req, res) => {
     .from("orders")
     .update(update)
     .eq("id", orderId)
-    .select("id, status, payment_status, updated_at")
+    .select("id, status, payment_status, updated_at, user_id")
     .single()
 
   if (updateError) {
     console.error("[admin/orders] status update failed:", updateError)
     res.status(500).json({ error: "Failed to update order status" }); return
+  }
+
+  // If we just cancelled a previously-paid order, run the refund chain so
+  // points get returned. refundOrderPoints is idempotent (skips if any refund
+  // row already exists for this order). Equivalent path: POST /:id/cancel runs
+  // the full chain including invoice void + logistics cancel + payment refund;
+  // this PATCH endpoint historically only flipped the status row, silently
+  // skipping the points side-effect. Audit (2026-06-09) flagged as critical.
+  if (newStatus === "cancelled" && order.payment_status === "paid" && (updated as any).user_id) {
+    try {
+      await refundOrderPoints(orderId, (updated as any).user_id)
+    } catch (err) {
+      console.warn("[admin/orders] refundOrderPoints failed (non-fatal):", err)
+    }
   }
 
   res.json({ data: updated })
@@ -92,6 +106,15 @@ adminOrdersRouter.post("/bulk-status", async (req, res) => {
 
   // For cancellation with refund, we need to check each order's payment_status
   if (newStatus === "cancelled") {
+    // Snapshot previously-paid orders BEFORE updating so we can run the
+    // refund chain on them after the status flip. Audit (2026-06-09)
+    // flagged that bulk-cancel was silently skipping points refund.
+    const { data: paidOrders } = await supabase
+      .from("orders")
+      .select("id, user_id")
+      .in("id", ids)
+      .eq("payment_status", "paid")
+
     // Update paid orders to refunded
     await supabase
       .from("orders")
@@ -105,6 +128,17 @@ adminOrdersRouter.post("/bulk-status", async (req, res) => {
       .update({ status: newStatus, updated_at: new Date().toISOString() })
       .in("id", ids)
       .neq("payment_status", "paid")
+
+    // Run refund chain on previously-paid orders. Idempotent per-order
+    // (refundOrderPoints checks for any prior refund ledger row first).
+    for (const o of (paidOrders ?? []) as Array<{ id: string; user_id: string | null }>) {
+      if (!o.user_id) continue
+      try {
+        await refundOrderPoints(o.id, o.user_id)
+      } catch (err) {
+        console.warn(`[admin/orders bulk] refundOrderPoints failed for ${o.id}:`, err)
+      }
+    }
   } else {
     const update: Record<string, string> = { status: newStatus, updated_at: new Date().toISOString() }
     if (newStatus === "processing") {

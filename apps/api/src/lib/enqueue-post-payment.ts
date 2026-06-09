@@ -30,10 +30,27 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   // so every downstream consumer gets TWD without per-call division.
   const totalTwd = Math.round(Number(order.total) / 100)
 
-  // 0) Update total_spend, check tier upgrade, accumulate charity_savings
+  // 0) Update total_spend, check tier upgrade, accumulate charity_savings.
+  // Idempotency: stamp order_post_payment_log.tier_incremented_at so webhook
+  // retries / admin POST /retry-post-payment can't double-count. The unique
+  // PK (order_id) means a 2nd run sees `prior.tier_incremented_at != null`
+  // and skips. See migration 0032.
   if (order.user_id) {
     try {
-      await incrementSpendAndUpgrade(order.user_id, totalTwd)
+      const { data: priorLog } = await supabase
+        .from("order_post_payment_log")
+        .select("tier_incremented_at")
+        .eq("order_id", orderId)
+        .maybeSingle()
+      if (!(priorLog as { tier_incremented_at?: string | null } | null)?.tier_incremented_at) {
+        await incrementSpendAndUpgrade(order.user_id, totalTwd)
+        await supabase
+          .from("order_post_payment_log")
+          .upsert(
+            { order_id: orderId, tier_incremented_at: new Date().toISOString() },
+            { onConflict: "order_id" },
+          )
+      }
     } catch (err) {
       console.warn("[post-payment] tier upgrade failed (non-fatal):", err)
     }
@@ -225,8 +242,24 @@ export async function enqueuePostPaymentJobs(orderId: string) {
 
     // 5) Accumulate tier_period_spend for requalification window tracking.
     // Independent try/catch so a failure here does not block any other step.
+    // Same idempotency pattern as tier upgrade — use period_spend_incremented_at
+    // sentinel column on order_post_payment_log.
     try {
-      await incrementPeriodSpend(order.user_id, totalTwd)
+      const { data: priorLog } = await supabase
+        .from("order_post_payment_log")
+        .select("period_spend_incremented_at")
+        .eq("order_id", orderId)
+        .maybeSingle()
+      if (!(priorLog as { period_spend_incremented_at?: string | null } | null)
+        ?.period_spend_incremented_at) {
+        await incrementPeriodSpend(order.user_id, totalTwd)
+        await supabase
+          .from("order_post_payment_log")
+          .upsert(
+            { order_id: orderId, period_spend_incremented_at: new Date().toISOString() },
+            { onConflict: "order_id" },
+          )
+      }
     } catch (err) {
       console.warn("[post-payment] incrementPeriodSpend failed (non-fatal):", err)
     }

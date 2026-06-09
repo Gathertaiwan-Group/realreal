@@ -189,7 +189,20 @@ export async function grantPoints(
       ? new Date(Date.now() + expireDays * 24 * 60 * 60 * 1000).toISOString()
       : null
 
-  await supabase.from("points_ledger").insert({
+  // Idempotency guard — webhook retry or admin /retry-post-payment can fire
+  // this twice for the same order. Migration 0032 also enforces a DB UNIQUE
+  // partial index as a backstop; this SELECT-first is the friendly path.
+  const { data: existing } = await supabase
+    .from("points_ledger")
+    .select("id")
+    .eq("source", "earn")
+    .eq("source_ref_id", orderId)
+    .maybeSingle()
+  if (existing) {
+    return 0
+  }
+
+  const { error: insertErr } = await supabase.from("points_ledger").insert({
     user_id: userId,
     delta: earned,
     source: "earn",
@@ -197,6 +210,13 @@ export async function grantPoints(
     expires_at: expiresAt,
     ...(note ? { note } : {}),
   })
+  // DB unique-violation (23505) from the partial index = lost a race; treat
+  // as already-granted and return 0 quietly. Anything else logged.
+  if (insertErr && insertErr.code !== "23505") {
+    console.warn(`[grantPoints] insert failed for order=${orderId}:`, insertErr)
+    return 0
+  }
+  if (insertErr?.code === "23505") return 0
 
   return earned
 }
@@ -215,12 +235,26 @@ export async function redeemPoints(
   pointsUsed: number,
 ): Promise<void> {
   if (pointsUsed <= 0) return
-  await supabase.from("points_ledger").insert({
+  // Idempotency guard — same hazards as grantPoints (webhook retry / admin
+  // retry / IPN dual-notify). Migration 0032 enforces a DB UNIQUE partial
+  // index too.
+  const { data: existing } = await supabase
+    .from("points_ledger")
+    .select("id")
+    .eq("source", "redeem")
+    .eq("source_ref_id", orderId)
+    .maybeSingle()
+  if (existing) return
+
+  const { error: insertErr } = await supabase.from("points_ledger").insert({
     user_id: userId,
     delta: -Math.abs(pointsUsed),
     source: "redeem",
     source_ref_id: orderId,
   })
+  if (insertErr && insertErr.code !== "23505") {
+    console.warn(`[redeemPoints] insert failed for order=${orderId}:`, insertErr)
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -298,6 +332,23 @@ export async function refundOrderPoints(
   orderId: string,
   userId: string,
 ): Promise<{ earned_reverted: number; redeemed_returned: number }> {
+  // Idempotency guard — admin clicking cancel twice, or PATCH status →
+  // cancelled + later POST /cancel both would re-refund. No DB UNIQUE
+  // index here because we legitimately insert 2 rows (earn revert +
+  // redeem return) per order, so a partial unique index can't model it.
+  // Check is at function level: if ANY refund row exists for this order,
+  // skip the whole operation.
+  const { data: prior } = await supabase
+    .from("points_ledger")
+    .select("id")
+    .eq("source", "refund")
+    .eq("source_ref_id", orderId)
+    .eq("user_id", userId)
+    .limit(1)
+  if (prior && prior.length > 0) {
+    return { earned_reverted: 0, redeemed_returned: 0 }
+  }
+
   // earn rows for this order — claw back
   const { data: earnRows } = await supabase
     .from("points_ledger")

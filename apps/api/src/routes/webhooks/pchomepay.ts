@@ -43,10 +43,20 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
     return
   }
 
-  // Idempotency guard — insert into webhook_events, swallow duplicate (23505).
+  // Idempotency guard — for paid notifications (order_paid / order_confirm)
+  // we collapse both into the same dedupe key so PChomePay sending BOTH
+  // notify_types for the same order doesn't double-fire enqueuePostPaymentJobs.
+  // Earlier code keyed on `${notifyType}_${orderNumber}` which let the same
+  // payment through twice, triggering double earn / double redeem / double
+  // tier upgrade. Other notify_types (failed / refund / audit) keep their own
+  // dedupe slot since they represent independent events.
+  const isPaidNotifyType = notifyType === "order_paid" || notifyType === "order_confirm"
+  const merchantTradeNo = isPaidNotifyType
+    ? `paid_${orderNumber}`
+    : `${notifyType}_${orderNumber}`
   const { error: idempotencyError } = await supabase.from("webhook_events").insert({
     gateway: "pchomepay",
-    merchant_trade_no: `${notifyType}_${orderNumber}`,
+    merchant_trade_no: merchantTradeNo,
     payload: JSON.stringify(body),
   })
   if (idempotencyError) {
