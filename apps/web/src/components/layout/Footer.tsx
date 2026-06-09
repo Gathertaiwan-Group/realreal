@@ -1,28 +1,8 @@
 import Link from "next/link"
 import Image from "next/image"
-import type { Category } from "@/lib/catalog"
 
-export function Footer({ categories }: { categories: Category[] }) {
-  // Spec P: 商品 column links come from DB (same filter rule as Header).
-  const productLinks = [
-    ...categories
-      .filter((c) => c.slug !== "all")
-      .filter((c) => (c.product_count ?? 0) > 0)
-      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
-      .map((c) => ({ href: `/category/${c.slug}`, label: c.name })),
-    { href: "/shop", label: "全部商品" },
-  ]
-
+export function Footer() {
   const FOOTER_LINKS = [
-    { title: "商品", links: productLinks },
-    {
-      title: "關於",
-      links: [
-        { href: "/about", label: "品牌故事" },
-        { href: "/idea", label: "公益里程" },
-        { href: "/blog", label: "聰明生活" },
-      ],
-    },
     {
       title: "會員",
       links: [
@@ -48,7 +28,7 @@ export function Footer({ categories }: { categories: Category[] }) {
       style={{ backgroundColor: "#10305a", fontFamily: "'Gill Sans', 'Gill Sans MT', Calibri, sans-serif" }}
     >
       <div className="container mx-auto px-6 py-16">
-        <div className="grid grid-cols-2 gap-8 md:grid-cols-7">
+        <div className="grid grid-cols-2 gap-8 md:grid-cols-5">
           {/* Brand / Logo */}
           <div className="col-span-2">
             <div className="mb-4 flex items-center gap-3">

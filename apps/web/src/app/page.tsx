@@ -514,9 +514,6 @@ export default async function HomePage() {
       {/* 1. Hero */}
       <HeroSection content={heroContent} />
 
-      {/* 1a. Square images (below banner) */}
-      <HomeSquareImages />
-
       {/* 2. Product section: 純植物蛋白粉 */}
       <ProductSection
         title="純植物蛋白粉"
@@ -532,6 +529,9 @@ export default async function HomePage() {
         moreLabel="查看更多凍乾水果 →"
         moreHref={fruitSlug ? `/shop/${fruitSlug}` : "/shop"}
       />
+
+      {/* 4a. Square images (between freeze-dried fruit and reviews) */}
+      <HomeSquareImages />
 
       {/* 6. Customer reviews carousel */}
       <section className="py-10 sm:py-12">
