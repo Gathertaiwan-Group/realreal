@@ -50,9 +50,7 @@ export async function initiatePayment(
     currency: "TWD",
     total_price: amount,
     order_desc: `realreal.cc 訂單 ${orderId.slice(0, 8)}`,
-    // ?order=<merchantTradeNo> so the confirm page can look up status.
-    // Without it the page falls through to "no info → pending" and sticks.
-    result_url: `${siteUrl}/checkout/confirm?order=${encodeURIComponent(merchantTradeNo)}`,
+    result_url: `${siteUrl}/checkout/confirm?order=${encodeURIComponent(orderId)}`,
     notify_url: `${apiUrl}/webhooks/jkopay`,
   }
   const payload = JSON.stringify(bodyObj)

@@ -103,7 +103,7 @@ linepayWebhookRouter.get("/cancel", async (req, res) => {
         payment_status: "pending",
         updated_at: new Date().toISOString(),
       })
-      .eq("id", orderId)
+      .eq("order_number", orderId)
   }
 
   res.redirect(`${siteUrl}/checkout/payment?error=cancelled`)
