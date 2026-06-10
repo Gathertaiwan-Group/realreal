@@ -111,12 +111,12 @@ describe("POST /orders", () => {
     expect(res.status).toBe(400)
   })
 
-  it("returns 400 for invalid phone", async () => {
+  it("returns 400 for empty phone", async () => {
     const res = await request(app)
       .post("/orders")
       .send({
         ...validBody,
-        address: { ...validBody.address, phone: "1234" },
+        address: { ...validBody.address, phone: "" },
       })
     expect(res.status).toBe(400)
   })

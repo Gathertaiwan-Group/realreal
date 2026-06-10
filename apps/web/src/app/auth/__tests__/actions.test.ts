@@ -56,6 +56,11 @@ describe("loginAction", () => {
 })
 
 describe("registerAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.NEXT_PUBLIC_SITE_URL = "https://realreal.cc"
+  })
+
   it("returns error for short password", async () => {
     const fd = new FormData()
     fd.set("email", "user@example.com")
@@ -64,9 +69,34 @@ describe("registerAction", () => {
     const result = await registerAction(null, fd)
     expect(result?.error).toBeTruthy()
   })
+
+  it("sends signup confirmation emails through the auth callback", async () => {
+    mockSignUp.mockResolvedValue({ error: null })
+    const fd = new FormData()
+    fd.set("email", "user@example.com")
+    fd.set("password", "password123")
+    fd.set("displayName", "Test User")
+
+    const result = await registerAction(null, fd)
+
+    expect(result?.success).toBeTruthy()
+    expect(mockSignUp).toHaveBeenCalledWith({
+      email: "user@example.com",
+      password: "password123",
+      options: {
+        data: { display_name: "Test User" },
+        emailRedirectTo: "https://realreal.cc/auth/callback?next=/",
+      },
+    })
+  })
 })
 
 describe("forgotPasswordAction", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    process.env.NEXT_PUBLIC_SITE_URL = "https://realreal.cc"
+  })
+
   it("returns error when email missing", async () => {
     const result = await forgotPasswordAction(null, new FormData())
     expect(result?.error).toBeTruthy()
@@ -78,5 +108,8 @@ describe("forgotPasswordAction", () => {
     fd.set("email", "user@example.com")
     const result = await forgotPasswordAction(null, fd)
     expect(result?.success).toBeTruthy()
+    expect(mockResetPassword).toHaveBeenCalledWith("user@example.com", {
+      redirectTo: "https://realreal.cc/auth/reset-password",
+    })
   })
 })

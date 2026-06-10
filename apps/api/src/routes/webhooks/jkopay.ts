@@ -4,6 +4,24 @@ import { verifySignature, getJkopaySecretKey } from "../../lib/jkopay"
 
 export const jkopayWebhookRouter = Router()
 
+async function restoreStockForOrder(orderId: string) {
+  const { data: items, error } = await supabase
+    .from("order_items")
+    .select("variant_id, qty")
+    .eq("order_id", orderId)
+
+  if (error) throw new Error(error.message)
+
+  const variants = (items ?? [])
+    .filter((item: any) => item.variant_id && Number(item.qty) > 0)
+    .map((item: any) => ({ id: item.variant_id, qty: Number(item.qty) }))
+
+  if (variants.length === 0) return
+
+  const restored = await supabase.rpc("atomic_restore_stock", { p_variants: variants })
+  if (restored.error) throw new Error(restored.error.message)
+}
+
 // POST /webhooks/jkopay — JKOPay server notification via X-Signature header
 jkopayWebhookRouter.post("/", async (req, res) => {
   // HMAC must be verified against the EXACT bytes JKOPay signed — re-encoding
@@ -48,6 +66,21 @@ jkopayWebhookRouter.post("/", async (req, res) => {
     .maybeSingle()
 
   if (tx) {
+    if (!success) {
+      const { data: order } = await supabase
+        .from("orders")
+        .select("payment_status")
+        .eq("id", tx.order_id)
+        .maybeSingle()
+      if (order?.payment_status !== "paid") {
+        try {
+          await restoreStockForOrder(tx.order_id)
+        } catch (err) {
+          console.warn("[webhooks/jkopay] restore stock failed (non-fatal):", err)
+        }
+      }
+    }
+
     await supabase
       .from("payments")
       .update({

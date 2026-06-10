@@ -5,12 +5,13 @@ then update them in Supabase via the Management API.
 """
 
 import json
+import os
 import re
 import subprocess
 import sys
 
 SUPABASE_PROJECT_ID = "oqzloydhoekvgncfvddh"
-SUPABASE_TOKEN = "sbp_2281288546c692790177274ce8cbbc76fd833401"
+SUPABASE_TOKEN = os.environ.get("SUPABASE_ACCESS_TOKEN")
 WP_POSTS_PATH = "/Users/cataholic/Desktop/airport/realreal/Wordpress/wp_posts.json"
 
 
@@ -152,10 +153,14 @@ def clean_wordpress_html(html: str) -> str:
 
 def update_supabase(slug: str, content_html: str):
     """Update a post in Supabase using the Management API."""
+    if not SUPABASE_TOKEN:
+        raise RuntimeError("SUPABASE_ACCESS_TOKEN is required")
+
     # Escape single quotes for SQL
     escaped = content_html.replace("'", "''")
+    escaped_slug = slug.replace("'", "''")
 
-    query = f"UPDATE posts SET content_html = '{escaped}' WHERE slug = '{slug}';"
+    query = f"UPDATE posts SET content_html = '{escaped}' WHERE slug = '{escaped_slug}';"
 
     payload = json.dumps({"query": query})
 

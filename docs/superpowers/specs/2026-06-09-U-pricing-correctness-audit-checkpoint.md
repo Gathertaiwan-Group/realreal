@@ -101,6 +101,12 @@ d9e11c3 ~20 全部級別  balance check race (in-flight orders + expired earn)
 - `apps/api/test/points.test.ts`
 - `apps/api/test/campaigns-evaluator.test.ts`
 
+**2026-06-10 續修**：
+- L11 checkout 點數預覽鏈路現在共用 POST `/orders` 的 effective redeemable points 規則（`/orders/preview`、`/points/apply`、`/points/balance`）：
+  - expired earn rows 不可預覽折抵
+  - pending / paid 且尚未寫入 redeem ledger 的訂單點數會先扣掉
+  - preview response 額外回傳 `points_balance`；points balance response 額外保留 `ledger_balance`
+
 **Migrations applied to production Supabase**：0032 + 0033。
 
 ---
@@ -144,55 +150,33 @@ POST / 的 balance 檢查改為 `effectiveBalance = ledgerSum − inFlightUsedPo
 
 ---
 
-## 5. 未完成清單（25+ bugs，**defer 需 design**）
+## 5. 2026-06-10 續修完成項目
 
-按優先序排：
+User 要求「整份都修、資料庫也直接搬移」後，採用相容遷移方案：
 
-### 5.1 Foundational（要 data migration）
+### 5.1 C4 — orders / order_items 金額單位
 
-#### C4 — `orders.*` schema 是 `NUMERIC(10,2)` 但存 cents
+- 採 **B 方案**：保留欄位名，將 `orders.subtotal/shipping_fee/discount_amount/total` 與 `order_items.unit_price` 的既有資料從 cents 搬成 TWD dollars。
+- Migration：`packages/db/migrations/0034_money_units_twd_and_tier_atomic.sql`，同份 SQL 已透過 Supabase CLI 套到 production project `ozwftlkgqmewtadypsfi`。
+- 後端 writer 已改為寫 TWD；API/admin/email/logistics/KOL reader 移除舊 `/100`。
 
-- **Impact**：所有 reader 都得記得 `/100`。任何 SQL report、新 reader、analytics 工具都會被坑。
-- **Fix 方案**：
-  - **A**：把 columns 改成 `INTEGER`（cents），順便補一個 `total_twd_view` 給 SQL 用
-  - **B**：把 columns 真正存 dollars（NUMERIC），所有 writer 改 `/100`，所有 reader 拿掉 `/100`
-- **建議**：A — INTEGER + 明確命名 `subtotal_cents`、`total_cents`
-- **規模**：~10 處 writer、~30 處 reader（含 admin / FE / email template）
+### 5.2 Tier / points
 
-### 5.2 Tier 系統整套（互相關聯，需 brainstorm）
+- Tier spend / period spend / charity_savings 改由 DB-side RPC atomic 更新，避免 read-then-write lost update。
+- post-payment tier side effect 改用 `claim_order_post_payment_step()` atomic claim，避免 retry / webhook 重送重複加總。
+- points earn base 改為「商品 subtotal − 非點數折扣」，排除 shipping，且點數折抵不降低本次 earn base。
+- tier-expire worker 改為 cascade downgrade：到期未續等時，直接落到本期 spend 仍符合的最高 tier；不符合則回最低 tier。
 
-#### H4-H9 — Tier rolling-window / 升降級 race / charity_savings 順序
+### 5.3 Sandbox / payment cleanup
 
-具體 bug：
-- **H4**: `tier_period_spend` 沒 enforcement，`requalify_window_months` 是死 schema
-- **H5**: `total_spend` 永久累積、所有 user 最終升到頂
-- **H6**: `incrementSpendAndUpgrade` 用 read-then-write，並發訂單會 lost-update
-- **H7**: `grantPoints` earn base = `order.total`（post-discount + shipping），用點數越多賺越少 — 反直覺
-- **M11**: Tier upgrade bonus 在 retry-post-payment 重複發
-- **M7/M9**: `incrementSpendAndUpgrade` 內 `charity_savings` 讀寫順序 race
+- `test_paid` 改成 production 預設 admin-only；只有 `ALLOW_NON_ADMIN_TEST_PAID=true` 才允許一般登入用戶使用。
+- payment row insert 失敗時會 rollback stock / child rows / order，避免留下無付款紀錄的 pending order。
+- JKO Pay 失敗 webhook 會在訂單尚未 paid 時 restore stock，再標記 failed。
 
-需 brainstorm 的 product 決策：
-1. **滾動年 vs 年度結算**：升等門檻是累計終身、滾動 12 個月、還是日曆年 reset？
-2. **降等時機**：tier_expires_at 到期才降、退款立刻重算、還是 anniversary 結算？
-3. **Earn base**：subtotal 還是 total（post-discount）？影響「用點數越多賺越少」的客戶觀感
-4. **Tier change atomic**：是否要把 increment+upgrade+charity 寫成 DB function
+### 5.4 已知剩餘注意事項
 
-### 5.3 Sandbox security（user 已 ack）
-
-#### C3 — `test_paid` 開放給 non-admin
-
-- User explicit choice — 開放任何登入用戶可用沙盒付款
-- ⚠️ Production cutover 前該砍掉此 branch（或恢復 admin gate）
-- code comment 已標註
-
-### 5.4 雜項 incomplete fixes
-
-| Bug | 描述 | 為什麼 defer |
-|---|---|---|
-| L11 | /preview 不檢查 points balance | 多查一張表的代價 vs 顯示 hint 的價值 — 設計取捨 |
-| M10 | tier-expire downgrade 不 cascade | 30k → 一直降一級是慢的，需 product 決定要不要 cascade |
-| L17 | JKO Pay queryPayment 失敗無 DELETE 機制 | JKO 架構不同（沒 queryPayment），需獨立設計 |
-| M21/M22 | enqueue-post-payment SELECT-then-UPSERT TOCTOU | upsert onConflict 已是 race-safe，雙重 select-upsert 只有微觀 window，影響低 |
+- 這輪保留欄位名做相容遷移，沒有 rename 成 `*_cents`；後續如要更強語意，可另開 breaking schema migration。
+- `schema_migration_markers` 防止 0034 資料除以 100 的步驟被重跑。
 
 ---
 

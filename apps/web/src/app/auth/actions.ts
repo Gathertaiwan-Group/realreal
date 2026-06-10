@@ -15,6 +15,10 @@ const registerSchema = z.object({
   displayName: z.string().min(1),
 })
 
+function getSiteUrl() {
+  return (process.env.NEXT_PUBLIC_SITE_URL ?? "https://realreal.cc").replace(/\/+$/, "")
+}
+
 export async function loginAction(_prev: unknown, formData: FormData) {
   const parsed = loginSchema.safeParse({
     email: formData.get("email"),
@@ -42,7 +46,10 @@ export async function registerAction(_prev: unknown, formData: FormData) {
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
-    options: { data: { display_name: parsed.data.displayName } },
+    options: {
+      data: { display_name: parsed.data.displayName },
+      emailRedirectTo: `${getSiteUrl()}/auth/callback?next=/`,
+    },
   })
   if (error) return { error: error.message }
   return { success: "註冊成功！請檢查您的信箱並點擊確認連結以完成註冊" }
@@ -57,7 +64,7 @@ export async function forgotPasswordAction(_prev: unknown, formData: FormData) {
 
   const supabase = await createClient()
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/auth/reset-password`,
+    redirectTo: `${getSiteUrl()}/auth/reset-password`,
   })
   if (error) return { error: error.message }
 
