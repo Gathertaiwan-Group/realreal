@@ -8,25 +8,60 @@ import { z } from "zod"
 export const postsPublicRouter = Router()
 export const postsAdminRouter = Router()
 
+// Unicode-aware: keeps CJK so Chinese titles/tags get a usable slug instead of
+// collapsing to an empty string (\w would strip every Chinese character).
 function slugify(text: string): string {
   return text
     .toLowerCase()
     .trim()
-    .replace(/[^\w\s-]/g, "")
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
     .replace(/[\s_]+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-+|-+$/g, "")
 }
 
+// Accepts either an array of tag UUIDs or a comma-separated string of tag names
+// (what the admin PostForm sends). Names are find-or-created in post_tags so the
+// free-text tag input actually persists. Resilient: a failed tag is skipped, not
+// fatal to the whole save.
+async function resolveTagIds(
+  tags: string[] | string | null | undefined,
+): Promise<string[]> {
+  if (tags == null) return []
+  if (Array.isArray(tags)) return tags
+  const names = [...new Set(tags.split(",").map((t) => t.trim()).filter(Boolean))]
+  const ids: string[] = []
+  for (const name of names) {
+    const { data: found } = await supabase
+      .from("post_tags")
+      .select("id")
+      .eq("name", name)
+      .maybeSingle()
+    if (found) {
+      ids.push(found.id)
+      continue
+    }
+    const { data: created } = await supabase
+      .from("post_tags")
+      .insert({ name, slug: slugify(name) || name })
+      .select("id")
+      .single()
+    if (created) ids.push(created.id)
+  }
+  return ids
+}
+
 const postSchema = z.object({
   title: z.string().min(1),
-  slug: z.string().min(1).regex(/^[a-z0-9-]+$/).optional(),
+  // Allow CJK + letters/digits/hyphens (the form permits Chinese slugs).
+  slug: z.string().min(1).regex(/^[\p{L}\p{N}-]+$/u).optional(),
   content_html: z.string().optional(),
   excerpt: z.string().optional(),
   cover_image: z.string().url().optional().nullable(),
   status: z.enum(["draft", "published", "scheduled"]).optional(),
   category_id: z.string().uuid().optional().nullable(),
-  tags: z.array(z.string().uuid()).optional(),
+  // Array of tag UUIDs OR a comma-separated string of tag names (form sends the latter).
+  tags: z.union([z.array(z.string().uuid()), z.string()]).optional().nullable(),
   seo_title: z.string().optional().nullable(),
   seo_description: z.string().optional().nullable(),
   scheduled_at: z.string().datetime().optional().nullable(),
@@ -219,7 +254,17 @@ postsAdminRouter.get("/:id", requireAuth, requireEditor, async (req, res) => {
     .eq("id", req.params.id)
     .single()
   if (error || !data) { res.status(404).json({ error: "Post not found" }); return }
-  res.json({ data })
+  // Attach existing tags as a comma-separated name string so the editor form
+  // round-trips them (otherwise a save would clear all tag links).
+  const { data: tagLinks } = await supabase
+    .from("post_tag_links")
+    .select("post_tags(name)")
+    .eq("post_id", req.params.id)
+  const tags = (tagLinks ?? [])
+    .map((l) => (l as { post_tags?: { name?: string } }).post_tags?.name)
+    .filter(Boolean)
+    .join(",")
+  res.json({ data: { ...data, tags } })
 })
 
 postsAdminRouter.post("/", requireAuth, requireEditor, async (req, res) => {
@@ -239,9 +284,10 @@ postsAdminRouter.post("/", requireAuth, requireEditor, async (req, res) => {
 
   if (error) { res.status(500).json({ error: error.message }); return }
 
-  // Insert tag links if provided
-  if (tags && tags.length > 0 && data) {
-    const tagLinks = tags.map(tag_id => ({ post_id: data.id, tag_id }))
+  // Insert tag links if provided (names resolved to ids, find-or-create)
+  const tagIds = await resolveTagIds(tags)
+  if (tagIds.length > 0 && data) {
+    const tagLinks = tagIds.map(tag_id => ({ post_id: data.id, tag_id }))
     await supabase.from("post_tag_links").insert(tagLinks)
   }
 
@@ -265,11 +311,12 @@ postsAdminRouter.put("/:id", requireAuth, requireEditor, async (req, res) => {
   if (error) { res.status(500).json({ error: error.message }); return }
   if (!data) { res.status(404).json({ error: "Post not found" }); return }
 
-  // Update tag links if provided
+  // Update tag links if the field was sent (names resolved to ids).
   if (tags !== undefined) {
+    const tagIds = await resolveTagIds(tags)
     await supabase.from("post_tag_links").delete().eq("post_id", req.params.id)
-    if (tags.length > 0) {
-      const tagLinks = tags.map(tag_id => ({ post_id: data.id, tag_id }))
+    if (tagIds.length > 0) {
+      const tagLinks = tagIds.map(tag_id => ({ post_id: data.id, tag_id }))
       await supabase.from("post_tag_links").insert(tagLinks)
     }
   }

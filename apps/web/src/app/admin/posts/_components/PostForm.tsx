@@ -44,6 +44,16 @@ function slugify(text: string): string {
     .replace(/^-+|-+$/g, "")
 }
 
+// <input type="datetime-local"> needs "YYYY-MM-DDTHH:mm" in LOCAL time, but the
+// API stores/returns ISO (UTC). Convert ISO -> local datetime-local on load.
+function toDatetimeLocal(iso: string): string {
+  if (!iso) return ""
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ""
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 export function PostForm({ initialData, mode }: PostFormProps) {
   const router = useRouter()
   const [saving, setSaving] = useState(false)
@@ -59,7 +69,7 @@ export function PostForm({ initialData, mode }: PostFormProps) {
   const [seoTitle, setSeoTitle] = useState(initialData?.seo_title ?? "")
   const [seoDescription, setSeoDescription] = useState(initialData?.seo_description ?? "")
   const [status, setStatus] = useState<Post["status"]>(initialData?.status ?? "draft")
-  const [scheduledAt, setScheduledAt] = useState(initialData?.scheduled_at ?? "")
+  const [scheduledAt, setScheduledAt] = useState(toDatetimeLocal(initialData?.scheduled_at ?? ""))
   const [slugTouched, setSlugTouched] = useState(!!initialData?.slug)
 
   useEffect(() => {
@@ -98,7 +108,11 @@ export function PostForm({ initialData, mode }: PostFormProps) {
       seo_title: seoTitle,
       seo_description: seoDescription,
       status,
-      scheduled_at: status === "scheduled" ? scheduledAt : null,
+      // datetime-local is local time without TZ; convert to ISO for the API.
+      scheduled_at:
+        status === "scheduled" && scheduledAt
+          ? new Date(scheduledAt).toISOString()
+          : null,
     }
 
     const url =
