@@ -140,6 +140,17 @@ export async function grantPoints(
 ): Promise<number> {
   if (!tierId) return 0
 
+  // Audit M5 (round 2): grant must honor user's tier_expires_at — once a
+  // tier expires, the user shouldn't earn the tier's rebate. getMemberDiscountRate
+  // already does this for the discount side; we mirror it here for symmetry.
+  const { data: tierExpireProfile } = await supabase
+    .from("user_profiles")
+    .select("tier_expires_at")
+    .eq("user_id", userId)
+    .maybeSingle()
+  const tierExpiry = (tierExpireProfile as { tier_expires_at?: string | null } | null)?.tier_expires_at
+  if (tierExpiry && new Date(tierExpiry) < new Date()) return 0
+
   const { data: tier } = await supabase
     .from("membership_tiers")
     .select("rebate_rate")
@@ -271,13 +282,20 @@ export async function redeemPoints(
 export async function expirePoints(
   now: Date,
 ): Promise<{ rows: number; total: number }> {
-  // 1. Pull candidate earn rows past their expiry
-  const { data: earnRows } = await supabase
+  // 1. Pull candidate earn rows past their expiry. Audit M16 (round 2):
+  // unbounded scan can OOM on a huge ledger. Cap at 1000 per worker tick;
+  // cron runs daily so this still drains a backlog within days.
+  const { data: earnRows, error: earnErr } = await supabase
     .from("points_ledger")
     .select("id, user_id, delta")
     .eq("source", "earn")
     .not("expires_at", "is", null)
     .lt("expires_at", now.toISOString())
+    .limit(1000)
+  if (earnErr) {
+    console.error("[expirePoints] earnRows query failed:", earnErr)
+    return { rows: 0, total: 0 }
+  }
 
   if (!earnRows || earnRows.length === 0) {
     return { rows: 0, total: 0 }
@@ -308,7 +326,11 @@ export async function expirePoints(
     source_ref_id: r.id as string,
   }))
 
-  await supabase.from("points_ledger").insert(inserts)
+  const { error: insertErr } = await supabase.from("points_ledger").insert(inserts)
+  if (insertErr) {
+    console.error("[expirePoints] insert expire rows failed:", insertErr)
+    return { rows: 0, total: 0 }
+  }
 
   const total = toExpire.reduce(
     (acc: number, r: any) => acc + Number(r.delta),
@@ -349,13 +371,31 @@ export async function refundOrderPoints(
     return { earned_reverted: 0, redeemed_returned: 0 }
   }
 
-  // earn rows for this order — claw back
+  // earn rows for this order — claw back. Audit H11 (round 2): filter out
+  // earn rows already expired by the expire cron, otherwise a refund after
+  // expiry double-debits the user (we'd flip the earn delta back negative,
+  // on top of the expire row that already balanced it).
   const { data: earnRows } = await supabase
     .from("points_ledger")
-    .select("delta")
+    .select("id, delta")
     .eq("source", "earn")
     .eq("source_ref_id", orderId)
     .eq("user_id", userId)
+
+  const earnIds = (earnRows ?? []).map((r: any) => r.id as string)
+  let alreadyExpiredEarnIds = new Set<string>()
+  if (earnIds.length > 0) {
+    const { data: expireRows } = await supabase
+      .from("points_ledger")
+      .select("source_ref_id")
+      .eq("source", "expire")
+      .in("source_ref_id", earnIds)
+    alreadyExpiredEarnIds = new Set(
+      (expireRows ?? [])
+        .map((r: any) => r.source_ref_id as string | null)
+        .filter((v): v is string => !!v),
+    )
+  }
 
   // redeem rows for this order — return points
   const { data: redeemRows } = await supabase
@@ -375,8 +415,12 @@ export async function refundOrderPoints(
 
   let earnedReverted = 0
   for (const r of earnRows ?? []) {
-    const d = Number((r as { delta: number }).delta)
+    const earnRow = r as { id: string; delta: number }
+    const d = Number(earnRow.delta)
     if (d === 0) continue
+    // Skip earn rows already neutralised by an expire row — clawing them
+    // back would double-debit the user.
+    if (alreadyExpiredEarnIds.has(earnRow.id)) continue
     inserts.push({
       user_id: userId,
       delta: -d,

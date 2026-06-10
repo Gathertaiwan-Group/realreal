@@ -177,8 +177,11 @@ function isInBirthdayWindow(
   if (Math.abs(diffNext) < Math.abs(bestDiff)) bestDiff = diffNext
   if (Math.abs(diffPrev) < Math.abs(bestDiff)) bestDiff = diffPrev
 
-  const half = windowDays / 2
-  return Math.abs(bestDiff) <= half
+  // Audit M3 (round 2): docstring says "one day before through `windowDays`
+  // days after". Implementation was using a symmetric ±half-window, which
+  // didn't match the test cases (test expects birthday+29d still in window
+  // with windowDays=30) or the docstring. Make it asymmetric: [-1, +windowDays].
+  return bestDiff >= -1 && bestDiff <= windowDays
 }
 
 function notApplied(c: CampaignRow, reason: string): EvaluatorResult {
@@ -244,6 +247,15 @@ export async function evalDiscount(
   if (value === undefined) {
     return notApplied(c, "config.discount_value 缺失或非法")
   }
+  // Audit M2 (round 2): bounds check on value to prevent admin typo
+  // exploits (negative value = price increase; >100% percent = free or
+  // negative).
+  if (value < 0) {
+    return notApplied(c, "config.discount_value 不可為負")
+  }
+  if (method === "percent" && value > 100) {
+    return notApplied(c, "config.discount_value 不可超過 100")
+  }
   if (!scope) {
     return notApplied(c, "config.scope 缺失")
   }
@@ -293,10 +305,20 @@ export async function evalFreebie(
       .maybeSingle()
     if (variant) {
       const v = variant as { price: number | string | null; sale_price: number | string | null }
-      unitPrice = Number(v.sale_price ?? v.price ?? 0)
+      // Audit L1 (round 2): sale_price=0 is treated as "no sale" rather
+      // than "free freebie" — fall back to price when sale_price <= 0.
+      const sale = Number(v.sale_price ?? 0)
+      const regular = Number(v.price ?? 0)
+      unitPrice = sale > 0 ? sale : regular
     }
-  } catch {
-    /* keep 0 — pickBestPerType will tiebreak elsewhere */
+  } catch (err) {
+    // Audit M1 (round 2): log so silent freebie-fetch failures are
+    // observable (pickBestPerType still tiebreaks via deterministic
+    // sort below).
+    console.warn(
+      `[evalFreebie] product_variants lookup failed for gift_sku=${giftSku}:`,
+      err,
+    )
   }
 
   return {
@@ -398,6 +420,11 @@ export async function evalBuyXGetY(
   }
   if (getQty === undefined || getQty <= 0) {
     return notApplied(c, "config.get_quantity 缺失或非法")
+  }
+  // Audit L3 (round 2): negative max_uses_per_order produced negative
+  // array slice indices and unbounded freebies.
+  if (maxUses !== undefined && maxUses < 0) {
+    return notApplied(c, "config.max_uses_per_order 不可為負")
   }
   if (!scope) {
     return notApplied(c, "config.scope 缺失")
@@ -686,12 +713,19 @@ export function pickBestPerType(
   results: EvaluatorResult[],
   ctx: EvaluatorContext,
 ): EvaluatorResult[] {
+  // Audit L7 (round 2): when two same-type campaigns score equally,
+  // iteration order decides the winner non-deterministically. Sort by
+  // campaign_id as the secondary key so the outcome is stable across
+  // calls and reproducible in tests.
+  const sorted = [...results].sort((a, b) => {
+    if (a.type !== b.type) return a.type.localeCompare(b.type)
+    const scoreDiff = scoreForType(b, ctx) - scoreForType(a, ctx)
+    if (scoreDiff !== 0) return scoreDiff
+    return a.campaign_id.localeCompare(b.campaign_id)
+  })
   const byType = new Map<string, EvaluatorResult>()
-  for (const r of results) {
-    const existing = byType.get(r.type)
-    if (!existing || scoreForType(r, ctx) > scoreForType(existing, ctx)) {
-      byType.set(r.type, r)
-    }
+  for (const r of sorted) {
+    if (!byType.has(r.type)) byType.set(r.type, r)
   }
   return Array.from(byType.values())
 }

@@ -92,15 +92,18 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
     return
   }
 
-  const statusCode = authoritative.status_code ?? notifyMessage.status_code
+  // Audit H18 (round 2): only trust the authoritative response. If
+  // queryPayment succeeded above but returned no status_code, falling back to
+  // the (forgeable) notify_message lets an attacker mark unpaid orders paid
+  // by sending a crafted notify. Drop the notifyMessage fallback.
+  const statusCode = authoritative.status_code
   // PChomePay status_code reference: "S" or "00" / numeric "1" / "success"
   // generally mean paid; we accept several variants defensively.
-  const isPaid =
-    notifyType === "order_paid" ||
-    notifyType === "order_confirm" ||
-    statusCode === "S" ||
-    statusCode === "00" ||
-    statusCode === "1"
+  // notifyType alone is NOT sufficient evidence of paid status — the
+  // authoritative status_code must agree.
+  const notifyTypeIsPaid = notifyType === "order_paid" || notifyType === "order_confirm"
+  const statusCodeIsPaid = statusCode === "S" || statusCode === "00" || statusCode === "1"
+  const isPaid = notifyTypeIsPaid && statusCodeIsPaid
   const isFailed = notifyType === "order_expired" || statusCode === "F"
 
   // Find the payments row by gateway_tx_id (= order_number on PChomePay).

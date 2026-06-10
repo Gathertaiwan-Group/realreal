@@ -214,14 +214,27 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
       (minOrderCents == null || subtotalCents >= minOrderCents) &&
       (coupon.max_uses == null || Number(coupon.used_count ?? 0) < coupon.max_uses) &&
       couponTierOk
-    if (usable && coupon) {
+    // Audit L5 (round 2): if shipping was already zeroed by a free_shipping
+    // campaign, applying a free_shipping coupon delivers nothing — same
+    // logic as POST / couponWouldBeRedundant.
+    const previewCouponRedundant =
+      coupon?.type === "free_shipping" && shippingFeeCents === 0
+    if (usable && coupon && !previewCouponRedundant) {
       const baseAfter = Math.max(0, subtotalCents - memberDiscountCents - campaignDiscountCents)
-      if (coupon.type === "percentage") {
-        couponDiscountCents = Math.round(baseAfter * (Number(coupon.value) / 100))
-      } else if (coupon.type === "fixed") {
-        couponDiscountCents = Math.min(baseAfter, Math.round(Number(coupon.value)))
-      } else if (coupon.type === "free_shipping") {
-        shippingFeeCents = 0
+      // Audit M4 (round 2): bounds-check coupon value (admin typo guard).
+      const rawValue = Number(coupon.value)
+      if (Number.isFinite(rawValue) && rawValue >= 0) {
+        const clampedPctValue = Math.min(rawValue, 100)
+        if (coupon.type === "percentage") {
+          couponDiscountCents = Math.round(baseAfter * (clampedPctValue / 100))
+        } else if (coupon.type === "fixed") {
+          couponDiscountCents = Math.min(baseAfter, Math.round(rawValue))
+        } else if (coupon.type === "free_shipping") {
+          // Audit L12 (round 2): report actual shipping savings on the coupon
+          // info line so UI can show "免運費 -NT$ X".
+          couponDiscountCents = shippingFeeCents
+          shippingFeeCents = 0
+        }
       }
       couponPreviewInfo = { code: couponCode, amount: couponDiscountCents / 100 }
     }
@@ -467,13 +480,19 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
             0,
             subtotalCents - memberDiscountCents - campaignDiscountCents,
           )
-          if (coupon.type === "percentage") {
-            couponDiscountCents = Math.round(baseAfterCampaigns * (Number(coupon.value) / 100))
-          } else if (coupon.type === "fixed") {
-            couponDiscountCents = Math.min(baseAfterCampaigns, Math.round(Number(coupon.value)))
-          } else if (coupon.type === "free_shipping") {
-            // Don't deduct from items; zero the shipping fee instead.
-            shippingFeeCents = 0
+          // Audit M4 (round 2): bounds-check coupon value. Negative or
+          // >100% percentage would inflate the order or drive it negative.
+          const rawValue = Number(coupon.value)
+          if (Number.isFinite(rawValue) && rawValue >= 0) {
+            const clampedPctValue = Math.min(rawValue, 100)
+            if (coupon.type === "percentage") {
+              couponDiscountCents = Math.round(baseAfterCampaigns * (clampedPctValue / 100))
+            } else if (coupon.type === "fixed") {
+              couponDiscountCents = Math.min(baseAfterCampaigns, Math.round(rawValue))
+            } else if (coupon.type === "free_shipping") {
+              // Don't deduct from items; zero the shipping fee instead.
+              shippingFeeCents = 0
+            }
           }
           appliedCouponId = coupon.id
         }
@@ -491,15 +510,60 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   let pointsUsed = 0
   let pointsDiscountCents = 0
   if (userId && requestedPointsUsed > 0) {
+    // Audit C2 (round 2): concurrent same-user checkouts can over-redeem
+    // because POST /orders only reads ledger SUM and trusts it, but the
+    // redeem ledger row is written LATER by enqueue-post-payment. Between
+    // the balance check and the ledger insert, user can place a second
+    // order with the same balance. Fix: subtract points already claimed
+    // by other pending/processing orders that haven't been redeemed yet.
+    //
+    // Audit M14 (round 1): balance reading also doesn't exclude past-expiry
+    // earn rows that haven't been swept by the expire cron yet — user can
+    // spend points they no longer have. Filter expired earn rows here.
     const { data: ledgerRows } = await supabase
       .from("points_ledger")
-      .select("delta")
+      .select("delta, source, expires_at")
       .eq("user_id", userId)
-    const balance = (ledgerRows ?? []).reduce(
-      (acc: number, r: any) => acc + Number(r.delta ?? 0),
-      0,
-    )
-    if (balance >= requestedPointsUsed) {
+    const now = new Date()
+    const balance = (ledgerRows ?? []).reduce((acc: number, r: any) => {
+      const d = Number(r.delta ?? 0)
+      // Skip earn rows past expiry — cron may not have swept yet but the
+      // points are no longer spendable.
+      if (
+        r.source === "earn" &&
+        r.expires_at &&
+        new Date(r.expires_at) < now
+      ) {
+        return acc
+      }
+      return acc + d
+    }, 0)
+
+    // In-flight = sum of points_used on this user's pending/processing
+    // orders that don't yet have a redeem ledger row.
+    const { data: inflightOrders } = await supabase
+      .from("orders")
+      .select("id, points_used")
+      .eq("user_id", userId)
+      .in("payment_status", ["pending", "paid"])
+      .gt("points_used", 0)
+    let inflightPoints = 0
+    for (const o of (inflightOrders ?? []) as Array<{ id: string; points_used: number }>) {
+      const orderPoints = Number(o.points_used ?? 0)
+      if (orderPoints <= 0) continue
+      // Has redeem ledger row already? If yes, this order's points are
+      // already accounted for in `balance` — don't double-subtract.
+      const { data: existing } = await supabase
+        .from("points_ledger")
+        .select("id")
+        .eq("source", "redeem")
+        .eq("source_ref_id", o.id)
+        .maybeSingle()
+      if (!existing) inflightPoints += orderPoints
+    }
+
+    const effectiveBalance = balance - inflightPoints
+    if (effectiveBalance >= requestedPointsUsed) {
       const settings = await loadPointsSettings()
       // Spec D precedence: subtotal → tier → campaign → coupon → points.
       // Points cap must use the base AFTER member/campaign/coupon, otherwise

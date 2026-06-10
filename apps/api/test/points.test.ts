@@ -54,15 +54,41 @@ function makeFrom(handlers: Record<string, FromHandler>) {
  * records the payload(s). Insert returns a benign `{ error: null }` so the
  * caller can `await` it without exploding.
  */
-function pointsLedgerInsertCapturer() {
+function pointsLedgerInsertCapturer(opts: { priorExists?: boolean } = {}) {
   const writes: Array<Record<string, unknown> | Array<Record<string, unknown>>> = []
   const handler = (_table: string) => ({
+    // SELECT-first idempotency guard added in commit 7d0ca5f calls
+    // .select("id").eq().eq().maybeSingle() → must return null so the
+    // insert path runs.
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    in: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    not: vi.fn().mockReturnThis(),
+    lt: vi.fn().mockReturnThis(),
+    gte: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({
+      data: opts.priorExists ? { id: "prior-row" } : null,
+      error: null,
+    }),
     insert: vi.fn().mockImplementation((payload: Record<string, unknown> | Array<Record<string, unknown>>) => {
       writes.push(payload)
-      return Promise.resolve({ error: null })
+      return Promise.resolve({ error: null, data: payload })
     }),
   })
   return { writes, handler }
+}
+
+// user_profiles handler returning tier_expires_at (future = valid, past =
+// expired, null = no expiry). Used by grantPoints (added in round 2 audit
+// fix M5) and other tier-aware paths.
+function userProfilesHandler(profile: Record<string, unknown> | null) {
+  return () => ({
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    maybeSingle: vi.fn().mockResolvedValue({ data: profile, error: null }),
+    single: vi.fn().mockResolvedValue({ data: profile, error: null }),
+  })
 }
 
 beforeEach(() => {
@@ -88,6 +114,7 @@ describe("grantPoints", () => {
 
     vi.mocked(supabase.from).mockImplementation(
       makeFrom({
+        user_profiles: userProfilesHandler({ tier_expires_at: null }),
         membership_tiers: () => ({
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
@@ -128,6 +155,7 @@ describe("grantPoints", () => {
     const { writes, handler: ledgerHandler } = pointsLedgerInsertCapturer()
     vi.mocked(supabase.from).mockImplementation(
       makeFrom({
+        user_profiles: userProfilesHandler({ tier_expires_at: null }),
         membership_tiers: () => ({
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
@@ -200,12 +228,13 @@ describe("expirePoints", () => {
       if (table !== "points_ledger") return {} as any
       callIdx++
       if (callIdx === 1) {
-        // candidate earn rows — chain .eq().not().lt()
+        // candidate earn rows — chain .eq().not().lt().limit() per audit M16 fix
         return {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnThis(),
           not: vi.fn().mockReturnThis(),
-          lt: vi.fn().mockResolvedValue({ data: expiredEarn, error: null }),
+          lt: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue({ data: expiredEarn, error: null }),
         } as any
       }
       if (callIdx === 2) {
@@ -245,7 +274,8 @@ describe("expirePoints", () => {
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
       not: vi.fn().mockReturnThis(),
-      lt: vi.fn().mockResolvedValue({ data: [], error: null }),
+      lt: vi.fn().mockReturnThis(),
+      limit: vi.fn().mockResolvedValue({ data: [], error: null }),
     })) as never)
 
     const result = await expirePoints(new Date())
@@ -262,28 +292,49 @@ describe("refundOrderPoints", () => {
     const ORDER_ID = "order-3"
     const USER_ID = "user-3"
 
-    // earn lookup, redeem lookup, then insert
+    // Call order after round-2 fixes:
+    //   1. SELECT-first prior refund check (limit chain → resolves [])
+    //   2. earn rows for order (select.eq.eq.eq)
+    //   3. expire ledger filter (select.eq.in) per H11 fix
+    //   4. redeem rows for order
+    //   5. insert
     let callIdx = 0
     const writes: Array<unknown> = []
     vi.mocked(supabase.from).mockImplementation(((table: string) => {
       if (table !== "points_ledger") return {} as any
       callIdx++
       if (callIdx === 1) {
-        // earn rows for order — three .eq() chained then resolves
+        // SELECT-first guard
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+        } as any
+      }
+      if (callIdx === 2) {
+        // earn rows
         return {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnValueOnce({
             eq: vi.fn().mockReturnValueOnce({
               eq: vi.fn().mockResolvedValue({
-                data: [{ delta: 50 }],
+                data: [{ id: "earn-1", delta: 50 }],
                 error: null,
               }),
             }),
           }),
         } as any
       }
-      if (callIdx === 2) {
-        // redeem rows for order
+      if (callIdx === 3) {
+        // expire ledger filter (audit H11) — none expired
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          in: vi.fn().mockResolvedValue({ data: [], error: null }),
+        } as any
+      }
+      if (callIdx === 4) {
+        // redeem rows
         return {
           select: vi.fn().mockReturnThis(),
           eq: vi.fn().mockReturnValueOnce({
@@ -296,7 +347,7 @@ describe("refundOrderPoints", () => {
           }),
         } as any
       }
-      // 3rd call: insert
+      // 5th call: insert
       return {
         insert: vi.fn().mockImplementation((payload: unknown) => {
           writes.push(payload)
