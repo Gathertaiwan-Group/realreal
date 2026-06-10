@@ -895,8 +895,9 @@ export default function CheckoutPage() {
                                 {value === "711" ? "🏪" : "🏬"} {label}
                               </span>
                             </div>
+                            {/* COD：運費於取貨時隨貨款一併收取，這裡不顯示金額以免誤導 */}
                             <span className="text-sm text-zinc-500">
-                              {value === shippingMethod ? shippingLabel : "選擇後計算"}
+                              {value === shippingMethod ? "到店付款" : ""}
                             </span>
                           </label>
                         ))}
