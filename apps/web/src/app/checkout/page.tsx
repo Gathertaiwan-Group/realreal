@@ -21,7 +21,7 @@ import {
   type PromoState,
 } from "@/components/checkout/PromoWidget"
 
-type AddressType = "home" | "cvs" | "overseas"
+type AddressType = "home" | "cvs" | "cvs_cod" | "overseas"
 type ShippingMethod = "711" | "family" | "home_delivery" | "overseas_cod"
 
 /**
@@ -289,6 +289,7 @@ export default function CheckoutPage() {
           body: JSON.stringify({
             items: buildOrderPreviewItems(items),
             shippingMethod: toApiShippingMethod(shippingMethod),
+            ...(addressType === "cvs_cod" ? { paymentMethodHint: "cvs_cod" } : {}),
           }),
         })
         if (!res.ok) { setPreview(null); return }
@@ -306,7 +307,7 @@ export default function CheckoutPage() {
     }
     // items intentionally referenced via itemsKey for stable identity (T20)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsKey, shippingMethod])
+  }, [itemsKey, shippingMethod, addressType])
 
   // 3. Listen for postMessage from the ECPay store-picker popup.
   //    Origin guard prevents third-party tabs from injecting fake selections.

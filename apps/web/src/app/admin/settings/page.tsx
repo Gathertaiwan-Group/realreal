@@ -122,6 +122,7 @@ const FIELD_META: Record<
   // Shipping
   "shipping.fee_home_delivery":   { label: "宅配運費 NT$", placeholder: "150" },
   "shipping.fee_cvs":             { label: "超商運費 NT$", placeholder: "65" },
+  "shipping.fee_cvs_cod":         { label: "超商取貨付款運費 NT$", placeholder: "80", hint: "超商取貨付款（代收貨款）專屬費率，不提供免運優惠" },
   "shipping.free_threshold_home": { label: "宅配免運門檻 NT$", placeholder: "1499", hint: "0 = 不提供免運" },
   "shipping.free_threshold_cvs":  { label: "超商免運門檻 NT$", placeholder: "499", hint: "0 = 不提供免運" },
   "shipping.fee_overseas_cod":    { label: "海外到付運費（顯示用）", placeholder: "0", hint: "實際由司機收取，固定顯示 NT$0，此設定僅供備忘" },

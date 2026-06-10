@@ -75,12 +75,13 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
   const previewSchema = z.object({
     items: z.array(orderItemSchema).min(1),
     shippingMethod: z.enum(["home_delivery", "cvs_711", "cvs_family", "overseas_cod"]).default("home_delivery"),  // 新增 overseas_cod
+    paymentMethodHint: z.string().optional(),
     couponCode: z.string().optional(),
     points_used: z.number().int().min(0).optional(),
   })
   const parsed = previewSchema.safeParse(req.body)
   if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return }
-  const { items, shippingMethod } = parsed.data
+  const { items, shippingMethod, paymentMethodHint } = parsed.data
   let { couponCode } = parsed.data
   const previewPointsUsed = parsed.data.points_used ?? 0
   const userId: string | undefined = res.locals.userId
@@ -106,7 +107,7 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
   }
 
   const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
-  const shippingRule = await getShippingRule(shippingMethod)
+  const shippingRule = await getShippingRule(shippingMethod, paymentMethodHint)
   const feeDollars =
     shippingRule.free_threshold > 0 && subtotalCents / 100 >= shippingRule.free_threshold
       ? 0
@@ -347,7 +348,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
 
   const orderNumber = "RR" + Date.now() + randomBytes(4).toString("hex")
   const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
-  const feeDollars = await computeShipping(shippingMethod, subtotalCents / 100)
+  const feeDollars = await computeShipping(shippingMethod, subtotalCents / 100, paymentMethod)
   let shippingFeeCents = Math.round(feeDollars * 100)
 
   // ---------------------------------------------------------------------------

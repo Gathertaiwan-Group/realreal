@@ -2,6 +2,7 @@ import type { CartItem } from "@/lib/cart"
 
 export type CheckoutShippingMethod = "711" | "family" | "home_delivery" | "overseas_cod"
 export type ApiShippingMethod = "cvs_711" | "cvs_family" | "home_delivery" | "overseas_cod"
+export type CheckoutAddressType = "home" | "cvs" | "cvs_cod" | "overseas"
 
 export interface OrderPreviewData {
   shipping: number
