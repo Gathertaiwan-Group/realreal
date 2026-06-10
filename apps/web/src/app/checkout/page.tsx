@@ -10,6 +10,11 @@ import { Label } from "@/components/ui/label"
 import { InvoiceSelector, type InvoiceData } from "@/components/checkout/InvoiceSelector"
 import { API_URL } from "@/lib/api-url"
 import {
+  buildOrderPreviewItems,
+  formatShippingPreviewLabel,
+  toApiShippingMethod,
+} from "@/lib/shipping-preview"
+import {
   PromoWidget,
   readPromoState,
   PROMO_EVENT,
@@ -54,30 +59,6 @@ const SHIPPING_LABELS: Record<ShippingMethod, string> = {
   "family": "全家取貨",
   "home_delivery": "宅配",
   "overseas_cod": "海外寄送（到付）",
-}
-
-const SHIPPING_FEES: Record<ShippingMethod, number> = {
-  "711": 65,
-  "family": 65,
-  "home_delivery": 150,
-  "overseas_cod": 0,
-}
-
-const FREE_SHIPPING_THRESHOLD: Record<ShippingMethod, number> = {
-  "711": 499,
-  "family": 499,
-  "home_delivery": 1499,
-  "overseas_cod": 0,
-}
-
-function getShippingFee(method: ShippingMethod, subtotal: number): number {
-  return subtotal >= FREE_SHIPPING_THRESHOLD[method] ? 0 : SHIPPING_FEES[method]
-}
-
-function formatShippingFee(method: ShippingMethod, subtotal: number): string {
-  const fee = getShippingFee(method, subtotal)
-  if (fee === 0) return "免運"
-  return `NT$ ${fee}`
 }
 
 const STEPS = [
@@ -196,7 +177,6 @@ export default function CheckoutPage() {
     } finally {
       localStorage.removeItem(CVS_DRAFT_KEY)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 2. Cart hydration
@@ -281,6 +261,7 @@ export default function CheckoutPage() {
     free_shipping_names: string[]
     total: number
   } | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
   const itemsKey = useMemo(
     () => items.map(i => i.variantId + ":" + i.qty).sort().join("|"),
     [items],
@@ -288,20 +269,17 @@ export default function CheckoutPage() {
   useEffect(() => {
     if (items.length === 0) {
       setPreview(null)
+      setPreviewLoading(false)
       return
     }
+    setPreview(null)
+    setPreviewLoading(true)
     const t = setTimeout(async () => {
       try {
         const { createClient } = await import("@/lib/supabase/client")
         const supabase = createClient()
         const { data } = await supabase.auth.getSession()
         const token = data.session?.access_token
-        const shippingMethodMap: Record<string, string> = {
-          "711": "cvs_711",
-          family: "cvs_family",
-          home_delivery: "home_delivery",
-          overseas_cod: "overseas_cod",
-        }
         const res = await fetch(`${API_URL}/orders/preview`, {
           method: "POST",
           headers: {
@@ -309,14 +287,8 @@ export default function CheckoutPage() {
             ...(token ? { Authorization: `Bearer ${token}` } : {}),
           },
           body: JSON.stringify({
-            items: items.map(i => ({
-              variantId: i.variantId,
-              qty: i.qty,
-              unitPrice: Math.round(i.price * 100),
-              productName: i.productName,
-              variantName: i.variantName,
-            })),
-            shippingMethod: shippingMethodMap[shippingMethod] ?? "home_delivery",
+            items: buildOrderPreviewItems(items),
+            shippingMethod: toApiShippingMethod(shippingMethod),
           }),
         })
         if (!res.ok) { setPreview(null); return }
@@ -324,9 +296,14 @@ export default function CheckoutPage() {
         setPreview(json.data ?? null)
       } catch {
         setPreview(null)  // network blip: hide discount lines, keep raw total
+      } finally {
+        setPreviewLoading(false)
       }
     }, 300)
-    return () => clearTimeout(t)
+    return () => {
+      clearTimeout(t)
+      setPreviewLoading(false)
+    }
     // items intentionally referenced via itemsKey for stable identity (T20)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [itemsKey, shippingMethod])
@@ -531,7 +508,7 @@ export default function CheckoutPage() {
         country,
       },
       shippingMethod,
-      shippingFee: getShippingFee(shippingMethod, total()),
+      shippingFee: preview?.shipping ?? 0,
       invoice,
     }
     localStorage.setItem("realreal-checkout", JSON.stringify(checkoutData))
@@ -552,15 +529,12 @@ export default function CheckoutPage() {
   if (!hydrated) return null
 
   const subtotal = total()
-  const localShippingFee = getShippingFee(shippingMethod, subtotal)
-  // Prefer server-computed values from preview (includes campaign-applied free
-  // shipping + first-purchase / 滿額贈 etc. discount lines). Fall back to local
-  // calc while preview is still in-flight or has errored.
-  const shippingFee = preview?.shipping ?? localShippingFee
-  const baseTotal = preview?.total ?? subtotal + localShippingFee  // after campaigns + shipping, before promo
+  const shippingLabel = formatShippingPreviewLabel({ preview, loading: previewLoading })
+  // Server preview is the source of truth because it reads runtime shipping
+  // settings from the API. Until it returns, avoid guessing hardcoded fees.
+  const baseTotal = preview?.total ?? subtotal
   const discountLines = preview?.discounts ?? []
   const freeItemsList = preview?.free_items ?? []
-  const freeShippingByCampaign = (preview?.free_shipping_names ?? []).length > 0
 
   // Promo deductions (member tier discount + coupon + points)
   const memberDiscountAmount = promo ? Math.round(subtotal * promo.memberDiscountRate) : 0
@@ -704,7 +678,9 @@ export default function CheckoutPage() {
                               />
                               <span className="font-medium text-sm">🚚 {label}</span>
                             </div>
-                            <span className="text-sm text-zinc-500">{formatShippingFee(value, subtotal)}</span>
+                            <span className="text-sm text-zinc-500">
+                              {value === shippingMethod ? shippingLabel : "選擇後計算"}
+                            </span>
                           </label>
                         ))}
                     </div>
@@ -793,7 +769,9 @@ export default function CheckoutPage() {
                                 {value === "711" ? "🏪" : "🏬"} {label}
                               </span>
                             </div>
-                            <span className="text-sm text-zinc-500">{formatShippingFee(value, subtotal)}</span>
+                            <span className="text-sm text-zinc-500">
+                              {value === shippingMethod ? shippingLabel : "選擇後計算"}
+                            </span>
                           </label>
                         ))}
                     </div>
@@ -944,7 +922,7 @@ export default function CheckoutPage() {
                     )}
                     <div className="flex justify-between text-zinc-500">
                       <span>運費</span>
-                      <span>{shippingFee === 0 ? (freeShippingByCampaign ? "活動免運" : "免運") : `NT$ ${shippingFee.toLocaleString()}`}</span>
+                      <span>{shippingLabel}</span>
                     </div>
                     <div className="flex justify-between font-semibold text-base pt-1 border-t">
                       <span>合計</span>
@@ -965,7 +943,7 @@ export default function CheckoutPage() {
                   className="flex-1 rounded-[10px]"
                   style={{ backgroundColor: "#10305a", color: "#fff" }}
                   onClick={handleNext}
-                  disabled={items.length === 0}
+                  disabled={items.length === 0 || previewLoading}
                 >
                   下一步：選擇付款方式
                 </Button>
@@ -1027,7 +1005,7 @@ export default function CheckoutPage() {
                 )}
                 <div className="flex justify-between text-zinc-500">
                   <span>運費（{SHIPPING_LABELS[shippingMethod]}）</span>
-                  <span>{shippingFee === 0 ? (freeShippingByCampaign ? "活動免運" : "免運") : `NT$ ${shippingFee.toLocaleString()}`}</span>
+                  <span>{shippingLabel}</span>
                 </div>
                 <div className="flex justify-between font-bold text-lg pt-2 border-t">
                   <span>合計</span>

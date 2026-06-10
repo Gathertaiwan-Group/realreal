@@ -1,5 +1,7 @@
 import { getSetting } from "./settings"
 
+type ShippingMethod = "home_delivery" | "cvs_711" | "cvs_family" | "overseas_cod"
+
 /**
  * Computes the shipping fee (in dollars) for a given shipping method and
  * subtotal, honoring runtime-editable settings:
@@ -9,12 +11,12 @@ import { getSetting } from "./settings"
  *
  * When the threshold is 0 (or unset), free shipping is disabled.
  */
-export async function computeShipping(
-  method: "home_delivery" | "cvs_711" | "cvs_family" | "overseas_cod",
-  subtotal: number,
-): Promise<number> {
+export async function getShippingRule(method: ShippingMethod): Promise<{
+  fee: number
+  free_threshold: number
+}> {
   // 海外到付：運費由司機收取，線上顯示 0
-  if (method === "overseas_cod") return 0
+  if (method === "overseas_cod") return { fee: 0, free_threshold: 0 }
 
   const isHome = method === "home_delivery"
   const feeKey = isHome ? "shipping.fee_home_delivery" : "shipping.fee_cvs"
@@ -25,6 +27,14 @@ export async function computeShipping(
   const fee = Number((await getSetting(feeKey)) ?? "100")
   const threshold = Number((await getSetting(thresholdKey)) ?? "0")
 
-  if (threshold > 0 && subtotal >= threshold) return 0
-  return fee
+  return { fee, free_threshold: threshold }
+}
+
+export async function computeShipping(
+  method: ShippingMethod,
+  subtotal: number,
+): Promise<number> {
+  const rule = await getShippingRule(method)
+  if (rule.free_threshold > 0 && subtotal >= rule.free_threshold) return 0
+  return rule.fee
 }

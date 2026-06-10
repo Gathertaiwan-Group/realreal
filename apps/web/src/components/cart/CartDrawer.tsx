@@ -6,6 +6,12 @@ import { useEffect, useMemo, useState } from "react"
 import { Minus, Plus, Trash2, ShoppingBag, Truck, Check } from "lucide-react"
 import { useCart } from "@/lib/cart"
 import { fetchRecommendations, type RecommendedProduct } from "@/lib/cart-recommendations"
+import { API_URL } from "@/lib/api-url"
+import {
+  buildOrderPreviewItems,
+  getFreeShippingProgress,
+  type OrderPreviewData,
+} from "@/lib/shipping-preview"
 import { Button } from "@/components/ui/button"
 import {
   Sheet,
@@ -15,16 +21,44 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet"
 
-const FREE_SHIPPING_THRESHOLD = 1499
+function FreeShippingBar({
+  subtotal,
+  threshold,
+  loading,
+}: {
+  subtotal: number
+  threshold: number | null
+  loading: boolean
+}) {
+  if (loading) {
+    return (
+      <div className="px-6 py-3 border-b bg-zinc-50/50">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Truck className="h-4 w-4 shrink-0" />
+          <p>宅配免運門檻計算中…</p>
+        </div>
+      </div>
+    )
+  }
 
-function FreeShippingBar({ subtotal }: { subtotal: number }) {
-  const reached = subtotal >= FREE_SHIPPING_THRESHOLD
-  const remaining = Math.max(0, FREE_SHIPPING_THRESHOLD - subtotal)
-  const pct = Math.min(100, Math.round((subtotal / FREE_SHIPPING_THRESHOLD) * 100))
+  const progress = threshold == null
+    ? null
+    : getFreeShippingProgress({ subtotal, threshold })
+  if (!progress?.enabled) {
+    return (
+      <div className="px-6 py-3 border-b bg-zinc-50/50">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+          <Truck className="h-4 w-4 shrink-0" />
+          <p>運費將於結帳時計算</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="px-6 py-3 border-b bg-zinc-50/50">
       <div className="flex items-center gap-2 text-xs">
-        {reached ? (
+        {progress.reached ? (
           <>
             <Check className="h-4 w-4 text-green-600 shrink-0" />
             <p className="text-green-700 font-medium">已達宅配免運門檻</p>
@@ -33,15 +67,15 @@ function FreeShippingBar({ subtotal }: { subtotal: number }) {
           <>
             <Truck className="h-4 w-4 text-[#10305a] shrink-0" />
             <p className="text-[#10305a]">
-              再買 <span className="font-semibold">NT$ {remaining.toLocaleString()}</span> 享宅配免運
+              再買 <span className="font-semibold">NT$ {progress.remaining.toLocaleString()}</span> 享宅配免運
             </p>
           </>
         )}
       </div>
       <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-200">
         <div
-          className={`h-full transition-all duration-300 ${reached ? "bg-green-500" : "bg-[#10305a]"}`}
-          style={{ width: `${pct}%` }}
+          className={`h-full transition-all duration-300 ${progress.reached ? "bg-green-500" : "bg-[#10305a]"}`}
+          style={{ width: `${progress.pct}%` }}
         />
       </div>
     </div>
@@ -237,17 +271,69 @@ export function CartDrawer({
   const updateQty = useCart((s) => s.updateQty)
   const total = useCart((s) => s.total)
   const [hydrated, setHydrated] = useState(false)
+  const [homePreview, setHomePreview] = useState<OrderPreviewData | null>(null)
+  const [homePreviewLoading, setHomePreviewLoading] = useState(false)
 
   useEffect(() => {
     useCart.persist.rehydrate()
     setHydrated(true)
   }, [])
 
-  const cartItems = hydrated ? items : []
+  const cartItems = useMemo(() => hydrated ? items : [], [hydrated, items])
   const subtotal = hydrated ? total() : 0
   const itemCount = cartItems.reduce((sum, i) => sum + i.qty, 0)
 
   const excludeIds = useMemo(() => cartItems.map((i) => i.variantId), [cartItems])
+  const itemsKey = useMemo(
+    () => cartItems.map((item) => `${item.variantId}:${item.qty}:${item.price}`).sort().join("|"),
+    [cartItems],
+  )
+
+  useEffect(() => {
+    if (!hydrated || cartItems.length === 0) {
+      setHomePreview(null)
+      setHomePreviewLoading(false)
+      return
+    }
+
+    setHomePreview(null)
+    setHomePreviewLoading(true)
+    const timeout = setTimeout(async () => {
+      try {
+        const { createClient } = await import("@/lib/supabase/client")
+        const supabase = createClient()
+        const { data } = await supabase.auth.getSession()
+        const token = data.session?.access_token
+        const res = await fetch(`${API_URL}/orders/preview`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            items: buildOrderPreviewItems(cartItems),
+            shippingMethod: "home_delivery",
+          }),
+        })
+        if (!res.ok) {
+          setHomePreview(null)
+          return
+        }
+        const json = await res.json()
+        setHomePreview(json.data ?? null)
+      } catch {
+        setHomePreview(null)
+      } finally {
+        setHomePreviewLoading(false)
+      }
+    }, 250)
+
+    return () => {
+      clearTimeout(timeout)
+      setHomePreviewLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated, itemsKey])
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -274,7 +360,11 @@ export function CartDrawer({
         ) : (
           <>
             {/* Free shipping progress (just below header) */}
-            <FreeShippingBar subtotal={subtotal} />
+            <FreeShippingBar
+              subtotal={subtotal}
+              threshold={homePreview?.shipping_rule?.free_threshold ?? null}
+              loading={homePreviewLoading}
+            />
 
             {/* Items — scrollable, fills remaining space */}
             <div className="flex-1 min-h-[180px] overflow-y-auto px-6 py-4">
