@@ -23,6 +23,7 @@ import {
   expirePoints,
   refundOrderPoints,
   adjustPoints,
+  getEffectiveRedeemablePoints,
   calcPointsDiscount,
   type PointsSettings,
 } from "../src/lib/points"
@@ -204,6 +205,53 @@ describe("redeemPoints", () => {
     await redeemPoints("order-z", "user-z", 0)
     await redeemPoints("order-z", "user-z", -5)
     expect(writes).toHaveLength(0)
+  })
+})
+
+describe("getEffectiveRedeemablePoints", () => {
+  it("excludes expired earn rows and pending orders without redeem ledger rows", async () => {
+    const now = new Date("2026-06-10T04:00:00.000Z")
+    let ledgerCall = 0
+
+    vi.mocked(supabase.from).mockImplementation(((table: string) => {
+      if (table === "points_ledger") {
+        ledgerCall++
+        if (ledgerCall === 1) {
+          return {
+            select: vi.fn().mockReturnThis(),
+            eq: vi.fn().mockResolvedValue({
+              data: [
+                { delta: 100, source: "earn", expires_at: "2026-06-11T00:00:00.000Z" },
+                { delta: 50, source: "earn", expires_at: "2026-06-09T00:00:00.000Z" },
+                { delta: -20, source: "redeem", expires_at: null },
+              ],
+              error: null,
+            }),
+          } as any
+        }
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          maybeSingle: vi.fn().mockResolvedValue({ data: null, error: null }),
+        } as any
+      }
+
+      if (table === "orders") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(),
+          gt: vi.fn().mockResolvedValue({
+            data: [{ id: "pending-order", points_used: 30 }],
+            error: null,
+          }),
+        } as any
+      }
+
+      return {} as any
+    }) as never)
+
+    await expect(getEffectiveRedeemablePoints("user-1", now)).resolves.toBe(50)
   })
 })
 

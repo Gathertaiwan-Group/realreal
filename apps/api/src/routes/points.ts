@@ -4,6 +4,7 @@ import { supabase } from "../lib/supabase"
 import { requireAuth } from "../middleware/auth"
 import {
   calcPointsDiscount,
+  getEffectiveRedeemablePoints,
   loadPointsSettings,
   type CartForPoints,
 } from "../lib/points"
@@ -63,12 +64,29 @@ pointsRouter.post("/apply", requireAuth, async (req, res) => {
 
   const { cart } = parsed.data
   const requested = parsed.data.requested ?? parsed.data.requested_points ?? 0
+  const userId = res.locals.userId as string
 
   let settings
   try {
     settings = await loadPointsSettings()
   } catch (err: any) {
     res.status(500).json({ error: err?.message ?? "Failed to load points settings" })
+    return
+  }
+
+  const effectiveBalance = await getEffectiveRedeemablePoints(userId)
+  if (requested > effectiveBalance) {
+    res.json({
+      data: {
+        allowed: false,
+        discount: 0,
+        reason: `可用點數不足，目前可用 ${Math.max(0, effectiveBalance)} 點`,
+        balance: Math.max(0, effectiveBalance),
+      },
+      allowed: false,
+      discount: 0,
+      reason: `可用點數不足，目前可用 ${Math.max(0, effectiveBalance)} 點`,
+    })
     return
   }
 
@@ -79,14 +97,24 @@ pointsRouter.post("/apply", requireAuth, async (req, res) => {
   // body.data.reason). Kept legacy flat fields for any legacy caller.
   if (result.allowed) {
     res.json({
-      data: { allowed: true, discount: result.discount, reason: "" },
+      data: {
+        allowed: true,
+        discount: result.discount,
+        reason: "",
+        balance: Math.max(0, effectiveBalance),
+      },
       allowed: true,
       discount: result.discount,
     })
     return
   }
   res.json({
-    data: { allowed: false, discount: 0, reason: result.reason },
+    data: {
+      allowed: false,
+      discount: 0,
+      reason: result.reason,
+      balance: Math.max(0, effectiveBalance),
+    },
     allowed: false,
     discount: 0,
     reason: result.reason,
@@ -129,9 +157,10 @@ pointsRouter.get("/balance", requireAuth, async (_req, res) => {
     (acc: number, r: any) => acc + Number(r.delta ?? 0),
     0,
   )
+  const now = new Date()
+  const effectiveBalance = await getEffectiveRedeemablePoints(userId, now)
 
   // Expiring soon: candidate earn rows whose expires_at falls in [now, now+30d]
-  const now = new Date()
   const horizon = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000)
 
   const { data: earnRows, error: earnErr } = await supabase
@@ -175,13 +204,15 @@ pointsRouter.get("/balance", requireAuth, async (_req, res) => {
 
   res.json({
     data: {
-      balance,
+      balance: Math.max(0, effectiveBalance),
+      ledger_balance: balance,
       expiring_soon: expiringSoon,
       ratio: settings.ratio,
       allow_coupon_stack: settings.allow_coupon_stack,
     },
     // Keep flat fields too for any legacy caller — harmless extra bytes.
-    balance,
+    balance: Math.max(0, effectiveBalance),
+    ledger_balance: balance,
     expiring_soon: expiringSoon,
   })
 })

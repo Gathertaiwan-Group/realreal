@@ -513,6 +513,59 @@ export async function getUserBalance(userId: string): Promise<number> {
   )
 }
 
+/**
+ * Spendable balance for checkout-time redemption.
+ *
+ * This is stricter than the plain ledger SUM:
+ * - expired earn rows are excluded even if the expiry cron has not swept them
+ * - points already claimed by pending/paid orders are subtracted until their
+ *   redeem ledger rows exist
+ */
+export async function getEffectiveRedeemablePoints(
+  userId: string,
+  now = new Date(),
+): Promise<number> {
+  const { data: ledgerRows } = await supabase
+    .from("points_ledger")
+    .select("delta, source, expires_at")
+    .eq("user_id", userId)
+
+  const balance = (ledgerRows ?? []).reduce((acc: number, r: any) => {
+    const delta = Number(r.delta ?? 0)
+    if (
+      r.source === "earn" &&
+      r.expires_at &&
+      new Date(r.expires_at) < now
+    ) {
+      return acc
+    }
+    return acc + delta
+  }, 0)
+
+  const { data: inflightOrders } = await supabase
+    .from("orders")
+    .select("id, points_used")
+    .eq("user_id", userId)
+    .in("payment_status", ["pending", "paid"])
+    .gt("points_used", 0)
+
+  let inflightPoints = 0
+  for (const order of (inflightOrders ?? []) as Array<{ id: string; points_used: number }>) {
+    const orderPoints = Number(order.points_used ?? 0)
+    if (orderPoints <= 0) continue
+
+    const { data: existing } = await supabase
+      .from("points_ledger")
+      .select("id")
+      .eq("source", "redeem")
+      .eq("source_ref_id", order.id)
+      .maybeSingle()
+    if (!existing) inflightPoints += orderPoints
+  }
+
+  return balance - inflightPoints
+}
+
 // ---------------------------------------------------------------------------
 // Pure calc — checkout uses this synchronously
 // ---------------------------------------------------------------------------

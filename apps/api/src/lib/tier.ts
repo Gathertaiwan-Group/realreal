@@ -114,19 +114,10 @@ export async function upgradeTierIfNeeded(userId: string, newTotalSpend: number)
  */
 export async function incrementPeriodSpend(userId: string, amount: number) {
   if (!Number.isFinite(amount) || amount === 0) return
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("tier_period_spend")
-    .eq("user_id", userId)
-    .maybeSingle()
-  const current = Number(
-    (profile as { tier_period_spend: number | string | null } | null)
-      ?.tier_period_spend ?? 0,
-  )
-  await supabase
-    .from("user_profiles")
-    .update({ tier_period_spend: current + amount })
-    .eq("user_id", userId)
+  await supabase.rpc("increment_user_tier_spend", {
+    p_user_id: userId,
+    p_amount: amount,
+  })
 }
 
 /**
@@ -156,109 +147,75 @@ export async function decrementSpendOnRefund(
     return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
   }
 
-  // Idempotency — same shape as the increment sentinels.
-  const { data: log } = await supabase
-    .from("order_post_payment_log")
-    .select("spend_decremented_at")
-    .eq("order_id", orderId)
-    .maybeSingle()
-  if ((log as { spend_decremented_at?: string | null } | null)?.spend_decremented_at) {
+  const { data: claimed, error: claimErr } = await supabase.rpc(
+    "claim_order_post_payment_step",
+    { p_order_id: orderId, p_step: "spend_decremented" },
+  )
+  if (claimErr || !claimed) {
     return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
   }
 
-  const { data: profile } = await supabase
+  const { data: before } = await supabase
     .from("user_profiles")
-    .select("total_spend, tier_period_spend, charity_savings, membership_tier_id")
+    .select("total_spend, tier_period_spend, charity_savings")
     .eq("user_id", userId)
     .maybeSingle()
+  const currentTotal = Number((before as any)?.total_spend ?? 0)
+  const currentPeriod = Number((before as any)?.tier_period_spend ?? 0)
+  const currentCharity = Number((before as any)?.charity_savings ?? 0)
 
-  const currentTotal = Number((profile as any)?.total_spend ?? 0)
-  const currentPeriod = Number((profile as any)?.tier_period_spend ?? 0)
-  const currentCharity = Number((profile as any)?.charity_savings ?? 0)
-  const tierId = (profile as any)?.membership_tier_id ?? null
-
-  const newTotal = Math.max(0, currentTotal - amount)
-  const newPeriod = Math.max(0, currentPeriod - amount)
-
-  // Charity savings used tier rebate rate as multiplier; mirror that on the way down.
-  let charityDecrement = 0
-  if (tierId) {
-    const { data: tier } = await supabase
-      .from("membership_tiers")
-      .select("rebate_rate")
-      .eq("id", tierId)
-      .maybeSingle()
-    const rebateRate = Number((tier as any)?.rebate_rate ?? 0)
-    if (rebateRate > 0) {
-      charityDecrement = Math.round(amount * (rebateRate / 100) * 100) / 100
-    }
+  const { data: afterRows, error: decErr } = await supabase.rpc(
+    "decrement_user_tier_spend",
+    { p_user_id: userId, p_amount: amount },
+  )
+  if (decErr) {
+    console.warn(`[decrementSpendOnRefund] rpc failed for order=${orderId}:`, decErr)
+    return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
   }
-  const newCharity = Math.max(0, currentCharity - charityDecrement)
-
-  await supabase
-    .from("user_profiles")
-    .update({
-      total_spend: newTotal,
-      tier_period_spend: newPeriod,
-      charity_savings: newCharity,
-    })
-    .eq("user_id", userId)
-
-  await supabase
-    .from("order_post_payment_log")
-    .upsert(
-      { order_id: orderId, spend_decremented_at: new Date().toISOString() },
-      { onConflict: "order_id" },
-    )
+  const after = Array.isArray(afterRows) ? afterRows[0] : afterRows
 
   return {
     decremented: true,
-    total_spend_delta: currentTotal - newTotal,
-    period_spend_delta: currentPeriod - newPeriod,
-    charity_delta: charityDecrement,
+    total_spend_delta: currentTotal - Number((after as any)?.total_spend ?? currentTotal),
+    period_spend_delta: currentPeriod - Number((after as any)?.tier_period_spend ?? currentPeriod),
+    charity_delta: currentCharity - Number((after as any)?.charity_savings ?? currentCharity),
   }
 }
 
 export async function incrementSpendAndUpgrade(userId: string, amount: number) {
-  // 1. Read current profile spend
-  const { data: profile } = await supabase
-    .from("user_profiles")
-    .select("total_spend, charity_savings, membership_tier_id")
-    .eq("user_id", userId)
-    .single()
+  const { data, error } = await supabase.rpc("increment_user_tier_spend", {
+    p_user_id: userId,
+    p_amount: amount,
+  })
+  if (error) throw error
 
-  const currentSpend = Number(profile?.total_spend ?? 0)
-  const newSpend = currentSpend + amount
+  const row = Array.isArray(data) ? data[0] : data
+  if (!row?.tier_changed || !row.membership_tier_id) return
 
-  // 2. Upgrade tier (also persists new total_spend)
-  await upgradeTierIfNeeded(userId, newSpend)
+  const now = new Date().toISOString()
+  const { data: bonusCampaigns } = await supabase
+    .from("campaigns")
+    .select("id, name, config")
+    .eq("type", "tier_upgrade_bonus")
+    .eq("is_active", true)
+    .lte("starts_at", now)
+    .or(`ends_at.is.null,ends_at.gt.${now}`)
 
-  // 3. Calculate and accumulate charity_savings based on the *new* tier
-  const { data: updatedProfile } = await supabase
-    .from("user_profiles")
-    .select("membership_tier_id")
-    .eq("user_id", userId)
-    .single()
-
-  if (updatedProfile?.membership_tier_id) {
-    const { data: tier } = await supabase
-      .from("membership_tiers")
-      .select("rebate_rate")
-      .eq("id", updatedProfile.membership_tier_id)
-      .single()
-
-    const rebateRate = Number(tier?.rebate_rate ?? 0) // e.g. 2.3 or 3.3
-    if (rebateRate > 0) {
-      // TODO(points-migration): grantPoints in lib/points.ts is now the SoT for
-      // rewarding users on purchase. This charity_savings update is kept as a
-      // legacy display-only mirror for backward compat; remove once all readers
-      // migrate to the points_ledger / v_user_points_balance view.
-      const charitySavingsIncrement = Math.round(amount * (rebateRate / 100) * 100) / 100
-      const currentCharity = Number(profile?.charity_savings ?? 0)
-      await supabase
-        .from("user_profiles")
-        .update({ charity_savings: currentCharity + charitySavingsIncrement })
-        .eq("user_id", userId)
+  for (const c of (bonusCampaigns ?? []) as Array<{
+    id: string
+    name: string
+    config: { tier_id?: string; bonus_points?: number | string } | null
+  }>) {
+    if (c.config?.tier_id !== row.membership_tier_id) continue
+    const bonus = Number(c.config?.bonus_points ?? 0)
+    if (!Number.isFinite(bonus) || bonus <= 0) continue
+    try {
+      await adjustPoints(userId, bonus, `升等獎勵：${c.name}`, null, "promo", c.id)
+    } catch (err) {
+      console.warn(
+        `[tier_upgrade_bonus] failed to grant ${bonus} pts to ${userId} for campaign ${c.id}:`,
+        err,
+      )
     }
   }
 }

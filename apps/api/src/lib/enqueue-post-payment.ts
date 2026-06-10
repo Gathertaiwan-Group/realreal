@@ -1,11 +1,11 @@
 import { supabase } from "./supabase"
 import { renderAndSendEmail } from "../workers/email-sender"
 import { sendEmail } from "./email"
-import { incrementSpendAndUpgrade, incrementPeriodSpend } from "./tier"
+import { incrementSpendAndUpgrade } from "./tier"
 import { inventoryQueue } from "./queue"
 import { invoiceQueue } from "../workers/invoice-issuer"
 import { getSetting } from "./settings"
-import { grantPoints, redeemPoints } from "./points"
+import { grantPoints, loadPointsSettings, redeemPoints } from "./points"
 import { sendLineNotify } from "./line-notify"
 
 /**
@@ -17,7 +17,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   // Fetch order details needed for the email
   const { data: order } = await supabase
     .from("orders")
-    .select("id, order_number, total, guest_email, user_id, points_used, attributed_kol_slug, order_items(*)")
+    .select("id, order_number, subtotal, discount_amount, total, guest_email, user_id, points_used, attributed_kol_slug, order_items(*)")
     .eq("id", orderId)
     .single()
 
@@ -26,9 +26,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
     return
   }
 
-  // orders.total is stored in cents (e.g. 10000 = NT$100). Convert once here
-  // so every downstream consumer gets TWD without per-call division.
-  const totalTwd = Math.round(Number(order.total) / 100)
+  const totalTwd = Number(order.total ?? 0)
 
   // 0) Update total_spend, check tier upgrade, accumulate charity_savings.
   // Idempotency: stamp order_post_payment_log.tier_incremented_at so webhook
@@ -37,19 +35,13 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   // and skips. See migration 0032.
   if (order.user_id) {
     try {
-      const { data: priorLog } = await supabase
-        .from("order_post_payment_log")
-        .select("tier_incremented_at")
-        .eq("order_id", orderId)
-        .maybeSingle()
-      if (!(priorLog as { tier_incremented_at?: string | null } | null)?.tier_incremented_at) {
+      const { data: claimed, error: claimError } = await supabase.rpc(
+        "claim_order_post_payment_step",
+        { p_order_id: orderId, p_step: "tier_incremented" },
+      )
+      if (claimError) throw claimError
+      if (claimed) {
         await incrementSpendAndUpgrade(order.user_id, totalTwd)
-        await supabase
-          .from("order_post_payment_log")
-          .upsert(
-            { order_id: orderId, tier_incremented_at: new Date().toISOString() },
-            { onConflict: "order_id" },
-          )
       }
     } catch (err) {
       console.warn("[post-payment] tier upgrade failed (non-fatal):", err)
@@ -228,40 +220,29 @@ export async function enqueuePostPaymentJobs(orderId: string) {
       const tierId = (profile as { membership_tier_id?: string | null } | null)
         ?.membership_tier_id ?? null
 
-      // Grant earned points based on tier rebate_rate
-      await grantPoints(orderId, order.user_id, totalTwd, tierId)
-
       // Redeem points if order.points_used > 0
       const pointsUsed = Number((order as { points_used?: number }).points_used ?? 0)
+      let pointsDiscount = pointsUsed
+      try {
+        const settings = await loadPointsSettings()
+        pointsDiscount = pointsUsed * Number(settings.ratio ?? 1)
+      } catch {
+        pointsDiscount = pointsUsed
+      }
+      const subtotalTwd = Number((order as { subtotal?: number | string | null }).subtotal ?? 0)
+      const discountTwd = Number((order as { discount_amount?: number | string | null }).discount_amount ?? 0)
+      const nonPointsDiscountTwd = Math.max(0, discountTwd - pointsDiscount)
+      const earnBaseTwd = Math.max(0, subtotalTwd - nonPointsDiscountTwd)
+
+      // Grant earned points from merchandise after non-points discounts.
+      // Shipping and point redemption do not reduce the earn base.
+      await grantPoints(orderId, order.user_id, earnBaseTwd, tierId)
+
       if (pointsUsed > 0) {
         await redeemPoints(orderId, order.user_id, pointsUsed)
       }
     } catch (err) {
       console.warn("[post-payment] points grant/redeem failed (non-fatal):", err)
-    }
-
-    // 5) Accumulate tier_period_spend for requalification window tracking.
-    // Independent try/catch so a failure here does not block any other step.
-    // Same idempotency pattern as tier upgrade — use period_spend_incremented_at
-    // sentinel column on order_post_payment_log.
-    try {
-      const { data: priorLog } = await supabase
-        .from("order_post_payment_log")
-        .select("period_spend_incremented_at")
-        .eq("order_id", orderId)
-        .maybeSingle()
-      if (!(priorLog as { period_spend_incremented_at?: string | null } | null)
-        ?.period_spend_incremented_at) {
-        await incrementPeriodSpend(order.user_id, totalTwd)
-        await supabase
-          .from("order_post_payment_log")
-          .upsert(
-            { order_id: orderId, period_spend_incremented_at: new Date().toISOString() },
-            { onConflict: "order_id" },
-          )
-      }
-    } catch (err) {
-      console.warn("[post-payment] incrementPeriodSpend failed (non-fatal):", err)
     }
   }
 }

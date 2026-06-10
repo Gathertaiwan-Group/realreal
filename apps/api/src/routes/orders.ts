@@ -15,12 +15,21 @@ import { createPayment as pchomepayCreatePayment } from "../lib/pchomepay"
 import { requestPayment as linePayRequestPayment } from "../lib/linepay"
 import { initiatePayment as jkoPayInitiatePayment } from "../lib/jkopay"
 import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
-import { computeShipping } from "../lib/shipping"
+import { computeShipping, getShippingRule } from "../lib/shipping"
 import { inventoryQueue } from "../lib/queue"
 import { enqueuePostPaymentJobs } from "../lib/enqueue-post-payment"
-import { calcPointsDiscount, loadPointsSettings, type CartForPoints } from "../lib/points"
+import {
+  calcPointsDiscount,
+  getEffectiveRedeemablePoints,
+  loadPointsSettings,
+  type CartForPoints,
+} from "../lib/points"
 
 export const ordersRouter = Router()
+
+function centsToTwd(cents: number): number {
+  return Math.round(cents) / 100
+}
 
 const orderItemSchema = z.object({
   variantId: z.string().uuid(),
@@ -97,7 +106,11 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
   }
 
   const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
-  const feeDollars = await computeShipping(shippingMethod, subtotalCents / 100)
+  const shippingRule = await getShippingRule(shippingMethod)
+  const feeDollars =
+    shippingRule.free_threshold > 0 && subtotalCents / 100 >= shippingRule.free_threshold
+      ? 0
+      : shippingRule.fee
   let shippingFeeCents = Math.round(feeDollars * 100)
 
   // Fetch user profile fields needed by evaluator (tier, birthday, created_at)
@@ -240,11 +253,23 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
     }
   }
 
-  // Points discount — preview only (no balance check / no ledger).
+  // Points discount — preview only (no ledger), but it must enforce the
+  // same effective balance rule as POST /orders so the checkout summary
+  // cannot preview an impossible discount.
   // Base = subtotal - member - campaign - coupon to match POST / cap math
   // (audit H3 — was previously using raw subtotal as base).
   let pointsDiscountCents = 0
-  if (previewPointsUsed > 0) {
+  let appliedPreviewPointsUsed = 0
+  let effectivePointsBalance: number | null = null
+  if (userId && previewPointsUsed > 0) {
+    effectivePointsBalance = await getEffectiveRedeemablePoints(userId)
+  }
+  if (
+    previewPointsUsed > 0 &&
+    userId &&
+    effectivePointsBalance != null &&
+    effectivePointsBalance >= previewPointsUsed
+  ) {
     const settings = await loadPointsSettings()
     const baseAfterAllOtherDiscounts = Math.max(
       0,
@@ -257,7 +282,10 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
       total: (baseAfterAllOtherDiscounts + shippingFeeCents) / 100,
     }
     const r = calcPointsDiscount(cart, previewPointsUsed, settings)
-    if (r.allowed) pointsDiscountCents = Math.round(r.discount * 100)
+    if (r.allowed) {
+      appliedPreviewPointsUsed = previewPointsUsed
+      pointsDiscountCents = Math.round(r.discount * 100)
+    }
   }
 
   const totalDiscountCents =
@@ -267,6 +295,7 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
     data: {
       subtotal: subtotalCents / 100,
       shipping: shippingFeeCents / 100,
+      shipping_rule: shippingRule,
       member_discount: memberDiscountCents / 100,
       campaign_discount: campaignDiscountCents / 100,
       coupon_discount: couponDiscountCents / 100,
@@ -275,8 +304,9 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
       discounts,
       free_items: freeItems,
       free_shipping_names: freeShippingNames,
-      points_used: previewPointsUsed,
+      points_used: appliedPreviewPointsUsed,
       points_discount: pointsDiscountCents / 100,
+      points_balance: effectivePointsBalance,
       total: totalCents / 100,
     },
   })
@@ -296,6 +326,24 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   let { couponCode } = parsed.data
   const requestedPointsUsed = parsed.data.points_used ?? 0
   const userId: string | undefined = res.locals.userId
+
+  if (paymentMethod === "test_paid") {
+    if (!userId) {
+      res.status(401).json({ error: "test_paid requires authentication (請先登入)" })
+      return
+    }
+    if (process.env.ALLOW_NON_ADMIN_TEST_PAID !== "true") {
+      const { data: profile } = await supabase
+        .from("user_profiles")
+        .select("role")
+        .eq("user_id", userId)
+        .maybeSingle()
+      if ((profile as { role?: string | null } | null)?.role !== "admin") {
+        res.status(403).json({ error: "test_paid is restricted to admins" })
+        return
+      }
+    }
+  }
 
   const orderNumber = "RR" + Date.now() + randomBytes(4).toString("hex")
   const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
@@ -510,59 +558,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   let pointsUsed = 0
   let pointsDiscountCents = 0
   if (userId && requestedPointsUsed > 0) {
-    // Audit C2 (round 2): concurrent same-user checkouts can over-redeem
-    // because POST /orders only reads ledger SUM and trusts it, but the
-    // redeem ledger row is written LATER by enqueue-post-payment. Between
-    // the balance check and the ledger insert, user can place a second
-    // order with the same balance. Fix: subtract points already claimed
-    // by other pending/processing orders that haven't been redeemed yet.
-    //
-    // Audit M14 (round 1): balance reading also doesn't exclude past-expiry
-    // earn rows that haven't been swept by the expire cron yet — user can
-    // spend points they no longer have. Filter expired earn rows here.
-    const { data: ledgerRows } = await supabase
-      .from("points_ledger")
-      .select("delta, source, expires_at")
-      .eq("user_id", userId)
-    const now = new Date()
-    const balance = (ledgerRows ?? []).reduce((acc: number, r: any) => {
-      const d = Number(r.delta ?? 0)
-      // Skip earn rows past expiry — cron may not have swept yet but the
-      // points are no longer spendable.
-      if (
-        r.source === "earn" &&
-        r.expires_at &&
-        new Date(r.expires_at) < now
-      ) {
-        return acc
-      }
-      return acc + d
-    }, 0)
-
-    // In-flight = sum of points_used on this user's pending/processing
-    // orders that don't yet have a redeem ledger row.
-    const { data: inflightOrders } = await supabase
-      .from("orders")
-      .select("id, points_used")
-      .eq("user_id", userId)
-      .in("payment_status", ["pending", "paid"])
-      .gt("points_used", 0)
-    let inflightPoints = 0
-    for (const o of (inflightOrders ?? []) as Array<{ id: string; points_used: number }>) {
-      const orderPoints = Number(o.points_used ?? 0)
-      if (orderPoints <= 0) continue
-      // Has redeem ledger row already? If yes, this order's points are
-      // already accounted for in `balance` — don't double-subtract.
-      const { data: existing } = await supabase
-        .from("points_ledger")
-        .select("id")
-        .eq("source", "redeem")
-        .eq("source_ref_id", o.id)
-        .maybeSingle()
-      if (!existing) inflightPoints += orderPoints
-    }
-
-    const effectiveBalance = balance - inflightPoints
+    const effectiveBalance = await getEffectiveRedeemablePoints(userId)
     if (effectiveBalance >= requestedPointsUsed) {
       const settings = await loadPointsSettings()
       // Spec D precedence: subtotal → tier → campaign → coupon → points.
@@ -621,10 +617,10 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       payment_status: "pending",
       shipping_method: shippingMethod,
       payment_method: paymentMethod,
-      subtotal: subtotalCents,
-      shipping_fee: shippingFeeCents,
-      discount_amount: totalDiscount,
-      total: totalCents,
+      subtotal: centsToTwd(subtotalCents),
+      shipping_fee: centsToTwd(shippingFeeCents),
+      discount_amount: centsToTwd(totalDiscount),
+      total: centsToTwd(totalCents),
       campaign_discount: campaignDiscountCents / 100,
       applied_campaign_ids: appliedCampaignIds,
       free_items: freeItems,
@@ -634,7 +630,11 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       attributed_kol_id: attributedKolId,
       attributed_kol_slug: attributedKolSlug,
       metadata: couponCode
-        ? { coupon_code: couponCode, coupon_id: appliedCouponId, coupon_discount: couponDiscountCents }
+        ? {
+          coupon_code: couponCode,
+          coupon_id: appliedCouponId,
+          coupon_discount: centsToTwd(couponDiscountCents),
+        }
         : null,
     })
     .select("id, order_number")
@@ -655,11 +655,11 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
         order_id: order.id,
         variant_id: item.variantId,
         qty: item.qty,
-        unit_price: item.unitPrice,
+        unit_price: centsToTwd(item.unitPrice),
         product_snapshot: {
           name: item.productName ?? "",
           variant_name: item.variantName ?? "",
-          unit_price: item.unitPrice,
+          unit_price: centsToTwd(item.unitPrice),
         },
       }))
     )
@@ -708,25 +708,9 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
 
   // ---- test_paid：沙盒付款，跳過金流但跑完整 post-payment pipeline ----
   // 用途：驗證發票 / 訂單通知 / 庫存扣 / 點數累積 / LINE Notify 全鏈路是否
-  // 正常，不用每次真的刷卡。任何已登入用戶都可用（guest 沒 user_id 沒辦法
-  // grant points / 升等 / link 訂單，所以仍 reject）。
-  //
-  // ⚠️ 此 endpoint 會建立真實訂單但不收款。請在 admin/settings 加環境
-  //    flag 或於 production cutover 前 (a) 砍掉此 branch 或 (b) 改回
-  //    requireAdmin。Spec O 文件已標註此風險。
+  // 正常，不用每次真的刷卡。Production 預設只允許 admin 使用；若測試環境
+  // 真的需要開給一般登入用戶，必須顯式設定 ALLOW_NON_ADMIN_TEST_PAID=true。
   if (paymentMethod === "test_paid") {
-    if (!userId) {
-      // Rollback the order we just inserted.
-      await Promise.all([
-        supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload }),
-        supabase.from("order_items").delete().eq("order_id", order.id),
-        supabase.from("order_addresses").delete().eq("order_id", order.id),
-        supabase.from("orders").delete().eq("id", order.id),
-      ])
-      res.status(401).json({ error: "test_paid requires authentication (請先登入)" })
-      return
-    }
-
     // Mark order as paid + processing — same end state as a webhook callback
     // from a real gateway would produce.
     const nowIso = new Date().toISOString()
@@ -739,7 +723,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       order_id: order.id,
       gateway: "test",
       gateway_tx_id: order.order_number,
-      amount: Math.round(totalCents / 100),
+      amount: Math.round(centsToTwd(totalCents)),
       status: "paid",
     })
 
@@ -771,7 +755,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       order_id: order.id,
       gateway: "cvs_cod",
       gateway_tx_id: order.order_number,
-      amount: Math.round(totalCents / 100),
+      amount: Math.round(centsToTwd(totalCents)),
       status: "pending",
     })
 
@@ -813,7 +797,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       const result = await pchomepayCreatePayment({
         orderId: order.id,
         orderNumber: order.order_number,
-        amount: Math.round(totalCents / 100),
+        amount: Math.round(centsToTwd(totalCents)),
         itemName: `realreal order #${order.order_number}`,
         returnUrl: confirmUrl,
         notifyUrl: `${apiUrl}/webhooks/pchomepay`,
@@ -824,7 +808,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     } else if (paymentMethod === "linepay") {
       const result = await linePayRequestPayment(
         order.order_number,
-        Math.round(totalCents / 100),
+        Math.round(centsToTwd(totalCents)),
         `realreal order #${order.order_number}`
       )
       paymentUrl = result.paymentUrl
@@ -832,7 +816,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
 
     } else {
       // jkopay
-      const result = await jkoPayInitiatePayment(order.order_number, Math.round(totalCents / 100))
+      const result = await jkoPayInitiatePayment(order.order_number, Math.round(centsToTwd(totalCents)))
       paymentUrl = result.paymentUrl
       gatewayTxId = result.merchantTradeNo
     }
@@ -857,12 +841,20 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       order_id: order.id,
       gateway: paymentMethod,
       gateway_tx_id: gatewayTxId,
-      amount: Math.round(totalCents / 100),
+      amount: Math.round(centsToTwd(totalCents)),
       status: "pending",
     })
 
   if (paymentError) {
     console.error("[orders] insert payment failed:", paymentError)
+    await Promise.all([
+      supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload }),
+      supabase.from("order_addresses").delete().eq("order_id", order.id),
+      supabase.from("order_items").delete().eq("order_id", order.id),
+    ])
+    await supabase.from("orders").delete().eq("id", order.id)
+    res.status(500).json({ error: "Failed to create payment record" })
+    return
   }
 
   res.status(201).json({
@@ -904,10 +896,10 @@ ordersRouter.get("/:id", requireAuth, async (req, res) => {
       order_number: order.order_number,
       created_at: order.created_at,
       status: order.status,
-      total: Math.round(Number(order.total) / 100),
-      subtotal: Math.round(Number(order.subtotal) / 100),
-      shipping_fee: Math.round(Number(order.shipping_fee) / 100),
-      discount_amount: Math.round(Number(order.discount_amount) / 100),
+      total: Number(order.total),
+      subtotal: Number(order.subtotal),
+      shipping_fee: Number(order.shipping_fee),
+      discount_amount: Number(order.discount_amount),
       payment_method: order.payment_method ?? "",
       payment_status: order.payment_status ?? "pending",
       shipping_method: order.shipping_method ?? "",
@@ -923,7 +915,7 @@ ordersRouter.get("/:id", requireAuth, async (req, res) => {
       items: (items ?? []).map((item: Record<string, unknown>) => ({
         id: item.id,
         qty: item.qty,
-        unit_price: Math.round(Number(item.unit_price) / 100),
+        unit_price: Number(item.unit_price),
         product_snapshot: item.product_snapshot,
       })),
     },
@@ -948,7 +940,7 @@ ordersRouter.get("/", requireAuth, async (req, res) => {
   if (error) { res.status(500).json({ error: error.message }); return }
 
   res.json({
-    data: (data ?? []).map((o: Record<string, unknown>) => ({ ...o, total: Math.round(Number(o.total) / 100) })),
+    data: (data ?? []).map((o: Record<string, unknown>) => ({ ...o, total: Number(o.total) })),
     pagination: { page, limit, total: count ?? 0 },
   })
 })

@@ -6,11 +6,9 @@
  *   - if `tier_period_spend >= membership_tier.requalify_amount` → renew at the
  *     same tier (new `tier_started_at`, recompute `tier_expires_at`, reset
  *     `tier_period_spend`). Send the `tier-renewed` email.
- *   - else → downgrade to the next tier down (highest `min_spend` strictly less
- *     than the current tier's). Reset start/expiry/period. Send the
- *     `tier-downgraded` email.
- *   - If the user is already on the lowest tier (no row below exists) the
- *     entry is skipped — there is nowhere to downgrade to.
+ *   - else → cascade downgrade to the highest tier whose requalify_amount is
+ *     met by the expired period spend; if none match, fall back to the lowest
+ *     tier. Reset start/expiry/period. Send the `tier-downgraded` email.
  *
  * Spec reference: docs/superpowers/specs/2026-05-30-C-tier-overhaul-design.md
  * (Section 3 — `workers/tier-expire.ts`).
@@ -39,7 +37,7 @@ type ExpiredRow = {
   } | null
 }
 
-type LowerTierRow = {
+type TargetTierRow = {
   id: string
   name: string
   min_spend: number | string
@@ -130,32 +128,42 @@ export const tierExpireWorker = new Worker(
         continue
       }
 
-      // ── Downgrade to the next tier down ──
-      const { data: lower, error: lowerErr } = await supabase
+      // ── Cascade downgrade to the highest still-qualified tier ──
+      const { data: qualified, error: qualifiedErr } = await supabase
         .from("membership_tiers")
-        .select("id, name, min_spend, validity_months")
+        .select("id, name, min_spend, validity_months, requalify_amount")
         .lt("min_spend", tier.min_spend)
+        .lte("requalify_amount", periodSpend)
         .order("min_spend", { ascending: false })
         .limit(1)
         .maybeSingle()
-      if (lowerErr) {
-        console.warn(`[tier-expire] lower-tier lookup failed for ${row.user_id}: ${lowerErr.message}`)
-        continue
-      }
-      const lowerTier = lower as LowerTierRow | null
-      if (!lowerTier) {
-        // Already on the lowest tier — nothing to downgrade to.
-        skipped++
+      if (qualifiedErr) {
+        console.warn(`[tier-expire] qualified-tier lookup failed for ${row.user_id}: ${qualifiedErr.message}`)
         continue
       }
 
-      const lowerValidity = Number(lowerTier.validity_months ?? 0)
+      let targetTier = qualified as TargetTierRow | null
+      if (!targetTier) {
+        const { data: lowest, error: lowestErr } = await supabase
+          .from("membership_tiers")
+          .select("id, name, min_spend, validity_months")
+          .order("min_spend", { ascending: true })
+          .limit(1)
+          .maybeSingle()
+        if (lowestErr || !lowest) {
+          console.warn(`[tier-expire] lowest-tier lookup failed for ${row.user_id}: ${lowestErr?.message ?? "missing lowest tier"}`)
+          continue
+        }
+        targetTier = lowest as TargetTierRow
+      }
+
+      const lowerValidity = Number(targetTier.validity_months ?? 0)
       const newExpiresAt = lowerValidity > 0 ? addMonths(now, lowerValidity).toISOString() : null
 
       const { error: dgErr } = await supabase
         .from("user_profiles")
         .update({
-          membership_tier_id: lowerTier.id,
+          membership_tier_id: targetTier.id,
           tier_started_at: nowIso,
           tier_expires_at: newExpiresAt,
           tier_period_spend: 0,
@@ -175,7 +183,7 @@ export const tierExpireWorker = new Worker(
             data: {
               userId: row.user_id,
               fromTier: tier.name,
-              toTier: lowerTier.name,
+              toTier: targetTier.name,
               newExpiresAt: newExpiresAt ?? "永久",
             } as any,
           })
