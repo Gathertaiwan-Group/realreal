@@ -35,7 +35,7 @@ const POST_CONTENT_HTML = `
 <div style="background:#f8f7f4;border-radius:16px;padding:1.5rem 2rem;margin-bottom:2rem;display:flex;flex-direction:column;gap:0.75rem;">
   <div style="display:flex;align-items:center;gap:1rem;">
     <img
-      src="/testimonials/阿雯.jpg"
+      src="/testimonials/a-wen.jpg"
       alt="阿雯"
       style="width:90px;height:90px;border-radius:50%;object-fit:cover;flex-shrink:0;"
     />
@@ -52,7 +52,7 @@ const POST_CONTENT_HTML = `
 
 <figure style="margin:0 0 2rem;">
   <img
-    src="/testimonials/阿雯.jpg"
+    src="/testimonials/a-wen.jpg"
     alt="阿雯與孩子的日常"
     style="width:100%;border-radius:12px;object-fit:cover;"
   />
@@ -122,7 +122,7 @@ async function run() {
       slug: POST_SLUG,
       excerpt: POST_EXCERPT,
       content_html: POST_CONTENT_HTML,
-      cover_image: "/testimonials/阿雯.jpg",
+      cover_image: "/testimonials/a-wen.jpg",
       category_id: categoryId,
       status: "published",
       published_at: new Date().toISOString(),
