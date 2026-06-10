@@ -197,28 +197,33 @@ describe("evalDiscount", () => {
 // ===========================================================================
 
 describe("evalFreebie", () => {
-  it("populates free_items when subtotal meets min_order_amount", () => {
+  it("populates free_items when subtotal meets min_order_amount", async () => {
     const c = campaign("freebie", {
       min_order_amount: 800,
       gift_sku: "GIFT-001",
       gift_qty: 1,
       gift_name: "凍乾試吃包",
     })
-    const result = evalFreebie(c, ctx([item({ unit_price: 1000, qty: 1 })]))
+    const result = await evalFreebie(c, ctx([item({ unit_price: 1000, qty: 1 })]))
     expect(result.applied).toBe(true)
-    expect(result.free_items).toEqual([
-      { sku: "GIFT-001", qty: 1, name: "凍乾試吃包" },
-    ])
+    // unit_price field added by audit fix; product_variants lookup misses in
+    // unit-test env (no supabase), so fallback unit_price=0 — that's fine
+    // here, we just check the freebie payload essentials.
+    expect(result.free_items?.[0]).toMatchObject({
+      sku: "GIFT-001",
+      qty: 1,
+      name: "凍乾試吃包",
+    })
   })
 
-  it("returns notApplied when subtotal below min_order_amount", () => {
+  it("returns notApplied when subtotal below min_order_amount", async () => {
     const c = campaign("freebie", {
       min_order_amount: 800,
       gift_sku: "GIFT-001",
       gift_qty: 1,
       gift_name: "凍乾試吃包",
     })
-    const result = evalFreebie(c, ctx([item({ unit_price: 300, qty: 1 })]))
+    const result = await evalFreebie(c, ctx([item({ unit_price: 300, qty: 1 })]))
     expect(result.applied).toBe(false)
     expect(result.reason).toMatch(/未達門檻/)
   })

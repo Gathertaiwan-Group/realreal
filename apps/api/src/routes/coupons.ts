@@ -88,7 +88,10 @@ couponsRouter.post("/coupons/validate", async (req, res) => {
     res.status(400).json({ error: "Coupon has reached maximum usage" }); return
   }
 
-  // Check min order
+  // Check min order — both coupon.min_order and request order_amount are in
+  // TWD dollars per the /coupons/validate API contract (audit H17 noted that
+  // orders.ts compares cents to dollars; here we're consistent dollars-to-
+  // dollars).
   const orderAmt = Number(order_amount ?? 0)
   if (orderAmt < Number(coupon.min_order ?? 0)) {
     res.status(400).json({ error: `Minimum order amount is ${coupon.min_order}` }); return

@@ -129,6 +129,96 @@ export async function incrementPeriodSpend(userId: string, amount: number) {
     .eq("user_id", userId)
 }
 
+/**
+ * Reverse of incrementSpendAndUpgrade — used by the cancel chain to undo the
+ * spend bookkeeping when a paid order is refunded. Round-2 audit (2026-06-09)
+ * found refunded orders were permanently boosting tier eligibility (wash-trade
+ * vector for 鑽石會員 status). Migration 0033 adds order_post_payment_log.
+ * spend_decremented_at as the idempotency sentinel so a retried cancel /
+ * status-flip doesn't double-decrement.
+ *
+ * Decrements three columns (each clamped at 0):
+ *   - user_profiles.total_spend
+ *   - user_profiles.tier_period_spend
+ *   - user_profiles.charity_savings (legacy display mirror)
+ *
+ * Does NOT auto-downgrade — tier stays as-is and the user keeps the rebate
+ * benefits for the rest of the period. The tier-expire worker re-evaluates
+ * at requalification time using the decremented numbers, so a wash-trade
+ * eventually corrects itself instead of becoming permanent.
+ */
+export async function decrementSpendOnRefund(
+  orderId: string,
+  userId: string,
+  amount: number,
+): Promise<{ decremented: boolean; total_spend_delta: number; period_spend_delta: number; charity_delta: number }> {
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
+  }
+
+  // Idempotency — same shape as the increment sentinels.
+  const { data: log } = await supabase
+    .from("order_post_payment_log")
+    .select("spend_decremented_at")
+    .eq("order_id", orderId)
+    .maybeSingle()
+  if ((log as { spend_decremented_at?: string | null } | null)?.spend_decremented_at) {
+    return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
+  }
+
+  const { data: profile } = await supabase
+    .from("user_profiles")
+    .select("total_spend, tier_period_spend, charity_savings, membership_tier_id")
+    .eq("user_id", userId)
+    .maybeSingle()
+
+  const currentTotal = Number((profile as any)?.total_spend ?? 0)
+  const currentPeriod = Number((profile as any)?.tier_period_spend ?? 0)
+  const currentCharity = Number((profile as any)?.charity_savings ?? 0)
+  const tierId = (profile as any)?.membership_tier_id ?? null
+
+  const newTotal = Math.max(0, currentTotal - amount)
+  const newPeriod = Math.max(0, currentPeriod - amount)
+
+  // Charity savings used tier rebate rate as multiplier; mirror that on the way down.
+  let charityDecrement = 0
+  if (tierId) {
+    const { data: tier } = await supabase
+      .from("membership_tiers")
+      .select("rebate_rate")
+      .eq("id", tierId)
+      .maybeSingle()
+    const rebateRate = Number((tier as any)?.rebate_rate ?? 0)
+    if (rebateRate > 0) {
+      charityDecrement = Math.round(amount * (rebateRate / 100) * 100) / 100
+    }
+  }
+  const newCharity = Math.max(0, currentCharity - charityDecrement)
+
+  await supabase
+    .from("user_profiles")
+    .update({
+      total_spend: newTotal,
+      tier_period_spend: newPeriod,
+      charity_savings: newCharity,
+    })
+    .eq("user_id", userId)
+
+  await supabase
+    .from("order_post_payment_log")
+    .upsert(
+      { order_id: orderId, spend_decremented_at: new Date().toISOString() },
+      { onConflict: "order_id" },
+    )
+
+  return {
+    decremented: true,
+    total_spend_delta: currentTotal - newTotal,
+    period_spend_delta: currentPeriod - newPeriod,
+    charity_delta: charityDecrement,
+  }
+}
+
 export async function incrementSpendAndUpgrade(userId: string, amount: number) {
   // 1. Read current profile spend
   const { data: profile } = await supabase

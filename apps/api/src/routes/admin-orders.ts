@@ -9,6 +9,7 @@ import { voidInvoice } from "../lib/amego"
 import { cancelEcpayLogistics } from "../lib/ecpay-logistics"
 import { refundPayment } from "../lib/refund-payment"
 import { refundOrderPoints } from "../lib/points"
+import { decrementSpendOnRefund } from "../lib/tier"
 
 export const adminOrdersRouter = Router()
 
@@ -35,10 +36,11 @@ adminOrdersRouter.patch("/:id/status", async (req, res) => {
   const orderId = req.params.id
   const newStatus = parsed.data.status
 
-  // Fetch current order to validate transition and handle payment_status
+  // Fetch current order to validate transition and handle payment_status.
+  // Include `total` so decrementSpendOnRefund knows the TWD amount on cancel.
   const { data: order, error: fetchError } = await supabase
     .from("orders")
-    .select("id, status, payment_status")
+    .select("id, status, payment_status, total")
     .eq("id", orderId)
     .single()
 
@@ -75,16 +77,22 @@ adminOrdersRouter.patch("/:id/status", async (req, res) => {
   }
 
   // If we just cancelled a previously-paid order, run the refund chain so
-  // points get returned. refundOrderPoints is idempotent (skips if any refund
-  // row already exists for this order). Equivalent path: POST /:id/cancel runs
-  // the full chain including invoice void + logistics cancel + payment refund;
-  // this PATCH endpoint historically only flipped the status row, silently
-  // skipping the points side-effect. Audit (2026-06-09) flagged as critical.
+  // points get returned + spend mirrors decremented. Both refundOrderPoints
+  // and decrementSpendOnRefund are idempotent (skip on prior refund row /
+  // sentinel). Audit (round 1 + round 2) flagged both as critical:
+  // points was missed by PATCH/bulk-status; spend mirror reversal was missed
+  // by all three cancel paths.
   if (newStatus === "cancelled" && order.payment_status === "paid" && (updated as any).user_id) {
     try {
       await refundOrderPoints(orderId, (updated as any).user_id)
     } catch (err) {
       console.warn("[admin/orders] refundOrderPoints failed (non-fatal):", err)
+    }
+    try {
+      const totalTwd = Math.round(Number(order.total ?? 0) / 100)
+      await decrementSpendOnRefund(orderId, (updated as any).user_id, totalTwd)
+    } catch (err) {
+      console.warn("[admin/orders] decrementSpendOnRefund failed (non-fatal):", err)
     }
   }
 
@@ -107,11 +115,12 @@ adminOrdersRouter.post("/bulk-status", async (req, res) => {
   // For cancellation with refund, we need to check each order's payment_status
   if (newStatus === "cancelled") {
     // Snapshot previously-paid orders BEFORE updating so we can run the
-    // refund chain on them after the status flip. Audit (2026-06-09)
-    // flagged that bulk-cancel was silently skipping points refund.
+    // refund chain on them after the status flip. Audit round 1 flagged
+    // missing refundOrderPoints; round 2 flagged missing spend mirror
+    // decrement — both fixed here. Include total for decrementSpendOnRefund.
     const { data: paidOrders } = await supabase
       .from("orders")
-      .select("id, user_id")
+      .select("id, user_id, total")
       .in("id", ids)
       .eq("payment_status", "paid")
 
@@ -129,14 +138,21 @@ adminOrdersRouter.post("/bulk-status", async (req, res) => {
       .in("id", ids)
       .neq("payment_status", "paid")
 
-    // Run refund chain on previously-paid orders. Idempotent per-order
-    // (refundOrderPoints checks for any prior refund ledger row first).
-    for (const o of (paidOrders ?? []) as Array<{ id: string; user_id: string | null }>) {
+    // Run refund chain on previously-paid orders. Both helpers idempotent
+    // per-order (ledger SELECT-first + spend_decremented_at sentinel).
+    type PaidRow = { id: string; user_id: string | null; total: number | string | null }
+    for (const o of (paidOrders ?? []) as PaidRow[]) {
       if (!o.user_id) continue
       try {
         await refundOrderPoints(o.id, o.user_id)
       } catch (err) {
         console.warn(`[admin/orders bulk] refundOrderPoints failed for ${o.id}:`, err)
+      }
+      try {
+        const totalTwd = Math.round(Number(o.total ?? 0) / 100)
+        await decrementSpendOnRefund(o.id, o.user_id, totalTwd)
+      } catch (err) {
+        console.warn(`[admin/orders bulk] decrementSpendOnRefund failed for ${o.id}:`, err)
       }
     }
   } else {
@@ -401,7 +417,13 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
     actions.payment_refund = { ok: true, message: "未付款，無需退款" }
   }
 
-  // Step 4.5 — refund points (earned reverted + redeemed returned)
+  // Step 4.5 — refund points (earned reverted + redeemed returned) AND
+  // decrement spend mirrors. Audit round 1 flagged the missing points
+  // refund; round 2 caught the spend mirrors (total_spend / tier_period_spend
+  // / charity_savings) never being reversed → tier wash-trade vector. Both
+  // helpers are idempotent. Spend reversal stays even when payment_status
+  // wasn't paid (e.g. canceling a manually-marked-paid order during testing)
+  // because the increment side runs the same way.
   if (order.user_id) {
     try {
       const r = await refundOrderPoints(orderId, order.user_id)
@@ -414,6 +436,17 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
         ok: false,
         message: err instanceof Error ? err.message : String(err),
       }
+    }
+    try {
+      const totalTwd = Math.round(Number(order.total ?? 0) / 100)
+      const d = await decrementSpendOnRefund(orderId, order.user_id, totalTwd)
+      if (d.decremented) {
+        console.log(
+          `[admin/orders] spend reversed for ${orderId}: total -${d.total_spend_delta}, period -${d.period_spend_delta}, charity -${d.charity_delta}`,
+        )
+      }
+    } catch (err) {
+      console.warn("[admin/orders] decrementSpendOnRefund failed (non-fatal):", err)
     }
   } else {
     actions.points_refund = { ok: true, message: "無會員，無點數需返還" }

@@ -200,11 +200,20 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
       .eq("code", couponCode)
       .maybeSingle()
     const now = new Date()
+    // coupon.min_order stored as TWD dollars (NUMERIC(10,2)); subtotalCents
+    // is cents — convert (audit H17).
+    const minOrderCents = coupon?.min_order != null ? Math.round(Number(coupon.min_order) * 100) : null
+    // Coupon tier_id gate (audit H16): if coupon is tier-locked, only the
+    // matching tier may apply. Honor in preview too so displayed price matches
+    // POST / behaviour.
+    const couponTierOk =
+      !coupon?.tier_id || (userId != null && profileTierId === coupon.tier_id)
     const usable =
       coupon &&
       (!coupon.expires_at || new Date(coupon.expires_at) >= now) &&
-      (coupon.min_order == null || subtotalCents >= coupon.min_order) &&
-      (coupon.max_uses == null || Number(coupon.used_count ?? 0) < coupon.max_uses)
+      (minOrderCents == null || subtotalCents >= minOrderCents) &&
+      (coupon.max_uses == null || Number(coupon.used_count ?? 0) < coupon.max_uses) &&
+      couponTierOk
     if (usable && coupon) {
       const baseAfter = Math.max(0, subtotalCents - memberDiscountCents - campaignDiscountCents)
       if (coupon.type === "percentage") {
@@ -426,10 +435,17 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       .eq("code", couponCode)
       .maybeSingle()
     const now = new Date()
+    // coupon.min_order in TWD dollars; subtotalCents in cents (audit H17).
+    const minOrderCents = coupon?.min_order != null ? Math.round(Number(coupon.min_order) * 100) : null
+    // Coupon tier_id gate (audit H16): tier-locked coupon requires user's
+    // profileTierId to match.
+    const couponTierOk =
+      !coupon?.tier_id || (userId != null && profileTierId === coupon.tier_id)
     const validPrecheck =
       coupon &&
       (!coupon.expires_at || new Date(coupon.expires_at) >= now) &&
-      (coupon.min_order == null || subtotalCents >= coupon.min_order)
+      (minOrderCents == null || subtotalCents >= minOrderCents) &&
+      couponTierOk
     if (validPrecheck && coupon) {
       // Pre-check redundancy: if shipping is already 0 (zeroed by a
       // free_shipping campaign) and this coupon is type='free_shipping',

@@ -80,7 +80,9 @@ async function aggregateOrders(
     const id = (row as { attributed_kol_id: string | null }).attributed_kol_id
     if (!id || !acc[id]) continue
     acc[id].order_count += 1
-    acc[id].total_revenue += Number((row as { total: number | string }).total ?? 0)
+    // orders.total is stored as cents in NUMERIC(10,2) — convert to TWD here
+    // (audit H14: revenue was displayed 100x too big in KOL list/detail/analytics).
+    acc[id].total_revenue += Number((row as { total: number | string }).total ?? 0) / 100
   }
   return acc
 }
@@ -476,7 +478,8 @@ adminKolsRouter.get("/:id/conversion", async (req, res) => {
 
   const orders = orderRows?.length ?? 0
   const total_revenue = (orderRows ?? []).reduce(
-    (sum, r) => sum + Number((r as { total: number | string }).total ?? 0),
+    // cents → TWD (audit H14)
+    (sum, r) => sum + Number((r as { total: number | string }).total ?? 0) / 100,
     0,
   )
   const orderIds = (orderRows ?? []).map((r) => (r as { id: string }).id)
