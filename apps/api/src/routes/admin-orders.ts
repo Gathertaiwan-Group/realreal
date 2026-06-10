@@ -89,7 +89,7 @@ adminOrdersRouter.patch("/:id/status", async (req, res) => {
       console.warn("[admin/orders] refundOrderPoints failed (non-fatal):", err)
     }
     try {
-      const totalTwd = Math.round(Number(order.total ?? 0) / 100)
+      const totalTwd = Number(order.total ?? 0)
       await decrementSpendOnRefund(orderId, (updated as any).user_id, totalTwd)
     } catch (err) {
       console.warn("[admin/orders] decrementSpendOnRefund failed (non-fatal):", err)
@@ -149,7 +149,7 @@ adminOrdersRouter.post("/bulk-status", async (req, res) => {
         console.warn(`[admin/orders bulk] refundOrderPoints failed for ${o.id}:`, err)
       }
       try {
-        const totalTwd = Math.round(Number(o.total ?? 0) / 100)
+        const totalTwd = Number(o.total ?? 0)
         await decrementSpendOnRefund(o.id, o.user_id, totalTwd)
       } catch (err) {
         console.warn(`[admin/orders bulk] decrementSpendOnRefund failed for ${o.id}:`, err)
@@ -438,7 +438,7 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
       }
     }
     try {
-      const totalTwd = Math.round(Number(order.total ?? 0) / 100)
+      const totalTwd = Number(order.total ?? 0)
       const d = await decrementSpendOnRefund(orderId, order.user_id, totalTwd)
       if (d.decremented) {
         console.log(

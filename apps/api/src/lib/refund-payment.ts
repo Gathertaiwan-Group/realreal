@@ -62,7 +62,7 @@ export async function refundPayment(
           <table style="border-collapse:collapse;width:100%;font-size:14px;">
             <tr><td style="padding:6px 0;color:#687279;width:120px">訂單編號</td><td style="font-family:monospace;font-weight:600">${order.id}</td></tr>
             <tr><td style="padding:6px 0;color:#687279">金流</td><td>${order.payment_method ?? "—"}</td></tr>
-            <tr><td style="padding:6px 0;color:#687279">金額</td><td style="font-weight:600;color:#10305a">NT$ ${order.total != null ? Math.round(Number(order.total) / 100) : "—"}</td></tr>
+            <tr><td style="padding:6px 0;color:#687279">金額</td><td style="font-weight:600;color:#10305a">NT$ ${order.total != null ? Number(order.total) : "—"}</td></tr>
             <tr><td style="padding:6px 0;color:#687279;vertical-align:top">取消原因</td><td style="white-space:pre-line">${reason}</td></tr>
           </table>
         </div>

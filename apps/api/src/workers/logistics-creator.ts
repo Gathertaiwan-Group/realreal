@@ -148,8 +148,7 @@ export async function processCreateShipmentCod(orderId: string) {
 
   if (!address) throw new Error(`Shipping address not found for order ${orderId}`)
 
-  // order.total is in cents — convert to TWD for ECPay CollectionAmount
-  const collectionAmountTwd = Math.round(Number(order.total) / 100)
+  const collectionAmountTwd = Math.round(Number(order.total))
 
   const cvsType = order.shipping_method === "cvs_711" ? "UNIMARTC2C" : "FAMIC2C"
   const result = await createCvsLogistics(
