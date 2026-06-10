@@ -20,6 +20,11 @@ import {
   PROMO_EVENT,
   type PromoState,
 } from "@/components/checkout/PromoWidget"
+import {
+  listUserAddresses,
+  migrateLegacyAddresses,
+  type UserAddress,
+} from "@/lib/user-addresses"
 
 type AddressType = "home" | "cvs" | "cvs_cod" | "overseas"
 type ShippingMethod = "711" | "family" | "home_delivery" | "overseas_cod"
@@ -165,6 +170,10 @@ export default function CheckoutPage() {
   const [errors, setErrors] = useState<FieldErrors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
 
+  // Account-bound saved address book (loaded for logged-in users in 2b).
+  const [savedAddresses, setSavedAddresses] = useState<UserAddress[]>([])
+  const [selectedAddressId, setSelectedAddressId] = useState<string>("")
+
   const searchParams = useSearchParams()
 
   // 1. Draft restore — must run BEFORE the URL-params useEffect so its setState
@@ -245,6 +254,27 @@ export default function CheckoutPage() {
       if (!user) return
 
       if (user.email) setEmail((prev) => prev || user.email!)
+
+      // Saved address book (account-bound). Migrate any legacy localStorage
+      // entries into the backend first, then load + prefill the default.
+      // Runs before the profile/order-history prefill so a saved default wins.
+      await migrateLegacyAddresses()
+      if (cancelled) return
+      const addrs = await listUserAddresses()
+      if (cancelled) return
+      if (addrs.length > 0) {
+        setSavedAddresses(addrs)
+        const def = addrs.find((a) => a.is_default) ?? addrs[0]
+        if (def) {
+          setSelectedAddressId((prev) => prev || def.id)
+          setName((prev) => prev || def.name)
+          setPhone((prev) => prev || def.phone)
+          setCity((prev) => prev || def.city)
+          setDistrict((prev) => prev || def.district)
+          setPostalCode((prev) => prev || def.postal_code)
+          setAddressLine((prev) => prev || def.address_line)
+        }
+      }
 
       // Fetch profile fields for name / phone / tax_id prefill
       const { data: profile } = await supabase
@@ -505,6 +535,22 @@ export default function CheckoutPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addressType])
 
+  // Apply a saved address from the picker — overwrites the form fields since
+  // the user explicitly chose it. "" = back to manual entry (leaves fields).
+  function applySavedAddress(id: string) {
+    setSelectedAddressId(id)
+    if (!id) return
+    const a = savedAddresses.find((x) => x.id === id)
+    if (!a) return
+    setName(a.name)
+    setPhone(a.phone)
+    setCity(a.city)
+    setDistrict(a.district)
+    setPostalCode(a.postal_code)
+    setAddressLine(a.address_line)
+    setErrors((prev) => ({ ...prev, name: undefined, phone: undefined, city: undefined, address: undefined }))
+  }
+
   function validate(): FieldErrors {
     const errs: FieldErrors = {}
     if (!name.trim()) errs.name = "請輸入收件人姓名"
@@ -704,6 +750,24 @@ export default function CheckoutPage() {
 
                 {addressType === "home" && (
                   <div className="space-y-3">
+                    {savedAddresses.length > 0 && (
+                      <div className="space-y-1.5">
+                        <Label htmlFor="saved-address">選擇已存地址</Label>
+                        <select
+                          id="saved-address"
+                          value={selectedAddressId}
+                          onChange={e => applySavedAddress(e.target.value)}
+                          className="flex h-10 w-full rounded-lg border-2 border-zinc-200 bg-white px-3 text-sm focus-visible:outline-none focus-visible:border-[#10305a]"
+                        >
+                          <option value="">＋ 手動輸入新地址</option>
+                          {savedAddresses.map(a => (
+                            <option key={a.id} value={a.id}>
+                              {a.name}｜{a.postal_code} {a.city}{a.district}{a.address_line}{a.is_default ? "（預設）" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
                     <div className="space-y-2">
                       {(Object.entries(SHIPPING_LABELS) as [ShippingMethod, string][])
                         .filter(([v]) => v === "home_delivery")

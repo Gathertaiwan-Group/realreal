@@ -4,6 +4,14 @@ import { useEffect, useState, useTransition } from "react"
 import { ChevronDown, ChevronRight, MapPin, Pencil, Plus, Save, Trash2, User as UserIcon, X } from "lucide-react"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
+import {
+  listUserAddresses,
+  createUserAddress,
+  updateUserAddress,
+  deleteUserAddress,
+  migrateLegacyAddresses,
+  type UserAddress,
+} from "@/lib/user-addresses"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,20 +27,7 @@ interface AccountSettingsSectionProps {
   defaultOpen?: boolean
 }
 
-interface SavedAddress {
-  id: string
-  name: string
-  phone: string
-  city: string
-  district: string
-  postal_code: string
-  address_line: string
-  is_default: boolean
-}
-
-const ADDRESS_STORAGE_KEY = "realreal_addresses"
-
-const emptyAddressForm: Omit<SavedAddress, "id"> = {
+const emptyAddressForm: Omit<UserAddress, "id"> = {
   name: "",
   phone: "",
   city: "",
@@ -40,24 +35,6 @@ const emptyAddressForm: Omit<SavedAddress, "id"> = {
   postal_code: "",
   address_line: "",
   is_default: false,
-}
-
-function newAddrId(): string {
-  return `addr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-}
-
-function loadAddresses(): SavedAddress[] {
-  if (typeof window === "undefined") return []
-  try {
-    const raw = localStorage.getItem(ADDRESS_STORAGE_KEY)
-    return raw ? (JSON.parse(raw) as SavedAddress[]) : []
-  } catch {
-    return []
-  }
-}
-
-function persistAddresses(list: SavedAddress[]) {
-  localStorage.setItem(ADDRESS_STORAGE_KEY, JSON.stringify(list))
 }
 
 export function AccountSettingsSection({
@@ -199,15 +176,25 @@ function ProfileBlock({
 }
 
 function AddressesBlock() {
-  const [addresses, setAddresses] = useState<SavedAddress[]>([])
+  const [addresses, setAddresses] = useState<UserAddress[]>([])
   const [hydrated, setHydrated] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [showForm, setShowForm] = useState(false)
-  const [form, setForm] = useState<Omit<SavedAddress, "id">>(emptyAddressForm)
+  const [form, setForm] = useState<Omit<UserAddress, "id">>(emptyAddressForm)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    setAddresses(loadAddresses())
-    setHydrated(true)
+    let cancelled = false
+    ;(async () => {
+      await migrateLegacyAddresses()
+      const list = await listUserAddresses()
+      if (cancelled) return
+      setAddresses(list)
+      setHydrated(true)
+    })()
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   function openAdd() {
@@ -215,7 +202,7 @@ function AddressesBlock() {
     setForm(emptyAddressForm)
     setShowForm(true)
   }
-  function openEdit(addr: SavedAddress) {
+  function openEdit(addr: UserAddress) {
     setEditingId(addr.id)
     setForm({
       name: addr.name,
@@ -234,42 +221,40 @@ function AddressesBlock() {
     setForm(emptyAddressForm)
   }
 
-  function handleSubmit() {
+  async function handleSubmit() {
     if (!form.name.trim() || !form.phone.trim() || !form.address_line.trim()) {
       toast.error("請填寫必要欄位（姓名、電話、地址）")
       return
     }
-    let updated: SavedAddress[]
-    if (editingId) {
-      updated = addresses.map((a) =>
-        a.id === editingId ? { ...form, id: editingId } : a,
-      )
-    } else {
-      updated = [...addresses, { ...form, id: newAddrId() }]
+    setSaving(true)
+    try {
+      const saved = editingId
+        ? await updateUserAddress(editingId, form)
+        : await createUserAddress(form)
+      if (!saved) {
+        toast.error("儲存失敗，請稍後再試")
+        return
+      }
+      setAddresses(await listUserAddresses())
+      cancelForm()
+      toast.success(editingId ? "地址已更新" : "地址已新增")
+    } finally {
+      setSaving(false)
     }
-    if (form.is_default) {
-      const targetId = editingId ?? updated[updated.length - 1].id
-      updated = updated.map((a) => ({
-        ...a,
-        is_default: a.id === targetId,
-      }))
-    }
-    persistAddresses(updated)
-    setAddresses(updated)
-    cancelForm()
-    toast.success(editingId ? "地址已更新" : "地址已新增")
   }
 
-  function handleDelete(id: string) {
-    const updated = addresses.filter((a) => a.id !== id)
-    persistAddresses(updated)
-    setAddresses(updated)
+  async function handleDelete(id: string) {
+    if (!(await deleteUserAddress(id))) {
+      toast.error("刪除失敗")
+      return
+    }
+    setAddresses(await listUserAddresses())
     toast.success("地址已刪除")
   }
 
-  function updateField<K extends keyof Omit<SavedAddress, "id">>(
+  function updateField<K extends keyof Omit<UserAddress, "id">>(
     key: K,
-    value: Omit<SavedAddress, "id">[K],
+    value: Omit<UserAddress, "id">[K],
   ) {
     setForm((prev) => ({ ...prev, [key]: value }))
   }
@@ -359,6 +344,7 @@ function AddressesBlock() {
               type="button"
               size="sm"
               onClick={handleSubmit}
+              disabled={saving}
               className="bg-[#10305a] text-white hover:bg-[#10305a]/90"
             >
               <Save className="mr-1 h-3.5 w-3.5" />
