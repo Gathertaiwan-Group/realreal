@@ -12,13 +12,12 @@ export function Footer() {
 
           {/* Column 1: Brand */}
           <div className="flex flex-col items-start text-left">
-            <Image
-              src="/logo-horizontal.jpg"
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/logo-white.svg"
               alt="誠真生活 RealReal"
-              width={200}
-              height={80}
+              width={220}
               className="mb-5"
-              style={{ filter: "invert(1)", mixBlendMode: "screen" }}
             />
             <p className="text-sm leading-relaxed opacity-80">
               純淨植物力，為你的生活加分。<br />
