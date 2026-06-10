@@ -323,10 +323,10 @@ export default function CheckoutPage() {
       if (data.address) setCvsAddress(data.address)
       if (data.subType === "FAMIC2C") {
         setShippingMethod("family")
-        setAddressType("cvs")
+        setAddressType((prev) => (prev === "cvs_cod" ? "cvs_cod" : "cvs"))
       } else if (data.subType === "UNIMARTC2C") {
         setShippingMethod("711")
-        setAddressType("cvs")
+        setAddressType((prev) => (prev === "cvs_cod" ? "cvs_cod" : "cvs"))
       }
     }
     window.addEventListener("message", onMessage)
@@ -374,10 +374,10 @@ export default function CheckoutPage() {
     if (storeAddress) setCvsAddress(storeAddress)
     if (subType === "FAMIC2C" || subType === "FAMI") {
       setShippingMethod("family")
-      setAddressType("cvs")
+      setAddressType((prev) => (prev === "cvs_cod" ? "cvs_cod" : "cvs"))
     } else if (subType === "UNIMARTC2C" || subType === "UNIMART") {
       setShippingMethod("711")
-      setAddressType("cvs")
+      setAddressType((prev) => (prev === "cvs_cod" ? "cvs_cod" : "cvs"))
     }
     window.history.replaceState({}, "", "/checkout")
   }, [searchParams])
@@ -419,7 +419,8 @@ export default function CheckoutPage() {
 
   const openCvsMap = useCallback(() => {
     const subType = shippingMethod === "family" ? "FAMIC2C" : "UNIMARTC2C"
-    const url = `${API_URL}/logistics/map?logisticsSubType=${subType}&isCollection=N`
+    const isCollection = addressType === "cvs_cod" ? "Y" : "N"
+    const url = `${API_URL}/logistics/map?logisticsSubType=${subType}&isCollection=${isCollection}`
 
     const isMobile =
       typeof navigator !== "undefined" &&
@@ -439,13 +440,13 @@ export default function CheckoutPage() {
       saveCvsDraft()
       window.location.href = url
     }
-  }, [shippingMethod, saveCvsDraft])
+  }, [shippingMethod, addressType, saveCvsDraft])
 
   // When switching to CVS, auto-select a CVS shipping method.
   // T8: only react to addressType changes — listening to shippingMethod here
   // would fight the user's manual selection (711 vs family).
   useEffect(() => {
-    if (addressType === "cvs" && shippingMethod === "home_delivery") {
+    if ((addressType === "cvs" || addressType === "cvs_cod") && shippingMethod === "home_delivery") {
       setShippingMethod("711")
     }
     if (addressType === "home" && shippingMethod !== "home_delivery") {
@@ -472,7 +473,7 @@ export default function CheckoutPage() {
     if (addressType === "home") {
       if (!city.trim()) errs.city = "請選擇縣市"
       if (!addressLine.trim()) errs.address = "請輸入詳細地址"
-    } else if (addressType === "cvs") {
+    } else if (addressType === "cvs" || addressType === "cvs_cod") {
       if (!cvsStoreName) errs.cvsStore = "請選擇取貨門市"
     } else {
       // overseas
@@ -511,6 +512,7 @@ export default function CheckoutPage() {
       shippingMethod,
       shippingFee: preview?.shipping ?? 0,
       invoice,
+      ...(addressType === "cvs_cod" ? { forcedPaymentMethod: "cvs_cod" } : {}),
     }
     localStorage.setItem("realreal-checkout", JSON.stringify(checkoutData))
     router.push("/checkout/payment")
@@ -633,8 +635,8 @@ export default function CheckoutPage() {
 
                 <div className="space-y-2">
                   <Label>取貨方式</Label>
-                  <div className="grid grid-cols-3 gap-3">
-                    {(["home", "cvs", "overseas"] as AddressType[]).map(type => (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    {(["home", "cvs", "cvs_cod", "overseas"] as AddressType[]).map(type => (
                       <button
                         key={type}
                         type="button"
@@ -646,8 +648,8 @@ export default function CheckoutPage() {
                         }`}
                         style={addressType === type ? { borderColor: "#10305a", backgroundColor: "rgba(16,48,90,0.05)", color: "#10305a" } : undefined}
                       >
-                        <span>{type === "home" ? "🏠" : type === "cvs" ? "🏪" : "🌍"}</span>
-                        <span>{type === "home" ? "宅配到府" : type === "cvs" ? "超商取貨" : "海外寄送"}</span>
+                        <span>{type === "home" ? "🏠" : type === "cvs" ? "🏪" : type === "cvs_cod" ? "💵" : "🌍"}</span>
+                        <span>{type === "home" ? "宅配到府" : type === "cvs" ? "超商取貨" : type === "cvs_cod" ? "超商取貨付款" : "海外寄送"}</span>
                       </button>
                     ))}
                   </div>
@@ -812,6 +814,83 @@ export default function CheckoutPage() {
                         </div>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {addressType === "cvs_cod" && (
+                  <div className="space-y-3">
+                    <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">
+                      💵 到超商取貨時當場以現金付款（代收貨款），不需要事先線上付款。
+                    </div>
+                    <div className="space-y-2">
+                      {(Object.entries(SHIPPING_LABELS) as [ShippingMethod, string][])
+                        .filter(([v]) => v !== "home_delivery" && v !== "overseas_cod")
+                        .map(([value, label]) => (
+                          <label
+                            key={value}
+                            className={`flex items-center justify-between p-3 border-2 rounded-lg cursor-pointer transition-colors ${
+                              shippingMethod === value
+                                ? ""
+                                : "border-zinc-200 hover:border-zinc-300"
+                            }`}
+                            style={shippingMethod === value ? { borderColor: "#10305a", backgroundColor: "rgba(16,48,90,0.05)" } : undefined}
+                          >
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="radio"
+                                name="shippingMethod"
+                                value={value}
+                                checked={shippingMethod === value}
+                                onChange={() => setShippingMethod(value)}
+                                className="h-4 w-4 accent-primary"
+                              />
+                              <span className="font-medium text-sm">
+                                {value === "711" ? "🏪" : "🏬"} {label}
+                              </span>
+                            </div>
+                            <span className="text-sm text-zinc-500">
+                              {value === shippingMethod ? shippingLabel : "選擇後計算"}
+                            </span>
+                          </label>
+                        ))}
+                    </div>
+
+                    {/* CVS Store Selector */}
+                    <div className="rounded-lg border-2 border-dashed border-zinc-300 bg-zinc-50 p-4">
+                      {cvsStoreName ? (
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="font-medium text-sm">{cvsStoreName}</p>
+                            <p className="text-xs text-zinc-500">門市編號：{cvsStoreId}</p>
+                            {cvsAddress && (
+                              <p className="text-xs text-zinc-500">{cvsAddress}</p>
+                            )}
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => { setCvsStoreName(""); setCvsStoreId(""); setCvsAddress("") }}
+                          >
+                            重新選擇
+                          </Button>
+                        </div>
+                      ) : (
+                        <div className="text-center space-y-2">
+                          <p className="text-sm text-zinc-500">尚未選擇取貨門市</p>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={openCvsMap}
+                          >
+                            選擇取貨門市
+                          </Button>
+                          {touched.cvsStore && errors.cvsStore && (
+                            <p className="text-xs text-red-500">{errors.cvsStore}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-xs text-zinc-400">代收貨款服務費已含於運費，不提供免運優惠。</p>
                   </div>
                 )}
 

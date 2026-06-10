@@ -36,6 +36,7 @@ type CheckoutData = {
   shippingMethod: string
   shippingFee?: number
   invoice?: InvoiceData
+  forcedPaymentMethod?: string
 }
 
 const SHIPPING_LABELS: Record<string, string> = {
@@ -133,35 +134,48 @@ export default function PaymentPage() {
   }, [])
 
   const isCvsShipping = checkoutData?.shippingMethod === "711" || checkoutData?.shippingMethod === "family"
+  const forcedPayment = checkoutData?.forcedPaymentMethod as PaymentMethod | undefined
 
-  const PAYMENT_OPTIONS: PaymentOption[] = [
-    { value: "pchomepay", label: "PChomePay 支付連", icon: "💳", color: "bg-blue-50 border-blue-200" },
-    { value: "linepay", label: "LINE Pay", icon: "💚", color: "bg-green-50 border-green-200", note: "不支援定期訂閱扣款" },
-    { value: "jkopay", label: "街口支付 JKOPay", icon: "🟠", color: "bg-orange-50 border-orange-200", note: "不支援定期訂閱扣款" },
-    ...(isCvsShipping ? [{
-      value: "cvs_cod" as PaymentMethod,
-      label: "超商取貨付款",
-      icon: "🏪",
-      color: "bg-zinc-50 border-zinc-200",
-      note: "到店取貨時付款，由綠界代收"
-    }] : []),
-    // Sandbox: skip gateway, run full pipeline (invoice / email / stock /
-    // points / LINE Notify). Requires login (guest can't earn points / link
-    // order to a user). Server enforces same auth check.
-    ...(isLoggedIn ? [{
-      value: "test_paid" as PaymentMethod,
-      label: "🧪 沙盒測試付款",
-      icon: "🧪",
-      color: "bg-amber-50 border-amber-300",
-      note: "不過金流但跑完整流程（發票/通知/庫存/點數）— 需登入"
-    }] : []),
-  ]
+  const PAYMENT_OPTIONS: PaymentOption[] = forcedPayment === "cvs_cod"
+    ? [
+        {
+          value: "cvs_cod" as PaymentMethod,
+          label: "超商取貨付款",
+          icon: "🏪",
+          color: "bg-zinc-50 border-zinc-200",
+          note: "到店取貨時付款，由綠界代收",
+        },
+      ]
+    : [
+        { value: "pchomepay", label: "PChomePay 支付連", icon: "💳", color: "bg-blue-50 border-blue-200" },
+        { value: "linepay", label: "LINE Pay", icon: "💚", color: "bg-green-50 border-green-200", note: "不支援定期訂閱扣款" },
+        { value: "jkopay", label: "街口支付 JKOPay", icon: "🟠", color: "bg-orange-50 border-orange-200", note: "不支援定期訂閱扣款" },
+        ...(isCvsShipping ? [{
+          value: "cvs_cod" as PaymentMethod,
+          label: "超商取貨付款",
+          icon: "🏪",
+          color: "bg-zinc-50 border-zinc-200",
+          note: "到店取貨時付款，由綠界代收"
+        }] : []),
+        // Sandbox: skip gateway, run full pipeline (invoice / email / stock /
+        // points / LINE Notify). Requires login (guest can't earn points / link
+        // order to a user). Server enforces same auth check.
+        ...(isLoggedIn ? [{
+          value: "test_paid" as PaymentMethod,
+          label: "🧪 沙盒測試付款",
+          icon: "🧪",
+          color: "bg-amber-50 border-amber-300",
+          note: "不過金流但跑完整流程（發票/通知/庫存/點數）— 需登入"
+        }] : []),
+      ]
 
   useEffect(() => {
-    if (!isCvsShipping && paymentMethod === "cvs_cod") {
+    if (forcedPayment) {
+      setPaymentMethod(forcedPayment)
+    } else if (!isCvsShipping && paymentMethod === "cvs_cod") {
       setPaymentMethod("pchomepay")
     }
-  }, [isCvsShipping, paymentMethod])
+  }, [forcedPayment, isCvsShipping, paymentMethod])
 
   useEffect(() => {
     const raw = localStorage.getItem("realreal-checkout")
@@ -347,6 +361,11 @@ export default function PaymentPage() {
               {checkoutData.shippingMethod === "overseas_cod" && (
                 <div className="mt-2 rounded bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">
                   🌍 海外到付：運費由司機收取，請線上完成商品金額付款
+                </div>
+              )}
+              {forcedPayment === "cvs_cod" && (
+                <div className="mt-2 rounded bg-blue-50 border border-blue-200 p-2 text-xs text-blue-800">
+                  💵 超商取貨付款：到超商取貨時以現金付款，無須線上付款
                 </div>
               )}
             </div>
