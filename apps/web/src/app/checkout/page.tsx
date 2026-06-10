@@ -54,6 +54,24 @@ type CvsDraft = {
 const CVS_DRAFT_KEY = "realreal-cvs-draft"
 const CVS_DRAFT_TTL_MS = 5 * 60_000
 
+/**
+ * Saved address book — written by /my-account (AccountSettingsSection).
+ * Stored in localStorage (not the DB), keyed by browser. We read the default
+ * entry to prefill the checkout form for returning customers.
+ */
+type SavedAddress = {
+  id: string
+  name: string
+  phone: string
+  city: string
+  district: string
+  postal_code: string
+  address_line: string
+  is_default: boolean
+}
+
+const ADDRESS_BOOK_KEY = "realreal_addresses"
+
 const SHIPPING_LABELS: Record<ShippingMethod, string> = {
   "711": "7-11取貨",
   "family": "全家取貨",
@@ -153,12 +171,39 @@ export default function CheckoutPage() {
   //    doesn't get overwritten by the (potentially empty) post-redirect state.
   //    Only runs once on mount.
   useEffect(() => {
+    // Fallback prefill from the saved address book (default entry). Skipped
+    // when a valid CVS draft is restored — the draft already carries the
+    // in-progress form state. Functional setState so it only fills empty
+    // fields and never clobbers a draft or anything the user already typed.
+    function prefillFromAddressBook() {
+      try {
+        const raw = localStorage.getItem(ADDRESS_BOOK_KEY)
+        if (!raw) return
+        const list = JSON.parse(raw) as SavedAddress[]
+        if (!Array.isArray(list) || list.length === 0) return
+        const def = list.find((a) => a.is_default) ?? list[0]
+        if (!def) return
+        if (def.name) setName((prev) => prev || def.name)
+        if (def.phone) setPhone((prev) => prev || def.phone)
+        if (def.city) setCity((prev) => prev || def.city)
+        if (def.district) setDistrict((prev) => prev || def.district)
+        if (def.postal_code) setPostalCode((prev) => prev || def.postal_code)
+        if (def.address_line) setAddressLine((prev) => prev || def.address_line)
+      } catch {
+        // malformed address book → ignore
+      }
+    }
+
     const raw = typeof window !== "undefined" ? localStorage.getItem(CVS_DRAFT_KEY) : null
-    if (!raw) return
+    if (!raw) {
+      prefillFromAddressBook()
+      return
+    }
     try {
       const draft = JSON.parse(raw) as CvsDraft
       if (!draft || typeof draft.expiresAt !== "number" || Date.now() > draft.expiresAt) {
         localStorage.removeItem(CVS_DRAFT_KEY)
+        prefillFromAddressBook()
         return
       }
       if (draft.name) setName(draft.name)
@@ -173,7 +218,8 @@ export default function CheckoutPage() {
       if (draft.invoice) setInvoice(draft.invoice)
       if (draft.country) setCountry(draft.country)
     } catch {
-      // bad json → fall through to cleanup
+      // bad json → fall through to cleanup + address book prefill
+      prefillFromAddressBook()
     } finally {
       localStorage.removeItem(CVS_DRAFT_KEY)
     }
@@ -198,7 +244,7 @@ export default function CheckoutPage() {
       const user = data.user
       if (!user) return
 
-      if (!email && user.email) setEmail(user.email)
+      if (user.email) setEmail((prev) => prev || user.email!)
 
       // Fetch profile fields for name / phone / tax_id prefill
       const { data: profile } = await supabase
@@ -208,8 +254,8 @@ export default function CheckoutPage() {
         .maybeSingle()
       if (cancelled || !profile) return
       const p = profile as { display_name: string | null; phone: string | null; tax_id: string | null }
-      if (!name && p.display_name) setName(p.display_name)
-      if (!phone && p.phone) setPhone(p.phone)
+      if (p.display_name) setName((prev) => prev || p.display_name!)
+      if (p.phone) setPhone((prev) => prev || p.phone!)
       if (p.tax_id) {
         // Upgrade to B2B invoice with the saved tax id when user hasn't picked another option.
         setInvoice(prev =>
@@ -237,16 +283,17 @@ export default function CheckoutPage() {
         .maybeSingle()
       if (cancelled || !lastAddr) return
       const a = lastAddr as { name: string | null; phone: string | null; city: string | null; postal_code: string | null; address: string | null }
-      if (!name && a.name) setName(a.name)
-      if (!phone && a.phone) setPhone(a.phone)
-      if (a.city) setCity(a.city)
-      if (a.postal_code) setPostalCode(a.postal_code)
-      if (a.address) setAddressLine(a.address)
+      // Functional setState so the saved address book (set synchronously on
+      // mount) wins — order history only fills fields still empty.
+      if (a.name) setName((prev) => prev || a.name!)
+      if (a.phone) setPhone((prev) => prev || a.phone!)
+      if (a.city) setCity((prev) => prev || a.city!)
+      if (a.postal_code) setPostalCode((prev) => prev || a.postal_code!)
+      if (a.address) setAddressLine((prev) => prev || a.address!)
     })()
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // 2c. Spec R Section 1 — call POST /orders/preview whenever cart or shipping
