@@ -9,3 +9,4 @@ dist
 Wordpress/
 .claude/
 .credentials.local
+supabase/.temp/
