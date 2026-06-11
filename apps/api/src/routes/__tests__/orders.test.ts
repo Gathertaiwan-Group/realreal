@@ -79,6 +79,20 @@ describe("POST /orders", () => {
 
     let callCount = 0
     vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "product_variants") {
+        // Server now prices authoritatively from the catalog — variant must exist.
+        return makeMockChain({
+          then: (resolve: (v: { data: unknown[]; error: null }) => void) =>
+            resolve({
+              data: [{
+                id: "a1b2c3d4-e5f6-4789-b012-c3d4e5f60001",
+                sku: "SKU1", name: "測試", price: 500, sale_price: null,
+                product_id: "p1", products: { category_id: null, name: "測試商品" },
+              }],
+              error: null,
+            }),
+        }) as any
+      }
       if (table === "orders") {
         return {
           insert: vi.fn().mockReturnThis(),

@@ -44,6 +44,9 @@ linepayWebhookRouter.get("/confirm", async (req, res) => {
   }
 
   try {
+    // confirmPayment hits LINE Pay's confirm API with the DB amount; LINE Pay
+    // rejects if the amount/reservation don't match, so the capture is
+    // amount-verified gateway-side.
     await confirmPayment(transactionId, payment.amount)
 
     await supabase
@@ -51,7 +54,7 @@ linepayWebhookRouter.get("/confirm", async (req, res) => {
       .update({ status: "captured", updated_at: new Date().toISOString() })
       .eq("id", payment.id)
 
-    await supabase
+    const { error: paidErr } = await supabase
       .from("orders")
       .update({
         status: "processing",
@@ -59,6 +62,11 @@ linepayWebhookRouter.get("/confirm", async (req, res) => {
         updated_at: new Date().toISOString(),
       })
       .eq("id", payment.order_id)
+    if (paidErr) {
+      // Payment captured at LINE Pay but the local flip failed — log loudly so
+      // it can be reconciled; the customer still sees success (money taken).
+      console.error("[webhooks/linepay] order paid-flip failed AFTER capture:", paidErr)
+    }
 
     // Enqueue email + invoice jobs
     try {
@@ -90,20 +98,44 @@ linepayWebhookRouter.get("/confirm", async (req, res) => {
   }
 })
 
-// GET /webhooks/linepay/cancel?orderId= — user cancelled payment
+// GET /webhooks/linepay/cancel?orderId= — user cancelled payment.
+// This is an unauthenticated browser redirect, so it must NOT be able to cancel
+// arbitrary orders: only flip orders that are still pending+unpaid (the only
+// valid state for a LINE Pay cancel), and restore the stock that order creation
+// deducted. order_number is random (RR+timestamp+4 random bytes) → not guessable.
 linepayWebhookRouter.get("/cancel", async (req, res) => {
   const { orderId } = req.query as { orderId: string }
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://realreal.cc"
 
   if (orderId) {
-    await supabase
+    const { data: order } = await supabase
       .from("orders")
-      .update({
-        status: "cancelled",
-        payment_status: "pending",
-        updated_at: new Date().toISOString(),
-      })
+      .select("id, status, payment_status")
       .eq("order_number", orderId)
+      .maybeSingle()
+
+    if (order && order.status === "pending" && order.payment_status !== "paid") {
+      const { error: cancelErr } = await supabase
+        .from("orders")
+        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .eq("id", order.id)
+      if (cancelErr) {
+        console.error("[webhooks/linepay] cancel update failed:", cancelErr)
+      } else {
+        // Return the stock deducted at order creation.
+        const { data: items } = await supabase
+          .from("order_items")
+          .select("variant_id, qty")
+          .eq("order_id", order.id)
+        const variants = (items ?? [])
+          .filter((i) => i.variant_id && Number(i.qty) > 0)
+          .map((i) => ({ id: i.variant_id, qty: Number(i.qty) }))
+        if (variants.length > 0) {
+          const { error: restoreErr } = await supabase.rpc("atomic_restore_stock", { p_variants: variants })
+          if (restoreErr) console.warn("[webhooks/linepay] cancel stock restore failed:", restoreErr.message)
+        }
+      }
+    }
   }
 
   res.redirect(`${siteUrl}/checkout/payment?error=cancelled`)

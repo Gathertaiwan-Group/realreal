@@ -123,7 +123,7 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
         })
         .eq("id", tx.id)
 
-      await supabase
+      const { error: paidErr } = await supabase
         .from("orders")
         .update({
           status: "processing",
@@ -131,6 +131,14 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
           updated_at: new Date().toISOString(),
         })
         .eq("id", tx.order_id)
+      if (paidErr) {
+        // Don't ack: rewind the dedupe row and 500 so PChomePay retries, else
+        // the payment captures but the order is silently stuck on pending.
+        console.error("[webhooks/pchomepay] order paid-flip failed:", paidErr)
+        await supabase.from("webhook_events").delete()
+          .eq("gateway", "pchomepay").eq("merchant_trade_no", merchantTradeNo)
+        res.status(500).send("order update failed; please retry"); return
+      }
 
       try {
         const { enqueuePostPaymentJobs } = await import("../../lib/enqueue-post-payment")

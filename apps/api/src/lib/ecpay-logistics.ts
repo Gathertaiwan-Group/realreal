@@ -77,9 +77,14 @@ export async function createCvsLogistics(
   receiverPhone: string,
   receiverEmail: string,
   storeId: string,
+  goodsAmount: number,
   isCollection: boolean = false,
-  collectionAmount: number = 0,
 ): Promise<CvsLogisticsResult> {
+  // For ECPay C2C (UNIMART/FAMI) the amount the store collects under COD is the
+  // GoodsAmount itself — CollectionAmount alone does NOT drive C2C 代收. Passing
+  // GoodsAmount="1" meant COD customers were charged NT$1. Always declare the
+  // real order value. (min 1, integer TWD per ECPay.)
+  const goods = String(Math.max(1, Math.round(goodsAmount)))
   const merchantTradeNo = `RRL${Date.now()}`
   const apiUrl = getApiBaseUrl()
   const c = await getEcpayCreds()
@@ -92,7 +97,7 @@ export async function createCvsLogistics(
       .replace(/\//g, "/"),
     LogisticsType: "CVS",
     LogisticsSubType: cvsType,
-    GoodsAmount: "1",
+    GoodsAmount: goods,
     GoodsWeight: "1",
     GoodsName: "realreal.cc 訂單",
     SenderName: c.senderName,
@@ -112,8 +117,8 @@ export async function createCvsLogistics(
     IsCollection: isCollection ? "Y" : "N",
     ServerReplyURL: `${apiUrl}/webhooks/ecpay-logistics`,
   }
-  if (isCollection && collectionAmount > 0) {
-    fields.CollectionAmount = String(Math.round(collectionAmount))
+  if (isCollection) {
+    fields.CollectionAmount = goods
   }
   fields.CheckMacValue = buildCheckMacValue(fields, c.hashKey, c.hashIv)
 
@@ -149,7 +154,10 @@ export async function createHomeDelivery(
   _orderId: string,
   receiverName: string,
   receiverPhone: string,
-  receiverAddress: string
+  receiverZip: string,
+  receiverCity: string,
+  receiverAddress: string,
+  goodsAmount: number,
 ): Promise<HomeDeliveryResult> {
   const merchantTradeNo = `RRH${Date.now()}`
   const apiUrl = getApiBaseUrl()
@@ -163,7 +171,7 @@ export async function createHomeDelivery(
       .replace(/\//g, "/"),
     LogisticsType: "HOME",
     LogisticsSubType: "TCAT",
-    GoodsAmount: "1",
+    GoodsAmount: String(Math.max(1, Math.round(goodsAmount))),
     GoodsWeight: "1",
     GoodsName: "realreal.cc 訂單",
     SenderName: c.senderName,
@@ -172,8 +180,11 @@ export async function createHomeDelivery(
     SenderAddress: c.senderAddress,
     ReceiverName: receiverName,
     ReceiverPhone: receiverPhone,
-    ReceiverZipCode: "",
-    ReceiverAddress: receiverAddress,
+    // ECPay HOME/TCAT requires a non-empty ReceiverZipCode; it was hardcoded ""
+    // which rejected every home-delivery booking. City is prefixed onto the
+    // address line so the courier has the full address.
+    ReceiverZipCode: receiverZip || "",
+    ReceiverAddress: `${receiverCity}${receiverAddress}`.trim() || receiverAddress,
     IsCollection: "N",
     ServerReplyURL: `${apiUrl}/webhooks/ecpay-logistics`,
   }

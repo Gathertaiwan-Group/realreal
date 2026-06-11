@@ -106,7 +106,33 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
     }
   }
 
-  const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
+  // Price from the catalog (sale_price ?? price), not the client — keeps the
+  // previewed total equal to what POST /orders will actually charge. Graceful:
+  // an unknown variant falls back to the client price (preview is display-only;
+  // create-order is the strict authority).
+  const variantIds = items.map((i) => i.variantId)
+  const { data: variantRows } = await supabase
+    .from("product_variants")
+    .select("id, sku, name, price, sale_price, product_id, products(category_id, name)")
+    .in("id", variantIds)
+  type VariantRow = {
+    id: string
+    sku: string | null
+    name: string
+    price: number | string | null
+    sale_price: number | string | null
+    product_id: string
+    products: { category_id: string | null; name: string | null } | null
+  }
+  const variantMap = new Map<string, VariantRow>()
+  for (const row of (variantRows ?? []) as unknown as VariantRow[]) variantMap.set(row.id, row)
+  function unitPriceCents(item: { variantId: string; unitPrice: number }): number {
+    const v = variantMap.get(item.variantId)
+    if (!v) return item.unitPrice
+    return Math.round(Number(v.sale_price ?? v.price ?? 0) * 100)
+  }
+
+  const subtotalCents = items.reduce((sum, i) => sum + unitPriceCents(i) * i.qty, 0)
   const shippingRule = await getShippingRule(shippingMethod, paymentMethodHint)
   const feeDollars =
     shippingRule.free_threshold > 0 && subtotalCents / 100 >= shippingRule.free_threshold
@@ -132,22 +158,6 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
   }
 
   // Build variant lookup for category_id (campaign scope matching)
-  const variantIds = items.map((i) => i.variantId)
-  const { data: variantRows } = await supabase
-    .from("product_variants")
-    .select("id, sku, name, product_id, products(category_id, name)")
-    .in("id", variantIds)
-  type VariantRow = {
-    id: string
-    sku: string | null
-    name: string
-    product_id: string
-    products: { category_id: string | null; name: string | null } | null
-  }
-  const variantMap = new Map<string, VariantRow>()
-  for (const row of (variantRows ?? []) as unknown as VariantRow[]) {
-    variantMap.set(row.id, row)
-  }
   const cartItems: CartItem[] = items.map((item) => {
     const v = variantMap.get(item.variantId)
     return {
@@ -156,7 +166,7 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
       category_id: v?.products?.category_id ?? null,
       sku: v?.sku ?? null,
       name: item.productName ?? v?.products?.name ?? v?.name ?? "",
-      unit_price: item.unitPrice / 100,
+      unit_price: unitPriceCents(item) / 100,
       qty: item.qty,
     }
   })
@@ -347,7 +357,41 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   }
 
   const orderNumber = "RR" + Date.now() + randomBytes(4).toString("hex")
-  const subtotalCents = items.reduce((sum, i) => sum + i.unitPrice * i.qty, 0)
+
+  // Authoritative pricing — NEVER trust the client's items[].unitPrice. Recompute
+  // every line from the catalog so a tampered request (or a stale cart snapshot)
+  // can't set the charged amount. Effective price = sale_price ?? price, matching
+  // the storefront (apps/web AddToCartSection).
+  const variantIds = items.map((i) => i.variantId)
+  const { data: variantRows, error: variantErr } = await supabase
+    .from("product_variants")
+    .select("id, sku, name, price, sale_price, product_id, products(category_id, name)")
+    .in("id", variantIds)
+  if (variantErr) {
+    console.error("[orders] variant price fetch failed:", variantErr)
+    res.status(500).json({ error: "讀取商品資料失敗" }); return
+  }
+  type VariantRow = {
+    id: string
+    sku: string | null
+    name: string
+    price: number | string | null
+    sale_price: number | string | null
+    product_id: string
+    products: { category_id: string | null; name: string | null } | null
+  }
+  const variantMap = new Map<string, VariantRow>()
+  for (const row of (variantRows ?? []) as unknown as VariantRow[]) variantMap.set(row.id, row)
+  const missingVariants = variantIds.filter((id) => !variantMap.has(id))
+  if (missingVariants.length > 0) {
+    res.status(400).json({ error: "商品不存在或已下架", variantIds: missingVariants }); return
+  }
+  function unitPriceCents(variantId: string): number {
+    const v = variantMap.get(variantId)!
+    return Math.round(Number(v.sale_price ?? v.price ?? 0) * 100)
+  }
+
+  const subtotalCents = items.reduce((sum, i) => sum + unitPriceCents(i.variantId) * i.qty, 0)
   const feeDollars = await computeShipping(shippingMethod, subtotalCents / 100, paymentMethod)
   let shippingFeeCents = Math.round(feeDollars * 100)
 
@@ -412,24 +456,8 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     profileCreatedAt = (profile?.created_at as string | null) ?? null
   }
 
-  // Fetch variant → product → category mapping for cart items in a single round-trip.
-  // The evaluator's CartItem expects unit_price as dollars (not cents).
-  const variantIds = items.map((i) => i.variantId)
-  const { data: variantRows } = await supabase
-    .from("product_variants")
-    .select("id, sku, name, product_id, products(category_id, name)")
-    .in("id", variantIds)
-  type VariantRow = {
-    id: string
-    sku: string | null
-    name: string
-    product_id: string
-    products: { category_id: string | null; name: string | null } | null
-  }
-  const variantMap = new Map<string, VariantRow>()
-  for (const row of (variantRows ?? []) as unknown as VariantRow[]) {
-    variantMap.set(row.id, row)
-  }
+  // Cart items for the campaign evaluator — reuse variantMap (built above for
+  // authoritative pricing). unit_price is authoritative dollars, not client-supplied.
   const cartItems: CartItem[] = items.map((item) => {
     const v = variantMap.get(item.variantId)
     return {
@@ -438,7 +466,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       category_id: v?.products?.category_id ?? null,
       sku: v?.sku ?? null,
       name: item.productName ?? v?.products?.name ?? v?.name ?? "",
-      unit_price: item.unitPrice / 100,
+      unit_price: unitPriceCents(item.variantId) / 100,
       qty: item.qty,
     }
   })
@@ -656,11 +684,11 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
         order_id: order.id,
         variant_id: item.variantId,
         qty: item.qty,
-        unit_price: centsToTwd(item.unitPrice),
+        unit_price: centsToTwd(unitPriceCents(item.variantId)),
         product_snapshot: {
-          name: item.productName ?? "",
-          variant_name: item.variantName ?? "",
-          unit_price: centsToTwd(item.unitPrice),
+          name: item.productName ?? variantMap.get(item.variantId)?.products?.name ?? "",
+          variant_name: item.variantName ?? variantMap.get(item.variantId)?.name ?? "",
+          unit_price: centsToTwd(unitPriceCents(item.variantId)),
         },
       }))
     )

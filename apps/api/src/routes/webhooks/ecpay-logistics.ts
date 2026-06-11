@@ -28,8 +28,15 @@ ecpayLogisticsWebhookRouter.post("/", async (req, res) => {
   const params = req.body as Record<string, string>
   const { AllPayLogisticsID, LogisticsStatus, BookingNote, CVSPaymentNo, CVSValidationNo, CheckMacValue } = params
 
-  // Verify CheckMacValue signature
-  if (CheckMacValue) {
+  // Verify CheckMacValue signature — REQUIRED. Previously this was wrapped in
+  // `if (CheckMacValue)`, so simply omitting the field skipped verification and
+  // let anyone POST LogisticsStatus=3018 to mark a cvs_cod order paid+completed
+  // (and fire points/invoice). Missing signature = reject.
+  if (!CheckMacValue) {
+    console.warn("[webhooks/ecpay-logistics] missing CheckMacValue — rejected")
+    res.status(400).send("0|SignatureMissing"); return
+  }
+  {
     const paramsWithoutMac = { ...params }
     delete paramsWithoutMac.CheckMacValue
     const { hashKey, hashIv } = await getEcpayCreds()

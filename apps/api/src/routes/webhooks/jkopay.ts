@@ -89,7 +89,7 @@ jkopayWebhookRouter.post("/", async (req, res) => {
       })
       .eq("id", tx.id)
 
-    await supabase
+    const { error: flipErr } = await supabase
       .from("orders")
       .update({
         status: success ? "processing" : "failed",
@@ -97,6 +97,14 @@ jkopayWebhookRouter.post("/", async (req, res) => {
         updated_at: new Date().toISOString(),
       })
       .eq("id", tx.order_id)
+    if (flipErr) {
+      // Rewind dedupe + 500 so JKOPay retries; otherwise a paid order is
+      // silently stuck on pending.
+      console.error("[webhooks/jkopay] order status flip failed:", flipErr)
+      await supabase.from("webhook_events").delete()
+        .eq("gateway", "jkopay").eq("merchant_trade_no", merchant_trade_no)
+      res.status(500).json({ error: "order update failed" }); return
+    }
 
     if (success) {
       try {

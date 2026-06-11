@@ -15,7 +15,7 @@ import { createCvsLogistics, createHomeDelivery } from "../lib/ecpay-logistics"
 export async function processCreateShipment(orderId: string) {
   const { data: order } = await supabase
     .from("orders")
-    .select("id, order_number, shipping_method, status, payment_status")
+    .select("id, order_number, shipping_method, status, payment_status, total")
     .eq("id", orderId)
     .single()
 
@@ -46,12 +46,14 @@ export async function processCreateShipment(orderId: string) {
 
   const { data: address } = await supabase
     .from("order_addresses")
-    .select("name, phone, email, address, cvs_store_id, cvs_type")
+    .select("name, phone, email, address, postal_code, city, cvs_store_id, cvs_type")
     .eq("order_id", orderId)
     .eq("type", "shipping")
     .maybeSingle()
 
   if (!address) throw new Error(`Shipping address not found for order ${orderId}`)
+
+  const goodsAmount = Math.round(Number(order.total ?? 0))
 
   let ecpayLogisticsId: string
   let cvsPaymentNo: string | null = null
@@ -64,7 +66,10 @@ export async function processCreateShipment(orderId: string) {
       orderId,
       address.name,
       address.phone,
+      address.postal_code ?? "",
+      address.city ?? "",
       address.address ?? "",
+      goodsAmount,
     )
     ecpayLogisticsId = result.logisticsId
   } else {
@@ -79,6 +84,7 @@ export async function processCreateShipment(orderId: string) {
       address.phone,
       address.email ?? "",
       address.cvs_store_id ?? "",
+      goodsAmount,
     )
     ecpayLogisticsId = result.logisticsId
     cvsPaymentNo = result.cvsPaymentNo ?? null
@@ -158,8 +164,8 @@ export async function processCreateShipmentCod(orderId: string) {
     address.phone,
     address.email ?? "",
     address.cvs_store_id ?? "",
-    true,               // isCollection = Y
-    collectionAmountTwd,
+    collectionAmountTwd, // GoodsAmount = 代收金額 = 訂單總額
+    true,                // isCollection = Y
   )
 
   const { error } = await supabase.from("logistics").insert({
