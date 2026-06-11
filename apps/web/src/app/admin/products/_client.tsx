@@ -13,6 +13,7 @@ type Row = {
   slug: string
   is_active: boolean
   is_featured?: boolean
+  is_addon?: boolean
   display_priority?: number
   created_at: string
 }
@@ -156,6 +157,7 @@ export default function AdminProductsClient({ initialProducts }: { initialProduc
                 <Badge variant={p.is_active ? "default" : "secondary"}>
                   {p.is_active ? "上架" : "下架"}
                 </Badge>
+                {p.is_addon && <Badge variant="outline">加購</Badge>}
                 <Link href={`/admin/products/${p.id}`}>
                   <Button variant="outline" size="sm">編輯</Button>
                 </Link>

@@ -57,13 +57,24 @@ function mockAdminAuth() {
 
 describe("GET /products", () => {
   it("returns paginated products", async () => {
+    const select = vi.fn().mockReturnThis()
     const mockProductsQuery = {
-      select: vi.fn().mockReturnThis(),
+      select,
       eq: vi.fn().mockReturnThis(),
       ilike: vi.fn().mockReturnThis(),
       textSearch: vi.fn().mockReturnThis(),
       range: vi.fn().mockResolvedValue({
-        data: [mockProduct],
+        data: [{
+          ...mockProduct,
+          product_variants: [{
+            id: "variant-1",
+            sku: "PROBIOTIC-30",
+            name: "30 顆",
+            price: 680,
+            sale_price: 599,
+            stock_qty: 12,
+          }],
+        }],
         error: null,
         count: 1,
       }),
@@ -85,6 +96,16 @@ describe("GET /products", () => {
     expect(res.status).toBe(200)
     expect(res.body).toHaveProperty("data")
     expect(res.body).toHaveProperty("total")
+    expect(select).toHaveBeenCalledWith(
+      expect.stringContaining("product_variants(id, sku, name, price, sale_price, stock_qty)"),
+      { count: "exact" },
+    )
+    expect(res.body.data[0].variants[0]).toMatchObject({
+      id: "variant-1",
+      price: 680,
+      sale_price: 599,
+      stock_qty: 12,
+    })
   })
 })
 

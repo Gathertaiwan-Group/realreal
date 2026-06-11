@@ -118,7 +118,7 @@ productsRouter.get("/", async (req, res) => {
 
   let query = supabase
     .from("products")
-    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, display_priority, created_at, product_variants(sku, name)", { count: "exact" })
+    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, display_priority, created_at, product_variants(id, sku, name, price, sale_price, stock_qty)", { count: "exact" })
     .eq("is_active", true)
     .order("is_featured", { ascending: false })
     .order("display_priority", { ascending: false })
