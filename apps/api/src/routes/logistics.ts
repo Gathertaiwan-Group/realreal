@@ -1,8 +1,37 @@
 import { Router } from "express"
-import { buildCheckMacValue, getEcpayCreds } from "../lib/ecpay-logistics"
+import { buildCheckMacValue, getEcpayCreds, buildC2CPrintForm } from "../lib/ecpay-logistics"
 import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
+import { supabase } from "../lib/supabase"
+import { requireAuth } from "../middleware/auth"
+import { requireAdmin } from "../middleware/admin"
 
 export const logisticsRouter = Router()
+
+// GET /logistics/print/:orderId — admin opens ECPay's C2C 寄件單 print page.
+// Returns an auto-submitting form that POSTs to ECPay's print endpoint; the
+// admin prints the label and takes the package (with the CVS code) to a store.
+logisticsRouter.get("/print/:orderId", requireAuth, requireAdmin, async (req, res) => {
+  const { data: logistics } = await supabase
+    .from("logistics")
+    .select("ecpay_logistics_id, type, cvs_payment_no, cvs_validation_no, raw_response")
+    .eq("order_id", req.params.orderId)
+    .limit(1)
+    .maybeSingle()
+
+  if (!logistics || !logistics.ecpay_logistics_id) {
+    res.status(404).send("此訂單尚無綠界物流單"); return
+  }
+  if (logistics.type === "HOME") {
+    res.status(400).send("宅配訂單無 C2C 寄件單"); return
+  }
+  if (!logistics.cvs_payment_no || !logistics.cvs_validation_no) {
+    res.status(400).send("缺 CVS 寄件編號，無法列印（物流單可能尚未建立完成）"); return
+  }
+
+  const html = await buildC2CPrintForm(logistics)
+  res.setHeader("Content-Type", "text/html; charset=utf-8")
+  res.send(html)
+})
 
 // GET /logistics/map — Generate ECPay store map selection form (auto-submits)
 logisticsRouter.get("/map", async (req, res) => {

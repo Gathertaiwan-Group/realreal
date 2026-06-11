@@ -209,28 +209,41 @@ export async function createHomeDelivery(
 }
 
 export async function cancelEcpayLogistics(
-  logistics: { ecpay_logistics_id: string; type: string; raw_response: any }
+  logistics: {
+    ecpay_logistics_id: string
+    type: string
+    cvs_payment_no?: string | null
+    cvs_validation_no?: string | null
+    raw_response: any
+  },
 ): Promise<{ ok: boolean; message: string; raw: string }> {
   const c = await getEcpayCreds()
-  const merchantTradeNo = logistics.raw_response?.MerchantTradeNo
-  if (!merchantTradeNo) return { ok: false, message: "缺 MerchantTradeNo", raw: "" }
 
-  // ECPay endpoint: POST {base}/Helper/LogisticsTradeCancel
-  // Fields: MerchantID, MerchantTradeNo, AllPayLogisticsID, LogisticsType,
-  //         LogisticsSubType, CheckMacValue
-  // NOTE: endpoint path flagged uncertain in spec — verify against ECPay
-  //       全站宅配技術文件 v2.0.16+ in sandbox before production rollout.
+  // Only CVS C2C orders can be cancelled this way. HOME/TCAT has no equivalent
+  // self-service cancel — surface that so the admin handles it via ECPay 客服.
+  if (logistics.type === "HOME") {
+    return { ok: false, message: "宅配訂單不支援線上取消，請聯繫綠界客服", raw: "" }
+  }
+
+  const cvsPaymentNo = logistics.cvs_payment_no ?? logistics.raw_response?.CVSPaymentNo
+  const cvsValidationNo = logistics.cvs_validation_no ?? logistics.raw_response?.CVSValidationNo
+  if (!cvsPaymentNo || !cvsValidationNo) {
+    return { ok: false, message: "缺 CVSPaymentNo / CVSValidationNo（C2C 取消必填）", raw: "" }
+  }
+
+  // ECPay C2C cancel endpoint: POST {base}/Express/CancelC2COrder
+  // Fields (per official SDK): MerchantID, AllPayLogisticsID, CVSPaymentNo,
+  // CVSValidationNo, CheckMacValue. (The old /Helper/LogisticsTradeCancel path
+  // was wrong and always failed.)
   const fields: Record<string, string> = {
     MerchantID: c.merchantId,
-    MerchantTradeNo: merchantTradeNo,
     AllPayLogisticsID: logistics.ecpay_logistics_id,
-    // type=CVS/HOME 推回 LogisticsType (CVS/HOME) and LogisticsSubType (UNIMARTC2C/FAMIC2C/TCAT)
-    LogisticsType: logistics.type === "HOME" ? "HOME" : "CVS",
-    LogisticsSubType: logistics.raw_response?.LogisticsSubType ?? "",
+    CVSPaymentNo: String(cvsPaymentNo),
+    CVSValidationNo: String(cvsValidationNo),
   }
   fields.CheckMacValue = buildCheckMacValue(fields, c.hashKey, c.hashIv)
 
-  const resp = await fetch(`${c.baseUrl}/Helper/LogisticsTradeCancel`, {
+  const resp = await fetch(`${c.baseUrl}/Express/CancelC2COrder`, {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams(fields).toString(),
@@ -242,4 +255,50 @@ export async function cancelEcpayLogistics(
     message: msgParts.join("|") || `RtnCode=${code}`,
     raw: text,
   }
+}
+
+/**
+ * Build the auto-submitting HTML form that opens ECPay's C2C 寄件單 print page.
+ * The merchant MUST print this and take the package (with CVSPaymentNo) to a
+ * store to actually ship a C2C order — there is no other way to fulfil it.
+ * 7-11 → PrintUniMartC2COrderInfo, 全家 → PrintFAMIC2COrderInfo.
+ */
+export async function buildC2CPrintForm(logistics: {
+  ecpay_logistics_id: string
+  cvs_payment_no?: string | null
+  cvs_validation_no?: string | null
+  raw_response: any
+}): Promise<string> {
+  const c = await getEcpayCreds()
+  const cvsPaymentNo = logistics.cvs_payment_no ?? logistics.raw_response?.CVSPaymentNo
+  const cvsValidationNo = logistics.cvs_validation_no ?? logistics.raw_response?.CVSValidationNo
+  const subType: string = logistics.raw_response?.LogisticsSubType ?? "UNIMARTC2C"
+
+  const printPath = subType.startsWith("FAMI")
+    ? "/Express/PrintFAMIC2COrderInfo"
+    : "/Express/PrintUniMartC2COrderInfo"
+
+  const fields: Record<string, string> = {
+    MerchantID: c.merchantId,
+    AllPayLogisticsID: logistics.ecpay_logistics_id,
+    CVSPaymentNo: String(cvsPaymentNo ?? ""),
+    CVSValidationNo: String(cvsValidationNo ?? ""),
+  }
+  fields.CheckMacValue = buildCheckMacValue(fields, c.hashKey, c.hashIv)
+
+  const inputs = Object.entries(fields)
+    .map(([k, v]) => `<input type="hidden" name="${k}" value="${escapeHtmlAttr(v)}" />`)
+    .join("\n      ")
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /><title>ECPay 寄件單</title></head>
+<body>
+  <form id="ecpay-print" method="POST" action="${c.baseUrl}${printPath}">
+    ${inputs}
+  </form>
+  <script>document.getElementById("ecpay-print").submit();</script>
+</body></html>`
+}
+
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 }

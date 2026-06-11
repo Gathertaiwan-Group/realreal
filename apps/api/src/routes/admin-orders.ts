@@ -325,6 +325,8 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
           status: string | null
           type: string | null
           ecpay_logistics_id: string | null
+          cvs_payment_no: string | null
+          cvs_validation_no: string | null
           delivered_at: string | null
           raw_response: Record<string, unknown> | null
         }>
@@ -333,6 +335,8 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
           status: string | null
           type: string | null
           ecpay_logistics_id: string | null
+          cvs_payment_no: string | null
+          cvs_validation_no: string | null
           delivered_at: string | null
           raw_response: Record<string, unknown> | null
         }
@@ -344,7 +348,7 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
     .select(
       "id, user_id, status, payment_status, payment_method, total, gateway_tx_id, " +
         "invoices!invoices_order_id_fkey(id, status, amego_id), " +
-        "logistics(id, status, type, ecpay_logistics_id, delivered_at, raw_response)",
+        "logistics(id, status, type, ecpay_logistics_id, cvs_payment_no, cvs_validation_no, delivered_at, raw_response)",
     )
     .eq("id", orderId)
     .single()
@@ -407,6 +411,8 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
       const r = await cancelEcpayLogistics({
         ecpay_logistics_id: logistics.ecpay_logistics_id,
         type: logistics.type ?? "",
+        cvs_payment_no: logistics.cvs_payment_no,
+        cvs_validation_no: logistics.cvs_validation_no,
         raw_response: logistics.raw_response,
       })
       const existingRaw = (logistics.raw_response ?? {}) as Record<string, unknown>

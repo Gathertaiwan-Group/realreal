@@ -24,6 +24,8 @@ import {
   voidInvoiceAction,
 } from "./actions"
 import { getOrderDisplayStatus } from "@/lib/order-display-status"
+import { createClient } from "@/lib/supabase/client"
+import { API_URL } from "@/lib/api-url"
 
 /* ---------- Action Buttons ---------- */
 
@@ -753,6 +755,35 @@ export function LogisticsCard({
     })
   }
 
+  // Open ECPay's C2C 寄件單 print page. The endpoint needs admin auth, so we
+  // fetch it with the session token and write the auto-submitting HTML into a
+  // new window (a plain link couldn't carry the Authorization header).
+  const [printing, setPrinting] = useState(false)
+  async function handlePrintLabel() {
+    setPrinting(true)
+    const win = window.open("", "_blank")
+    try {
+      const supabase = createClient()
+      const { data: { session } } = await supabase.auth.getSession()
+      const res = await fetch(`${API_URL}/logistics/print/${orderId}`, {
+        headers: { Authorization: `Bearer ${session?.access_token ?? ""}` },
+      })
+      const html = await res.text()
+      if (!res.ok) {
+        win?.close()
+        toast.error(`列印失敗：${html || res.statusText}`)
+        return
+      }
+      win?.document.write(html)
+      win?.document.close()
+    } catch (e) {
+      win?.close()
+      toast.error(e instanceof Error ? e.message : "列印失敗")
+    } finally {
+      setPrinting(false)
+    }
+  }
+
   // Empty state — explain why + offer retry if payment is settled.
   if (!logistics) {
     return (
@@ -846,6 +877,19 @@ export function LogisticsCard({
               value={logistics.cvs_validation_no ?? ""}
               emptyText="—"
             />
+            {logistics.cvs_payment_no && (
+              <div className="mt-3 flex justify-end">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={printing}
+                  onClick={handlePrintLabel}
+                >
+                  {printing ? "開啟中…" : "🖨 列印寄件單"}
+                </Button>
+              </div>
+            )}
           </>
         )}
 
