@@ -59,10 +59,10 @@ const FIELD_META: Record<
   "jkopay.secret_key": { label: "Secret Key" },
   "jkopay.sandbox":    { label: "沙箱模式", type: "switch", hint: "關閉 = 正式 onlinepay.jkopay.com｜開啟 = 測試 uat-onlinepay.jkopay.app" },
   // ECPay
-  "ecpay.merchant_id":    { label: "Merchant ID" },
-  "ecpay.hash_key":       { label: "Hash Key" },
+  "ecpay.merchant_id":    { label: "Merchant ID", hint: "綠界「物流 (C2C)」專用帳號，與線上刷卡的金流帳號不同" },
+  "ecpay.hash_key":       { label: "Hash Key", hint: "物流帳號的 HashKey（綠界後台 → 系統開發管理）" },
   "ecpay.hash_iv":        { label: "Hash IV" },
-  "ecpay.sandbox":        { label: "沙箱模式", type: "switch", hint: "切到 logistics-stage.ecpay.com.tw" },
+  "ecpay.sandbox":        { label: "沙箱模式", type: "switch", hint: "開=測試環境(logistics-stage)；正式上線前需先完成綠界 7-11/全家 C2C 測標，再關閉" },
   "ecpay.sender_name":    { label: "寄件人姓名", placeholder: "誠真生活" },
   "ecpay.sender_phone":   { label: "寄件人電話", placeholder: "0912345678" },
   "ecpay.sender_zip":     { label: "寄件人郵遞區號", placeholder: "100" },
