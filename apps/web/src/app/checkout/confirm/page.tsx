@@ -6,6 +6,7 @@ import Link from "next/link"
 import { useCart } from "@/lib/cart"
 import { Button } from "@/components/ui/button"
 import { trackPurchase } from "@/lib/analytics"
+import { clearPromoState } from "@/components/checkout/PromoWidget"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -93,6 +94,26 @@ function mapPaymentStatus(payment_status: string | undefined): PaymentStatus {
   return "pending"
 }
 
+// Initial status computed from render-time inputs (no setState-in-effect):
+//   - test_paid arrives already settled → success
+//   - a gateway return with NO order number can't be polled; honor an explicit
+//     ?status=failed / ?success=false, else show pending
+//   - otherwise we have an order number to poll → loading
+function initialPaymentStatus(
+  sp: URLSearchParams,
+  orderNumber: string,
+  isTestPaid: boolean,
+): PaymentStatus {
+  if (isTestPaid) return "success"
+  if (orderNumber === "---") {
+    const explicit = sp.get("status")
+    return explicit === "failed" || explicit === "fail" || sp.get("success") === "false"
+      ? "failed"
+      : "pending"
+  }
+  return "loading"
+}
+
 export default function ConfirmPage() {
   const searchParams = useSearchParams()
   const clearCart = useCart((s) => s.clear)
@@ -102,8 +123,8 @@ export default function ConfirmPage() {
   const method = searchParams.get("method")
   const isCvsCod = method === "cvs_cod"
   const isTestPaid = method === "test_paid"
-  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(
-    isTestPaid ? "success" : "loading",
+  const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(() =>
+    initialPaymentStatus(searchParams, orderNumber, isTestPaid),
   )
   const estimatedDelivery = getEstimatedDelivery()
 
@@ -118,15 +139,9 @@ export default function ConfirmPage() {
     // CVS COD / test_paid：訂單無需線上付款確認，跳過 polling
     if (method === "cvs_cod" || method === "test_paid") return
 
-    if (orderNumber === "---") {
-      const explicit = searchParams.get("status")
-      setPaymentStatus(
-        explicit === "failed" || explicit === "fail" || searchParams.get("success") === "false"
-          ? "failed"
-          : "pending",
-      )
-      return
-    }
+    // No order number to poll — the initial status (set from URL params in the
+    // useState initializer above) already reflects failed/pending; nothing to do.
+    if (orderNumber === "---") return
 
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | null = null
@@ -167,22 +182,34 @@ export default function ConfirmPage() {
       cancelled = true
       if (timer) clearTimeout(timer)
     }
-  }, [orderNumber, searchParams, method])
+  }, [orderNumber, method])
 
-  // Clear cart and checkout data once on mount
+  // Clear cart + checkout/promo storage ONLY on a confirmed success — never
+  // while still loading, pending, or failed. The previous version cleared
+  // unconditionally on mount, which emptied the cart even on a failed payment,
+  // so the failed-branch "重新付款" button led to an empty cart → dead end.
+  //
+  // Success = the server reported payment_status paid/captured (paymentStatus
+  // === "success"), OR a no-gateway method that arrives already-settled
+  // (cvs_cod order created / test_paid sandbox). cvs_cod + test_paid already
+  // clear the cart at submit time on the payment page; re-clearing here is
+  // idempotent. Failure / cancel leaves the cart intact so retry works.
   useEffect(() => {
     if (cleanedUp.current) return
+    const settled = paymentStatus === "success" || isCvsCod || isTestPaid
+    if (!settled) return
     cleanedUp.current = true
 
     // Clear the zustand persisted cart
     clearCart()
-    // Clear localStorage checkout data saved during the checkout flow
+    // Clear localStorage checkout data + promo state saved during checkout
     try {
       localStorage.removeItem("realreal-checkout")
     } catch {
       // ignore — SSR or storage unavailable
     }
-  }, [clearCart])
+    clearPromoState()
+  }, [clearCart, paymentStatus, isCvsCod, isTestPaid])
 
   // Fire GA4 `purchase` event exactly once, after the server confirms the
   // payment succeeded (spec L §2). We deliberately wait for paymentStatus

@@ -326,12 +326,31 @@ export default function CheckoutPage() {
     }
   }, [])
 
+  // Promo state lifted from step 2 — keeps coupon / points / member discount
+  // visible BEFORE the user fills the address form. PromoWidget owns writes;
+  // we just subscribe so the preview fetch + sidebar summary refresh. Declared
+  // ABOVE the preview effect so that effect can fold the applied coupon/points
+  // into POST /orders/preview, making preview.total the single authoritative
+  // grand total (member + campaign + coupon + points all computed server-side).
+  const [promo, setPromo] = useState<PromoState | null>(null)
+  useEffect(() => {
+    setPromo(readPromoState())
+    const handler = () => setPromo(readPromoState())
+    window.addEventListener(PROMO_EVENT, handler)
+    return () => window.removeEventListener(PROMO_EVENT, handler)
+  }, [])
+
   // 2c. Spec R Section 1 — call POST /orders/preview whenever cart or shipping
   //     changes so the summary can show 首購折抵 / 滿額贈品 / 等活動 lines BEFORE
   //     the user pays. Debounced 300ms.
   const [preview, setPreview] = useState<{
     subtotal: number
     shipping: number
+    member_discount: number
+    campaign_discount: number
+    coupon_discount: number
+    points_discount: number
+    points_used: number
     discount_total: number
     discounts: Array<{ campaign_id: string; name: string; amount: number; type: string }>
     free_items: Array<{ sku?: string; product_id?: string; qty: number; name?: string }>
@@ -343,6 +362,13 @@ export default function CheckoutPage() {
     () => items.map(i => i.variantId + ":" + i.qty).sort().join("|"),
     [items],
   )
+  // Applied coupon / points the user set via PromoWidget. Folding these into
+  // the preview request makes preview.total the authoritative grand total
+  // (server applies the same subtotal→tier→campaign→coupon→points precedence),
+  // so the client never has to re-subtract any discount itself.
+  const appliedCouponCode = promo?.couponApplied ? promo.couponCode : ""
+  const appliedPointsUsed = promo?.pointsAllowed ? promo.pointsUsed : 0
+  const promoPreviewKey = `${appliedCouponCode}:${appliedPointsUsed}`
   useEffect(() => {
     if (items.length === 0) {
       setPreview(null)
@@ -367,6 +393,8 @@ export default function CheckoutPage() {
             items: buildOrderPreviewItems(items),
             shippingMethod: toApiShippingMethod(shippingMethod),
             ...(addressType === "cvs_cod" ? { paymentMethodHint: "cvs_cod" } : {}),
+            ...(appliedCouponCode ? { couponCode: appliedCouponCode } : {}),
+            ...(appliedPointsUsed > 0 ? { points_used: appliedPointsUsed } : {}),
           }),
         })
         if (!res.ok) { setPreview(null); return }
@@ -382,9 +410,10 @@ export default function CheckoutPage() {
       clearTimeout(t)
       setPreviewLoading(false)
     }
-    // items intentionally referenced via itemsKey for stable identity (T20)
+    // items intentionally referenced via itemsKey for stable identity (T20).
+    // appliedCoupon/Points referenced via promoPreviewKey for the same reason.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [itemsKey, shippingMethod, addressType])
+  }, [itemsKey, shippingMethod, addressType, promoPreviewKey])
 
   // 3. Listen for postMessage from the ECPay store-picker popup.
   //    Origin guard prevents third-party tabs from injecting fake selections.
@@ -532,6 +561,20 @@ export default function CheckoutPage() {
     if (addressType === "overseas") {
       setShippingMethod("overseas_cod")
     }
+
+    // Clear fields that don't belong to the newly-selected mode so they can't
+    // leak into the persisted order address (T-P2). Going to a CVS mode drops
+    // the street address; going to a non-CVS mode drops the picked store.
+    if (addressType === "home" || addressType === "overseas") {
+      setCvsStoreId("")
+      setCvsStoreName("")
+      setCvsAddress("")
+    }
+    if (addressType === "cvs" || addressType === "cvs_cod") {
+      setAddressLine("")
+      setPostalCode("")
+      setDistrict("")
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addressType])
 
@@ -587,21 +630,24 @@ export default function CheckoutPage() {
     setTouched({ name: true, phone: true, email: true, city: true, address: true, cvsStore: true, country: true })
     if (Object.keys(errs).length > 0) return
 
+    // Build the persisted address by addressType so residual fields from a
+    // previously-selected mode never leak into the order (T-P2). Switching
+    // home→cvs must not carry a street address; cvs→home must not carry a
+    // store id; overseas keeps country but drops TW-only postal/district +
+    // any store id. forcedPaymentMethod is only attached for cvs_cod, so it is
+    // implicitly cleared when the user leaves cvs_cod.
+    const baseAddress = { name, phone, email, addressType }
+    const address =
+      addressType === "home"
+        ? { ...baseAddress, city, district, postalCode, addressLine }
+        : addressType === "cvs" || addressType === "cvs_cod"
+          ? { ...baseAddress, cvsStoreName, cvsStoreId }
+          : // overseas
+            { ...baseAddress, country, city, addressLine }
+
     const checkoutData = {
       items,
-      address: {
-        name,
-        phone,
-        email,
-        addressType,
-        city,
-        district,
-        postalCode,
-        addressLine,
-        cvsStoreName,
-        cvsStoreId,
-        country,
-      },
+      address,
       shippingMethod,
       shippingFee: preview?.shipping ?? 0,
       invoice,
@@ -611,32 +657,45 @@ export default function CheckoutPage() {
     router.push("/checkout/payment")
   }
 
-  // Promo state lifted from step 2 — keeps coupon / points / member discount
-  // visible BEFORE the user fills the address form. PromoWidget owns writes;
-  // we just subscribe so the sidebar summary refreshes.
-  const [promo, setPromo] = useState<PromoState | null>(null)
-  useEffect(() => {
-    setPromo(readPromoState())
-    const handler = () => setPromo(readPromoState())
-    window.addEventListener(PROMO_EVENT, handler)
-    return () => window.removeEventListener(PROMO_EVENT, handler)
-  }, [])
-
   if (!hydrated) return null
 
   const subtotal = total()
   const shippingLabel = formatShippingPreviewLabel({ preview, loading: previewLoading })
-  // Server preview is the source of truth because it reads runtime shipping
-  // settings from the API. Until it returns, avoid guessing hardcoded fees.
-  const baseTotal = preview?.total ?? subtotal
   const discountLines = preview?.discounts ?? []
   const freeItemsList = preview?.free_items ?? []
 
-  // Promo deductions (member tier discount + coupon + points)
-  const memberDiscountAmount = promo ? Math.round(subtotal * promo.memberDiscountRate) : 0
-  const couponDiscount = promo?.couponApplied ? promo.couponDiscount : 0
-  const pointsDiscount = promo?.pointsAllowed ? promo.pointsDiscount : 0
-  const grandTotal = Math.max(0, baseTotal - memberDiscountAmount - couponDiscount - pointsDiscount)
+  // The order SUMMARY total must be the server's authoritative number. The
+  // preview request now carries the applied coupon/points, so preview.total
+  // already has member + campaign + coupon + points subtracted server-side —
+  // we display it verbatim and NEVER re-subtract a discount here (doing so
+  // double-counted the member discount and showed less than we charge).
+  //
+  // Each discount LINE comes from the matching preview field so the breakdown
+  // sums exactly to preview.total.
+  //
+  // Fallback (preview === null, e.g. network blip): fall back to the raw
+  // subtotal minus the PromoWidget's own client-side estimates. This is a
+  // best-effort display only — the real charge always comes from POST /orders.
+  const memberDiscountAmount = preview
+    ? preview.member_discount
+    : promo
+      ? Math.round(subtotal * promo.memberDiscountRate)
+      : 0
+  // Campaign discounts render as individual lines via `discountLines`
+  // (preview.discounts[]); no separate scalar needed.
+  const couponDiscount = preview
+    ? preview.coupon_discount
+    : promo?.couponApplied
+      ? promo.couponDiscount
+      : 0
+  const pointsDiscount = preview
+    ? preview.points_discount
+    : promo?.pointsAllowed
+      ? promo.pointsDiscount
+      : 0
+  const grandTotal = preview
+    ? preview.total
+    : Math.max(0, subtotal - memberDiscountAmount - couponDiscount - pointsDiscount)
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-5xl">
@@ -1096,7 +1155,7 @@ export default function CheckoutPage() {
                     ))}
                     {memberDiscountAmount > 0 && (
                       <div className="flex justify-between text-emerald-700">
-                        <span>👑 {promo?.tierName} {Math.round((promo?.memberDiscountRate ?? 0) * 100)}% off</span>
+                        <span>👑 {promo?.tierName ?? "會員"} {Math.round((promo?.memberDiscountRate ?? 0) * 100)}% off</span>
                         <span>- NT$ {memberDiscountAmount.toLocaleString()}</span>
                       </div>
                     )}
@@ -1108,7 +1167,7 @@ export default function CheckoutPage() {
                     )}
                     {pointsDiscount > 0 && (
                       <div className="flex justify-between text-emerald-700">
-                        <span>✨ 點數折抵（{promo?.pointsUsed} 點）</span>
+                        <span>✨ 點數折抵（{(promo?.pointsUsed ?? preview?.points_used ?? 0).toLocaleString()} 點）</span>
                         <span>- NT$ {pointsDiscount.toLocaleString()}</span>
                       </div>
                     )}
@@ -1179,7 +1238,7 @@ export default function CheckoutPage() {
                 ))}
                 {memberDiscountAmount > 0 && (
                   <div className="flex justify-between text-emerald-700 font-medium">
-                    <span>👑 {promo?.tierName} {Math.round((promo?.memberDiscountRate ?? 0) * 100)}% off</span>
+                    <span>👑 {promo?.tierName ?? "會員"} {Math.round((promo?.memberDiscountRate ?? 0) * 100)}% off</span>
                     <span>- NT$ {memberDiscountAmount.toLocaleString()}</span>
                   </div>
                 )}
@@ -1191,7 +1250,7 @@ export default function CheckoutPage() {
                 )}
                 {pointsDiscount > 0 && (
                   <div className="flex justify-between text-emerald-700 font-medium">
-                    <span>✨ 點數折抵（{promo?.pointsUsed} 點）</span>
+                    <span>✨ 點數折抵（{(promo?.pointsUsed ?? preview?.points_used ?? 0).toLocaleString()} 點）</span>
                     <span>- NT$ {pointsDiscount.toLocaleString()}</span>
                   </div>
                 )}

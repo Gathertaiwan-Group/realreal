@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
@@ -8,6 +8,12 @@ import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { API_URL } from "@/lib/api-url"
 import type { InvoiceData } from "@/components/checkout/InvoiceSelector"
+import {
+  buildOrderPreviewItems,
+  formatShippingPreviewLabel,
+  toApiShippingMethod,
+  type CheckoutShippingMethod,
+} from "@/lib/shipping-preview"
 import {
   readPromoState,
   clearPromoState,
@@ -105,6 +111,22 @@ export default function PaymentPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Idempotency-Key for POST /orders (Fix 4a). The API has idempotency
+  // middleware that replays the cached response when the same key arrives
+  // twice within its TTL — so a double-submit returns the SAME order instead
+  // of creating a duplicate. We generate the key once per submit attempt and
+  // reuse it on retries of that attempt (e.g. a network-timeout retry where the
+  // server may already have created the order). It is rotated to null only when
+  // the user changes an order-affecting input below, so a deliberately
+  // different order isn't blocked by a stale cached response.
+  const idempotencyKeyRef = useRef<string | null>(null)
+  // Set once the submission has irreversibly handed off (redirect to gateway
+  // or push to confirm). Keeps the button disabled even though the `finally`
+  // resets `loading` — a re-enabled button after `window.location.href = ...`
+  // would let an impatient user fire a second order during the redirect.
+  const submittedRef = useRef(false)
+  const [submitted, setSubmitted] = useState(false)
+
   // Promo state is now owned by step 1's PromoWidget; we just read it.
   // Listening to PROMO_EVENT lets the sidebar stay in sync if the user opens
   // a second tab and modifies the coupon there.
@@ -116,19 +138,30 @@ export default function PaymentPage() {
     return () => window.removeEventListener(PROMO_EVENT, handler)
   }, [])
 
-  // Logged-in detection — controls visibility of the "test_paid" sandbox
-  // payment method (skips gateway but runs full post-payment pipeline:
-  // invoice / email / stock / points / LINE Notify). Available to any
-  // authenticated user (not just admin) so the team can self-test end-to-end.
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  // Admin detection — gates visibility of the "test_paid" sandbox payment
+  // method (skips gateway but runs the full post-payment pipeline: invoice /
+  // email / stock / points / LINE Notify). The server restricts test_paid to
+  // role==="admin" (403 otherwise), so a normal customer must NOT see it.
+  // Mirror the server check (orders.ts) + admin layout: read user_profiles.role
+  // for the logged-in user and require "admin".
+  const [isAdmin, setIsAdmin] = useState(false)
   useEffect(() => {
     let cancelled = false
     void (async () => {
       try {
         const supabase = createClient()
         const { data: { user } } = await supabase.auth.getUser()
-        if (!cancelled && user) setIsLoggedIn(true)
-      } catch { /* guest path */ }
+        if (!user || cancelled) return
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("role")
+          .eq("user_id", user.id)
+          .maybeSingle()
+        if (cancelled) return
+        if ((profile as { role?: string | null } | null)?.role === "admin") {
+          setIsAdmin(true)
+        }
+      } catch { /* guest / no profile → not admin */ }
     })()
     return () => { cancelled = true }
   }, [])
@@ -158,14 +191,14 @@ export default function PaymentPage() {
           note: "到店取貨時付款，由綠界代收"
         }] : []),
         // Sandbox: skip gateway, run full pipeline (invoice / email / stock /
-        // points / LINE Notify). Requires login (guest can't earn points / link
-        // order to a user). Server enforces same auth check.
-        ...(isLoggedIn ? [{
+        // points / LINE Notify). Admin-only — the server rejects test_paid for
+        // non-admins (403), so we hide it from normal customers entirely.
+        ...(isAdmin ? [{
           value: "test_paid" as PaymentMethod,
           label: "🧪 沙盒測試付款",
           icon: "🧪",
           color: "bg-amber-50 border-amber-300",
-          note: "不過金流但跑完整流程（發票/通知/庫存/點數）— 需登入"
+          note: "不過金流但跑完整流程（發票/通知/庫存/點數）— 限管理員"
         }] : []),
       ]
 
@@ -193,30 +226,130 @@ export default function PaymentPage() {
   const subtotal = checkoutData
     ? checkoutData.items.reduce((sum, i) => sum + i.price * i.qty, 0)
     : 0
-  const shippingFee = checkoutData?.shippingFee ?? 0
 
-  // Derived from promo state — written by PromoWidget at step 1
-  const memberDiscountAmount = promo ? Math.round(subtotal * promo.memberDiscountRate) : 0
+  // Derived from promo state — written by PromoWidget at step 1. We still read
+  // these to (a) feed the server preview the applied coupon/points and (b)
+  // label the breakdown lines. The displayed AMOUNTS come from the server
+  // preview below, not from this client-side math.
   const couponCode = promo?.couponCode ?? ""
   const couponApplied = promo?.couponApplied ?? false
-  const couponDiscount = promo?.couponApplied ? promo.couponDiscount : 0
+  const promoCouponDiscount = promo?.couponApplied ? promo.couponDiscount : 0
   const pointsUsed = promo?.pointsAllowed ? promo.pointsUsed : 0
-  const pointsDiscount = promo?.pointsAllowed ? promo.pointsDiscount : 0
+  const promoPointsDiscount = promo?.pointsAllowed ? promo.pointsDiscount : 0
   const tierName = promo?.tierName ?? null
   const memberDiscountRate = promo?.memberDiscountRate ?? 0
-  const grandTotal = Math.max(
-    0,
-    subtotal - memberDiscountAmount + shippingFee - couponDiscount - pointsDiscount,
-  )
+
+  // Server-authoritative breakdown (Fix 2). Step 1 persisted only `shippingFee`
+  // and omitted the campaign discount, and `shippingFee ?? 0` would silently
+  // undercharge the display if step-1's preview had failed. So on this page we
+  // re-call POST /orders/preview with the SAME item-shape builder + the applied
+  // coupon/points + the selected payment method as the hint, and render the
+  // server's total/shipping/discount lines. The "確認付款 NT$X" button then
+  // matches what POST /orders will actually charge.
+  const [preview, setPreview] = useState<{
+    subtotal: number
+    shipping: number
+    member_discount: number
+    campaign_discount: number
+    coupon_discount: number
+    points_discount: number
+    points_used: number
+    discount_total: number
+    discounts: Array<{ campaign_id: string; name: string; amount: number; type: string }>
+    free_shipping_names: string[]
+    total: number
+  } | null>(null)
+
+  useEffect(() => {
+    if (!checkoutData || checkoutData.items.length === 0) {
+      setPreview(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const supabase = createClient()
+        const { data } = await supabase.auth.getSession()
+        const token = data.session?.access_token
+        const res = await fetch(`${API_URL}/orders/preview`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({
+            items: buildOrderPreviewItems(checkoutData.items),
+            shippingMethod: toApiShippingMethod(
+              checkoutData.shippingMethod as CheckoutShippingMethod,
+            ),
+            paymentMethodHint: paymentMethod,
+            ...(couponApplied && couponCode ? { couponCode } : {}),
+            ...(pointsUsed > 0 ? { points_used: pointsUsed } : {}),
+          }),
+        })
+        if (cancelled) return
+        if (!res.ok) { setPreview(null); return }
+        const json = await res.json()
+        setPreview(json.data ?? null)
+      } catch {
+        if (!cancelled) setPreview(null)
+      }
+    })()
+    return () => { cancelled = true }
+    // payment method + applied promo change the server total (cvs_cod fee,
+    // coupon/points), so refetch on those alongside the cart snapshot.
+  }, [checkoutData, paymentMethod, couponApplied, couponCode, pointsUsed])
+
+  // Rotate the idempotency key whenever an order-affecting input changes, so a
+  // deliberately different order gets a fresh key (not blocked by the prior
+  // submission's cached response). Skipped once submitted — after handoff the
+  // order is locked and the key must stay put.
+  useEffect(() => {
+    if (submittedRef.current) return
+    idempotencyKeyRef.current = null
+  }, [paymentMethod, couponApplied, couponCode, pointsUsed])
+
+  // Displayed amounts — server preview is authoritative; fall back to the
+  // step-1 snapshot only until the preview resolves (or if it errors).
+  const shippingFee = preview?.shipping ?? checkoutData?.shippingFee ?? 0
+  const memberDiscountAmount = preview
+    ? preview.member_discount
+    : promo
+      ? Math.round(subtotal * memberDiscountRate)
+      : 0
+  const couponDiscount = preview ? preview.coupon_discount : promoCouponDiscount
+  const pointsDiscount = preview ? preview.points_discount : promoPointsDiscount
+  const campaignDiscountLines = preview?.discounts ?? []
+  const shippingLabel = formatShippingPreviewLabel({
+    preview,
+    fallbackLabel: `NT$ ${shippingFee.toLocaleString()}`,
+  })
+  const grandTotal = preview
+    ? preview.total
+    : Math.max(
+        0,
+        subtotal - memberDiscountAmount + shippingFee - couponDiscount - pointsDiscount,
+      )
 
   async function handleConfirm() {
     if (!checkoutData) return
+    // Already handed off (redirecting / navigating) — never fire a second order.
+    if (submittedRef.current) return
     setLoading(true)
     setError(null)
     try {
       const supabase = createClient()
       const { data: { session } } = await supabase.auth.getSession()
-      const headers: Record<string, string> = { "Content-Type": "application/json" }
+      // Generate the idempotency key once per attempt; reuse on retries of the
+      // SAME attempt (this ref is nulled only when an order-affecting input
+      // changes). 36-char UUID satisfies the middleware's 16–100 length gate.
+      if (!idempotencyKeyRef.current) {
+        idempotencyKeyRef.current = crypto.randomUUID()
+      }
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKeyRef.current,
+      }
       if (session?.access_token) {
         headers.Authorization = `Bearer ${session.access_token}`
       }
@@ -298,14 +431,20 @@ export default function PaymentPage() {
 
       if (paymentUrl) {
         // Redirect to payment gateway (PChomePay / LINE Pay / JKOPay).
-        // Cart clearing and confirm redirect happen after the payment webhook callback.
+        // Cart + promo clearing happens on the confirm page once the server
+        // reports success — NOT here. If the gateway payment fails, the user
+        // is sent back to "重新付款" and must keep their cart + applied
+        // coupon/points so the retried order charges the same amount.
+        // Lock the button BEFORE the redirect so the `finally` can't re-enable
+        // it mid-navigation and let an impatient user submit twice.
+        submittedRef.current = true
+        setSubmitted(true)
         toast.success("正在前往付款頁面...")
-        // Promo state was consumed by the order — clear it so a back-button
-        // bounce or a fresh next checkout starts clean.
-        clearPromoState()
         window.location.href = paymentUrl
       } else if (paymentMethod === "cvs_cod" && returnedOrderNumber) {
         // CVS COD：訂單已成立，直接跳確認頁（不需線上付款）
+        submittedRef.current = true
+        setSubmitted(true)
         toast.success("訂單已成立！")
         // 清空購物車
         const cartStore = await import("@/lib/cart")
@@ -314,6 +453,8 @@ export default function PaymentPage() {
         router.push(`/checkout/confirm?order=${encodeURIComponent(returnedOrderNumber)}&method=cvs_cod`)
       } else if (paymentMethod === "test_paid" && returnedOrderNumber) {
         // Admin 沙盒：訂單建立 + 全 pipeline 已跑（發票/通知/庫存/點數），直跳 confirm
+        submittedRef.current = true
+        setSubmitted(true)
         toast.success("🧪 沙盒訂單已成立（跳過金流）")
         const cartStore = await import("@/lib/cart")
         cartStore.useCart.getState().clear()
@@ -326,7 +467,11 @@ export default function PaymentPage() {
       toast.error("建立訂單失敗")
       setError(err instanceof Error ? err.message : "付款失敗，請稍後再試")
     } finally {
-      setLoading(false)
+      // Don't re-enable after a successful handoff — keep the button disabled
+      // through the redirect / route change. Only reset on a failed attempt so
+      // the user can retry (same idempotency key replays a server-created order
+      // rather than duplicating it).
+      if (!submittedRef.current) setLoading(false)
     }
   }
 
@@ -452,9 +597,15 @@ export default function PaymentPage() {
                 <span>商品小計</span>
                 <span>NT$ {subtotal.toLocaleString()}</span>
               </div>
+              {campaignDiscountLines.map(d => (
+                <div key={d.campaign_id} className="flex justify-between text-green-600">
+                  <span>{d.name}</span>
+                  <span>-NT$ {d.amount.toLocaleString()}</span>
+                </div>
+              ))}
               <div className="flex justify-between text-zinc-500">
                 <span>運費</span>
-                <span>NT$ {shippingFee.toLocaleString()}</span>
+                <span>{shippingLabel}</span>
               </div>
               {memberDiscountAmount > 0 && (
                 <div className="flex justify-between text-amber-600">
@@ -499,9 +650,9 @@ export default function PaymentPage() {
               className="flex-1 rounded-[10px]"
               style={{ backgroundColor: "#10305a", color: "#fff" }}
               onClick={handleConfirm}
-              disabled={loading}
+              disabled={loading || submitted}
             >
-              {loading ? "處理中..." : `確認付款 NT$ ${grandTotal.toLocaleString()}`}
+              {loading || submitted ? "處理中..." : `確認付款 NT$ ${grandTotal.toLocaleString()}`}
             </Button>
           </div>
         </div>
@@ -526,9 +677,15 @@ export default function PaymentPage() {
                 <span>商品小計</span>
                 <span>NT$ {subtotal.toLocaleString()}</span>
               </div>
+              {campaignDiscountLines.map(d => (
+                <div key={d.campaign_id} className="flex justify-between text-green-600">
+                  <span>{d.name}</span>
+                  <span>-NT$ {d.amount.toLocaleString()}</span>
+                </div>
+              ))}
               <div className="flex justify-between text-zinc-500">
                 <span>運費</span>
-                <span>NT$ {shippingFee.toLocaleString()}</span>
+                <span>{shippingLabel}</span>
               </div>
               {memberDiscountAmount > 0 && (
                 <div className="flex justify-between text-amber-600">
