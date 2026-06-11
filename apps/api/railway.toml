@@ -3,12 +3,12 @@
 # only by the APP_ENTRYPOINT env var (unset -> index; "worker" -> worker).
 [build]
 builder = "NIXPACKS"
-# Build must NOT touch node_modules: nixpacks' install phase already ran
-# `npm ci` (full tree incl. workspace devDeps). Re-running `npm install
-# --workspaces` here prunes @types/* (TS7016 on fresh builds), and `npm ci`
-# can't rmdir node_modules/.cache because Railway mounts a build cache there
-# (EBUSY). Just compile.
-buildCommand = "npx turbo build --filter=api"
+# The service sets NODE_ENV=production, which npm injects into the build and
+# makes EVERY install default to omit=dev — so @types/* (lockfile dev:true)
+# never get installed and tsc fails with TS7016. `--include=dev` overrides
+# that. Must be `npm install`, not `npm ci`: Railway mounts a build cache at
+# node_modules/.cache, and npm ci dies trying to rmdir it (EBUSY).
+buildCommand = "npm install --include=dev && npx turbo build --filter=api"
 
 [deploy]
 startCommand = "node apps/api/dist/${APP_ENTRYPOINT:-index}.js"
