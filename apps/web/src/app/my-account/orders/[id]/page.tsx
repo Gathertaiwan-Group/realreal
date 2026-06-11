@@ -5,6 +5,7 @@ import { ChevronLeft } from "lucide-react"
 import { createClient } from "@/lib/supabase/server"
 import { apiClient } from "@/lib/api-client"
 import { Badge } from "@/components/ui/badge"
+import { buildDiscountBreakdown } from "@/lib/discount-breakdown"
 import { ORDER_STATUS_LABELS as STATUS_LABELS } from "@/lib/order-status"
 
 export const metadata = { title: "訂單詳情 | 誠真生活 RealReal" }
@@ -24,6 +25,16 @@ type OrderDetail = {
   created_at: string
   status: OrderStatus
   total: number
+  subtotal?: number
+  shipping_fee?: number
+  discount_amount?: number
+  campaign_discount?: number
+  points_used?: number
+  metadata?: { coupon_code?: string | null; coupon_discount?: number | null } | null
+  campaign_names?: string[]
+  attributed_kol_slug?: string | null
+  free_items?: Array<{ name?: string; sku?: string; qty?: number }>
+  shipping_zeroed_by_campaign?: boolean
   payment_method: string
   payment_status: string
   shipping_method: string
@@ -83,6 +94,16 @@ export default async function OrderDetailPage({
 
   const status = isOrderStatus(order.status) ? order.status : "pending"
   const currentStepIndex = TIMELINE_ORDER.indexOf(status)
+
+  const discountLines = buildDiscountBreakdown({
+    discount_amount: order.discount_amount,
+    campaign_discount: order.campaign_discount,
+    points_used: order.points_used,
+    metadata: order.metadata ?? null,
+    campaignNames: order.campaign_names ?? [],
+    attributed_kol_slug: order.attributed_kol_slug ?? null,
+  })
+  const freeItems = order.free_items ?? []
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
@@ -174,7 +195,39 @@ export default async function OrderDetailPage({
               ))}
             </tbody>
             <tfoot className="bg-zinc-50">
-              <tr>
+              {order.subtotal != null && (
+                <tr>
+                  <td colSpan={2} className="p-3 text-right text-zinc-500">商品小計</td>
+                  <td className="p-3 text-right">NT$ {Number(order.subtotal).toLocaleString()}</td>
+                </tr>
+              )}
+              {freeItems.map((g, i) => (
+                <tr key={`gift-${i}`}>
+                  <td colSpan={2} className="p-3 text-right text-emerald-700">
+                    🎁 滿額贈：{g.name ?? g.sku ?? "贈品"} × {g.qty ?? 1}
+                  </td>
+                  <td className="p-3 text-right text-emerald-700">免費</td>
+                </tr>
+              ))}
+              {discountLines.map((d) => (
+                <tr key={d.key}>
+                  <td colSpan={2} className="p-3 text-right text-zinc-500">{d.label}</td>
+                  <td className="p-3 text-right text-red-600">-NT$ {d.amount.toLocaleString()}</td>
+                </tr>
+              ))}
+              {order.shipping_fee != null && (
+                <tr>
+                  <td colSpan={2} className="p-3 text-right text-zinc-500">運費</td>
+                  <td className="p-3 text-right">
+                    {Number(order.shipping_fee) > 0
+                      ? `NT$ ${Number(order.shipping_fee).toLocaleString()}`
+                      : order.shipping_zeroed_by_campaign
+                        ? "免運（行銷活動）"
+                        : "NT$ 0"}
+                  </td>
+                </tr>
+              )}
+              <tr className="border-t">
                 <td colSpan={2} className="p-3 font-semibold text-right">總計</td>
                 <td className="p-3 font-semibold text-right">
                   NT$ {Number(order.total).toLocaleString()}

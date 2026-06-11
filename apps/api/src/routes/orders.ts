@@ -895,6 +895,18 @@ ordersRouter.get("/:id", requireAuth, async (req, res) => {
     supabase.from("payments").select("*").eq("order_id", orderId).order("created_at", { ascending: false }).limit(1),
   ])
 
+  // Resolve campaign names so the customer-facing breakdown can label the
+  // campaign discount (mirrors the admin order page).
+  let campaignNames: string[] = []
+  const campaignIds = ((order as Record<string, unknown>).applied_campaign_ids ?? []) as string[]
+  if (campaignIds.length > 0) {
+    const { data: campaigns } = await supabase
+      .from("campaigns")
+      .select("name")
+      .in("id", campaignIds)
+    campaignNames = (campaigns ?? []).map((c) => (c as { name: string | null }).name ?? "").filter(Boolean)
+  }
+
   const addr = addresses?.[0] ?? null
   res.json({
     data: {
@@ -906,6 +918,13 @@ ordersRouter.get("/:id", requireAuth, async (req, res) => {
       subtotal: Number(order.subtotal),
       shipping_fee: Number(order.shipping_fee),
       discount_amount: Number(order.discount_amount),
+      campaign_discount: Number((order as Record<string, unknown>).campaign_discount ?? 0),
+      points_used: Number((order as Record<string, unknown>).points_used ?? 0),
+      metadata: (order as Record<string, unknown>).metadata ?? null,
+      campaign_names: campaignNames,
+      attributed_kol_slug: (order as Record<string, unknown>).attributed_kol_slug ?? null,
+      free_items: (order as Record<string, unknown>).free_items ?? [],
+      shipping_zeroed_by_campaign: Boolean((order as Record<string, unknown>).shipping_zeroed_by_campaign),
       payment_method: order.payment_method ?? "",
       payment_status: order.payment_status ?? "pending",
       shipping_method: order.shipping_method ?? "",

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { buildDiscountBreakdown } from "@/lib/discount-breakdown"
 import { InvoiceCard, LogisticsCard, OrderActions, OrderTimeline } from "./_client"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
@@ -85,6 +86,27 @@ export default async function AdminOrderDetailPage({
   }
   const shippingAddr = order.order_addresses?.find((a: Record<string, unknown>) => a.type === "shipping")
   const billingAddr = order.order_addresses?.find((a: Record<string, unknown>) => a.type === "billing")
+
+  // Resolve campaign names so the discount breakdown can say WHICH campaign
+  // (applied_campaign_ids is stored on the order at creation time).
+  let campaignNames: string[] = []
+  const campaignIds = (order.applied_campaign_ids ?? []) as string[]
+  if (campaignIds.length > 0) {
+    const { data: campaigns } = await supabase
+      .from("campaigns")
+      .select("id, name")
+      .in("id", campaignIds)
+    campaignNames = (campaigns ?? []).map((c: { name: string | null }) => c.name ?? "").filter(Boolean)
+  }
+  const discountLines = buildDiscountBreakdown({
+    discount_amount: order.discount_amount,
+    campaign_discount: order.campaign_discount,
+    points_used: order.points_used,
+    metadata: order.metadata ?? null,
+    campaignNames,
+    attributed_kol_slug: order.attributed_kol_slug ?? null,
+  })
+  const freeItems = (order.free_items ?? []) as Array<{ name?: string; sku?: string; qty?: number }>
 
   return (
     <div className="space-y-6">
@@ -171,22 +193,38 @@ export default async function AdminOrderDetailPage({
               })}
             </tbody>
             <tfoot className="border-t bg-zinc-50">
-              {order.discount_amount != null && Number(order.discount_amount) > 0 && (
-                <tr>
-                  <td colSpan={4} className="px-4 py-2 text-right text-zinc-500">折扣</td>
+              <tr>
+                <td colSpan={4} className="px-4 py-2 text-right text-zinc-500">商品小計</td>
+                <td className="px-4 py-2 text-right">
+                  NT$ {Number(order.subtotal ?? 0).toLocaleString()}
+                </td>
+              </tr>
+              {freeItems.map((g, i) => (
+                <tr key={`gift-${i}`}>
+                  <td colSpan={4} className="px-4 py-2 text-right text-emerald-700">
+                    🎁 滿額贈：{g.name ?? g.sku ?? "贈品"} × {g.qty ?? 1}
+                  </td>
+                  <td className="px-4 py-2 text-right text-emerald-700">免費</td>
+                </tr>
+              ))}
+              {discountLines.map((d) => (
+                <tr key={d.key}>
+                  <td colSpan={4} className="px-4 py-2 text-right text-zinc-500">{d.label}</td>
                   <td className="px-4 py-2 text-right text-red-600">
-                    -NT$ {Number(order.discount_amount).toLocaleString()}
+                    -NT$ {d.amount.toLocaleString()}
                   </td>
                 </tr>
-              )}
-              {order.shipping_fee != null && Number(order.shipping_fee) > 0 && (
-                <tr>
-                  <td colSpan={4} className="px-4 py-2 text-right text-zinc-500">運費</td>
-                  <td className="px-4 py-2 text-right">
-                    NT$ {Number(order.shipping_fee).toLocaleString()}
-                  </td>
-                </tr>
-              )}
+              ))}
+              <tr>
+                <td colSpan={4} className="px-4 py-2 text-right text-zinc-500">運費</td>
+                <td className="px-4 py-2 text-right">
+                  {Number(order.shipping_fee ?? 0) > 0
+                    ? `NT$ ${Number(order.shipping_fee).toLocaleString()}`
+                    : order.shipping_zeroed_by_campaign
+                      ? "免運（行銷活動）"
+                      : "NT$ 0"}
+                </td>
+              </tr>
               <tr>
                 <td colSpan={4} className="px-4 py-2.5 text-right font-semibold">訂單總計</td>
                 <td className="px-4 py-2.5 text-right font-semibold text-base">
