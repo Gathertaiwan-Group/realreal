@@ -3,10 +3,12 @@
 # only by the APP_ENTRYPOINT env var (unset -> index; "worker" -> worker).
 [build]
 builder = "NIXPACKS"
-# npm ci, NOT `npm install --workspaces`: the builder's npm 9 prunes workspace
-# devDependencies (@types/*) that the nixpacks install phase just installed,
-# which broke tsc with TS7016 on every fresh (non-turbo-cached) build.
-buildCommand = "npm ci && npx turbo build --filter=api"
+# Build must NOT touch node_modules: nixpacks' install phase already ran
+# `npm ci` (full tree incl. workspace devDeps). Re-running `npm install
+# --workspaces` here prunes @types/* (TS7016 on fresh builds), and `npm ci`
+# can't rmdir node_modules/.cache because Railway mounts a build cache there
+# (EBUSY). Just compile.
+buildCommand = "npx turbo build --filter=api"
 
 [deploy]
 startCommand = "node apps/api/dist/${APP_ENTRYPOINT:-index}.js"
