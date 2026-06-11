@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { adminFetch } from "@/lib/admin-fetch"
@@ -59,9 +60,11 @@ export function ReviewsTable({ reviews: initialReviews, token }: { reviews: Revi
           setReviews((prev) =>
             prev.map((r) => (r.id === id ? { ...r, is_approved: json.data.is_approved } : r))
           )
+        } else {
+          toast.error("更新審核狀態失敗，請稍後再試")
         }
       } catch {
-        // ignore
+        toast.error("更新審核狀態失敗，請稍後再試")
       }
     })
   }
@@ -77,9 +80,11 @@ export function ReviewsTable({ reviews: initialReviews, token }: { reviews: Revi
         if (res.ok) {
           setReviews((prev) => prev.filter((r) => r.id !== id))
           router.refresh()
+        } else {
+          toast.error("刪除評價失敗，請稍後再試")
         }
       } catch {
-        // ignore
+        toast.error("刪除評價失敗，請稍後再試")
       }
     })
   }

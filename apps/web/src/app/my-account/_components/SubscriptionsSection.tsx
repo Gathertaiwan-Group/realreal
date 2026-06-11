@@ -45,7 +45,7 @@ export function SubscriptionsSection({ subs }: { subs: SubscriptionRow[] }) {
                 </p>
                 <p className="mt-0.5 text-xs text-zinc-500">
                   NT$ {Number(sub.subscription_plans?.price ?? 0).toLocaleString()}{" "}
-                  / {sub.subscription_plans?.interval === "month" ? "月" : "年"}
+                  / {sub.subscription_plans?.interval === "bimonthly" ? "每兩月" : "月"}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-3">

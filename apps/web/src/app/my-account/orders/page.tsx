@@ -5,11 +5,14 @@ import { createClient } from "@/lib/supabase/server"
 import { apiClient } from "@/lib/api-client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { ORDER_STATUS_LABELS as STATUS_LABELS } from "@/lib/order-status"
+import {
+  ORDER_STATUS_LABELS as STATUS_LABELS,
+  ORDER_STATUS_VARIANTS as STATUS_VARIANTS,
+  isOrderStatus,
+  type OrderStatus,
+} from "@/lib/order-status"
 
 export const metadata = { title: "我的訂單 | 誠真生活 RealReal" }
-
-type OrderStatus = "pending" | "paid" | "shipped" | "delivered" | "cancelled"
 
 type Order = {
   id: string
@@ -17,18 +20,6 @@ type Order = {
   created_at: string
   status: OrderStatus
   total: number
-}
-
-const STATUS_VARIANTS: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
-  pending: "outline",
-  paid: "default",
-  shipped: "secondary",
-  delivered: "default",
-  cancelled: "destructive",
-}
-
-function isOrderStatus(s: string): s is OrderStatus {
-  return ["pending", "paid", "shipped", "delivered", "cancelled"].includes(s)
 }
 
 export default async function OrdersPage() {

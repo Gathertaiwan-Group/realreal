@@ -6,11 +6,14 @@ import { createClient } from "@/lib/supabase/server"
 import { apiClient } from "@/lib/api-client"
 import { Badge } from "@/components/ui/badge"
 import { buildDiscountBreakdown } from "@/lib/discount-breakdown"
-import { ORDER_STATUS_LABELS as STATUS_LABELS } from "@/lib/order-status"
+import {
+  ORDER_STATUS_LABELS as STATUS_LABELS,
+  ORDER_STATUS_VARIANTS as STATUS_VARIANTS,
+  isOrderStatus,
+  type OrderStatus,
+} from "@/lib/order-status"
 
 export const metadata = { title: "訂單詳情 | 誠真生活 RealReal" }
-
-type OrderStatus = "pending" | "paid" | "shipped" | "delivered" | "cancelled"
 
 type OrderItem = {
   id: string
@@ -49,26 +52,16 @@ type OrderDetail = {
   items: OrderItem[]
 }
 
-const STATUS_VARIANTS: Record<OrderStatus, "default" | "secondary" | "destructive" | "outline"> = {
-  pending: "outline",
-  paid: "default",
-  shipped: "secondary",
-  delivered: "default",
-  cancelled: "destructive",
-}
-
+// Canonical order lifecycle (orders.status): pending → processing → shipped → completed.
+// cancelled / failed are off-timeline terminal states handled separately below.
 const TIMELINE_STEPS = [
   { key: "pending", label: "訂單成立" },
-  { key: "paid", label: "付款完成" },
+  { key: "processing", label: "處理中" },
   { key: "shipped", label: "出貨中" },
-  { key: "delivered", label: "已送達" },
+  { key: "completed", label: "已完成" },
 ] as const
 
-const TIMELINE_ORDER: OrderStatus[] = ["pending", "paid", "shipped", "delivered"]
-
-function isOrderStatus(s: string): s is OrderStatus {
-  return ["pending", "paid", "shipped", "delivered", "cancelled"].includes(s)
-}
+const TIMELINE_ORDER: OrderStatus[] = ["pending", "processing", "shipped", "completed"]
 
 export default async function OrderDetailPage({
   params,
@@ -94,6 +87,9 @@ export default async function OrderDetailPage({
 
   const status = isOrderStatus(order.status) ? order.status : "pending"
   const currentStepIndex = TIMELINE_ORDER.indexOf(status)
+  // Only show the progress timeline for on-track states; cancelled / failed
+  // are terminal off-timeline states (indexOf === -1) and show only the badge.
+  const showTimeline = currentStepIndex !== -1
 
   const discountLines = buildDiscountBreakdown({
     discount_amount: order.discount_amount,
@@ -120,7 +116,7 @@ export default async function OrderDetailPage({
       </div>
 
       {/* Timeline */}
-      {status !== "cancelled" && (
+      {showTimeline && (
         <div className="mb-8">
           <div className="flex items-center justify-between">
             {TIMELINE_STEPS.map((step, index) => {

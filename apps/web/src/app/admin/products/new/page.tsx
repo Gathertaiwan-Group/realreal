@@ -1,6 +1,7 @@
 "use client"
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -22,12 +23,13 @@ export default function NewProductPage() {
       name: fd.get("name") as string,
       slug: fd.get("slug") as string,
       description,
-      images,
+      // POST /products expects images as { url, alt, sort_order }[] (see productSchema)
+      images: images.map((url, i) => ({ url, sort_order: i })),
       is_active: true,
     }
     const supabase = createClient()
     const { data: { session } } = await supabase.auth.getSession()
-    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/admin/products`, {
+    const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/products`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -35,8 +37,19 @@ export default function NewProductPage() {
       },
       body: JSON.stringify(body),
     })
-    if (res.ok) router.push("/admin/products")
-    else setSaving(false)
+    if (res.ok) {
+      router.push("/admin/products")
+    } else {
+      let message = "建立商品失敗，請稍後再試"
+      try {
+        const json = await res.json()
+        if (typeof json?.error === "string") message = json.error
+      } catch {
+        // response had no JSON body — keep the default message
+      }
+      toast.error(message)
+      setSaving(false)
+    }
   }
 
   return (

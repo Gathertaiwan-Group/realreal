@@ -64,7 +64,11 @@ export async function forgotPasswordAction(_prev: unknown, formData: FormData) {
 
   const supabase = await createClient()
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${getSiteUrl()}/auth/reset-password`,
+    // Route the PKCE recovery code through /auth/callback so the code is
+    // exchanged for a session (cookie set) before landing on the reset page.
+    // Without this, resetPasswordAction's updateUser({password}) has no
+    // session and fails with "Auth session missing".
+    redirectTo: `${getSiteUrl()}/auth/callback?next=/auth/reset-password`,
   })
   if (error) return { error: error.message }
 

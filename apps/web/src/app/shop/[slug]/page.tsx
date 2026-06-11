@@ -4,8 +4,6 @@ import { ChevronRight } from "lucide-react"
 import { getProductBySlug, getCategories } from "@/lib/catalog"
 import { AddToCartSection } from "@/components/product/AddToCartSection"
 import { ImageGallery } from "@/components/product/ImageGallery"
-import { createClient } from "@/lib/supabase/server"
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
 const BULLET_CHARS = "✔✅✓▪▸•◆■◉"
 const BULLET_START_RE = new RegExp(`^[${BULLET_CHARS}]`)
@@ -92,8 +90,6 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
 
 export default async function ProductDetailPage({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params
-  const supabase = await createClient()
-  const { data: { session } } = await supabase.auth.getSession()
   const [product, categories] = await Promise.all([getProductBySlug(slug), getCategories()])
   if (!product) notFound()
 
@@ -188,19 +184,26 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
 
-        {/* 沖泡說明影片 */}
-        <div className="mt-14 flex flex-col items-center gap-4">
-          <h2 className="text-lg font-semibold" style={{ color: "#10305a" }}>沖泡說明</h2>
-          <div className="w-full max-w-[360px] overflow-hidden rounded-2xl shadow-md" style={{ aspectRatio: "9/16" }}>
-            <iframe
-              src="https://www.youtube.com/embed/gkru2H1QJA0"
-              title="沖泡說明影片"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-              allowFullScreen
-              className="w-full h-full border-0"
-            />
+        {/* 沖泡說明影片 — only protein powders have a brewing step.
+            There is no per-product brewing field on the product fetch shape
+            (id/name/slug/description/excerpt/category_id/images/variants),
+            so the most accurate available signal is the powder category
+            (plant-based-powder). Freeze-dried fruit, gift sets, etc. are
+            eaten directly and must not show brewing instructions. */}
+        {isProtein && (
+          <div className="mt-14 flex flex-col items-center gap-4">
+            <h2 className="text-lg font-semibold" style={{ color: "#10305a" }}>沖泡說明</h2>
+            <div className="w-full max-w-[360px] overflow-hidden rounded-2xl shadow-md" style={{ aspectRatio: "9/16" }}>
+              <iframe
+                src="https://www.youtube.com/embed/gkru2H1QJA0"
+                title="沖泡說明影片"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                className="w-full h-full border-0"
+              />
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Product info images — protein only */}
         {isProtein && (
