@@ -5,13 +5,25 @@ import { encryptToken } from "../../lib/token-encryption"
 export const pchomepayTokenWebhookRouter = Router()
 
 // POST /webhooks/pchomepay-token — PChomePay token registration callback.
-// TODO: this was written against the legacy CheckMacValue scheme that
-// turned out to be wrong for PChomePay 支付連. Real Token Recurring API
-// integration is still pending and would need its own signed-callback
-// scheme — until then, this route just records the payload and
-// optimistically encrypts/stores any TokenValue without verifying.
+//
+// SECURITY: this was written against a CheckMacValue scheme that turned out to
+// be wrong for PChomePay 支付連, so there is NO working way to verify this
+// callback's authenticity yet. Storing an UNVERIFIED TokenValue let anyone who
+// knew/guessed a subscription id POST `TOKREG_<id>` + `RtnCode=1` + an arbitrary
+// token and overwrite that subscription's stored payment token. Because
+// recurring billing is itself not implemented (subscription-billing.ts is a
+// no-op pending the real Token API), we FAIL CLOSED: reject all writes until a
+// genuinely signed callback scheme is wired up. Re-enable by verifying the
+// signature here, not by removing this guard.
+const PCHOMEPAY_TOKEN_CALLBACK_ENABLED = false
+
 pchomepayTokenWebhookRouter.post("/", async (req, res) => {
   const params = req.body as Record<string, string>
+
+  if (!PCHOMEPAY_TOKEN_CALLBACK_ENABLED) {
+    console.warn("[webhooks/pchomepay-token] rejected — callback verification not implemented; failing closed")
+    res.status(503).send("0|TokenCallbackDisabled"); return
+  }
 
   const { MerchantOrderNo, TokenValue, RtnCode } = params
 

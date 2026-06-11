@@ -108,8 +108,10 @@ describe("forgotPasswordAction", () => {
     fd.set("email", "user@example.com")
     const result = await forgotPasswordAction(null, fd)
     expect(result?.success).toBeTruthy()
+    // Recovery now routes through /auth/callback so the PKCE code is exchanged
+    // into a session before reaching the reset-password page.
     expect(mockResetPassword).toHaveBeenCalledWith("user@example.com", {
-      redirectTo: "https://realreal.cc/auth/reset-password",
+      redirectTo: "https://realreal.cc/auth/callback?next=/auth/reset-password",
     })
   })
 })
