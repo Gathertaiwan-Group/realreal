@@ -45,12 +45,12 @@ type TargetTierRow = {
 }
 
 async function lookupEmail(userId: string): Promise<string | null> {
-  const { data: user } = await supabase
-    .from("users")
-    .select("email")
-    .eq("id", userId)
-    .maybeSingle()
-  return (user as { email?: string | null } | null)?.email ?? null
+  // Email lives in auth.users — there is no public.users table. Fetch via the
+  // admin API (same pattern as enqueue-post-payment.ts).
+  const {
+    data: { user },
+  } = await supabase.auth.admin.getUserById(userId)
+  return user?.email ?? null
 }
 
 export const tierExpireWorker = new Worker(

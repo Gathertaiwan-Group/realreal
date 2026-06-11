@@ -70,7 +70,14 @@ export const invoiceWorker = new Worker("invoice", async (job) => {
       items,
     })
 
-    await supabase.from("invoices").update({
+    // CRITICAL: the e-invoice has already been issued at Amego (real government
+    // e-invoice). If we don't persist status="issued", the row stays "pending"
+    // and a later admin re-issue / retry-post-payment opens a SECOND real
+    // invoice. Supabase write errors are SILENT unless we check .error — so
+    // capture it and throw, letting BullMQ retry the persist (the update is
+    // idempotent: same invoiceId, terminal "issued" state) rather than
+    // reporting success on a half-finished job.
+    const { error: persistErr } = await supabase.from("invoices").update({
       status: "issued",
       invoice_number: result.invoiceNumber,
       random_code: result.randomCode,
@@ -81,6 +88,12 @@ export const invoiceWorker = new Worker("invoice", async (job) => {
       error_message: null,
       retry_count: 0,
     }).eq("id", invoiceId)
+
+    if (persistErr) {
+      throw new Error(
+        `Invoice ${invoiceId} issued at Amego (number ${result.invoiceNumber}) but DB persist failed: ${persistErr.message}`,
+      )
+    }
 
   } catch (err: any) {
     await supabase.from("invoices").update({

@@ -521,7 +521,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   if (couponCode) {
     const { data: coupon } = await supabase
       .from("coupons")
-      .select("id, type, value, min_order, max_uses, used_count, expires_at, tier_id")
+      .select("id, type, value, min_order, max_uses, used_count, expires_at, tier_id, is_active")
       .eq("code", couponCode)
       .maybeSingle()
     const now = new Date()
@@ -533,6 +533,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       !coupon?.tier_id || (userId != null && profileTierId === coupon.tier_id)
     const validPrecheck =
       coupon &&
+      coupon.is_active !== false && // admin-disabled coupons must not apply
       (!coupon.expires_at || new Date(coupon.expires_at) >= now) &&
       (minOrderCents == null || subtotalCents >= minOrderCents) &&
       couponTierOk
@@ -753,13 +754,14 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       return
     }
 
-    await supabase.from("payments").insert({
+    const { error: payErr } = await supabase.from("payments").insert({
       order_id: order.id,
       gateway: "test",
       gateway_tx_id: order.order_number,
       amount: Math.round(centsToTwd(totalCents)),
       status: "paid",
     })
+    if (payErr) console.error("[test_paid] payments insert failed (order already marked paid):", payErr)
 
     // Fire the full post-payment pipeline INLINE (await it so any failures
     // surface in the response — admin testing wants to know if invoice/email
@@ -785,13 +787,14 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   // ---- cvs_cod：不走線上金流，立即建立物流 ----
   if (paymentMethod === "cvs_cod") {
     // Insert payment record (pending, gateway = cvs_cod)
-    await supabase.from("payments").insert({
+    const { error: codPayErr } = await supabase.from("payments").insert({
       order_id: order.id,
       gateway: "cvs_cod",
       gateway_tx_id: order.order_number,
       amount: Math.round(centsToTwd(totalCents)),
       status: "pending",
     })
+    if (codPayErr) console.error("[cvs_cod] payments insert failed:", codPayErr)
 
     // Enqueue CVS COD logistics creation immediately (no payment wait)
     try {

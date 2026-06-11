@@ -26,6 +26,25 @@ const updateStatusSchema = z.object({
   status: z.enum(VALID_STATUSES),
 })
 
+/**
+ * Return the stock that order creation deducted (atomic_deduct_stock). Call
+ * ONLY when an order transitions INTO cancelled from a non-cancelled state —
+ * the caller's prior-status check is the idempotency guard (avoids double
+ * restore on a repeated cancel). Non-fatal: logs and continues on failure.
+ */
+async function restoreOrderStock(orderId: string): Promise<void> {
+  const { data: items } = await supabase
+    .from("order_items")
+    .select("variant_id, qty")
+    .eq("order_id", orderId)
+  const variants = (items ?? [])
+    .filter((i) => i.variant_id && Number(i.qty) > 0)
+    .map((i) => ({ id: i.variant_id, qty: Number(i.qty) }))
+  if (variants.length === 0) return
+  const { error } = await supabase.rpc("atomic_restore_stock", { p_variants: variants })
+  if (error) console.warn(`[admin/orders] restore stock failed for ${orderId} (non-fatal):`, error.message)
+}
+
 // PATCH /admin/orders/:id/status — update order status (admin only)
 adminOrdersRouter.patch("/:id/status", async (req, res) => {
   const parsed = updateStatusSchema.safeParse(req.body)
@@ -96,6 +115,12 @@ adminOrdersRouter.patch("/:id/status", async (req, res) => {
     }
   }
 
+  // Restore stock when transitioning into cancelled (the order.status !==
+  // "cancelled" check makes this idempotent against repeated cancels).
+  if (newStatus === "cancelled" && order.status !== "cancelled") {
+    await restoreOrderStock(orderId)
+  }
+
   res.json({ data: updated })
 })
 
@@ -114,6 +139,14 @@ adminOrdersRouter.post("/bulk-status", async (req, res) => {
 
   // For cancellation with refund, we need to check each order's payment_status
   if (newStatus === "cancelled") {
+    // Snapshot orders not already cancelled so we restore their stock exactly
+    // once (idempotency guard against re-cancelling).
+    const { data: toRestore } = await supabase
+      .from("orders")
+      .select("id")
+      .in("id", ids)
+      .neq("status", "cancelled")
+
     // Snapshot previously-paid orders BEFORE updating so we can run the
     // refund chain on them after the status flip. Audit round 1 flagged
     // missing refundOrderPoints; round 2 flagged missing spend mirror
@@ -154,6 +187,11 @@ adminOrdersRouter.post("/bulk-status", async (req, res) => {
       } catch (err) {
         console.warn(`[admin/orders bulk] decrementSpendOnRefund failed for ${o.id}:`, err)
       }
+    }
+
+    // Restore stock for every order that actually transitioned into cancelled.
+    for (const o of (toRestore ?? []) as { id: string }[]) {
+      await restoreOrderStock(o.id)
     }
   } else {
     const update: Record<string, string> = { status: newStatus, updated_at: new Date().toISOString() }
@@ -470,6 +508,9 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
       .eq("id", orderId)
     if (statusError) throw new Error(statusError.message)
     actions.status_update = { ok: true, message: "訂單狀態已標記取消" }
+    // order.status was guaranteed non-cancelled (CANCELLABLE_STATUSES gate
+    // above), so restoring stock here runs exactly once per cancel.
+    await restoreOrderStock(orderId)
   } catch (err) {
     actions.status_update = {
       ok: false,

@@ -62,13 +62,16 @@ reviewsPublicRouter.post("/", requireAuth, async (req: Request<ReviewParams>, re
       content: parsed.data.content,
       author_name: authorName,
       author_email: userEmail,
-      is_approved: true,
+      // Require moderation — previously auto-approved, letting any logged-in
+      // user publish arbitrary content straight onto the product page.
+      is_approved: false,
     })
     .select()
     .single()
 
   if (error) { res.status(500).json({ error: error.message }); return }
-  res.status(201).json({ data })
+  // 201 + a flag the client can use to tell the user it's pending review.
+  res.status(201).json({ data, pending_review: true })
 })
 
 // GET /admin/reviews — all reviews, paginated, with product name

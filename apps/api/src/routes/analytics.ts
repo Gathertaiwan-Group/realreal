@@ -64,7 +64,7 @@ analyticsRouter.get("/admin/analytics/orders", requireAuth, requireAdmin, async 
   // Fetch orders from last 30 days
   const { data: orders, error: ordersErr } = await supabase
     .from("orders")
-    .select("id, total_amount, status, created_at")
+    .select("id, total, status, created_at")
     .gte("created_at", since)
     .order("created_at", { ascending: true })
 
@@ -76,7 +76,7 @@ analyticsRouter.get("/admin/analytics/orders", requireAuth, requireAdmin, async 
 
   for (const order of (orders ?? [])) {
     const day = (order.created_at as string).slice(0, 10) // YYYY-MM-DD
-    dailyMap[day] = (dailyMap[day] ?? 0) + Number(order.total_amount ?? 0)
+    dailyMap[day] = (dailyMap[day] ?? 0) + Number(order.total ?? 0)
 
     const status = (order.status as string) ?? "unknown"
     statusMap[status] = (statusMap[status] ?? 0) + 1

@@ -58,42 +58,21 @@ async function processSingleSubscription(subscriptionId: string) {
   const plan = sub.subscription_plans as any
 
   try {
-    // Decrypt token and charge (PChomePay Token API call would go here)
+    // Decrypt token (PChomePay Token API call would go here).
     const _token = await decryptToken(sub.payment_method_token ?? "")
-    // TODO: Call PChomePay Token recurring charge API
-    // For now, mark as success
 
-    const nextBillingDate = computeNextBillingDate(plan.interval)
+    // NOTE: Real PChomePay Token recurring charge is NOT implemented yet — see
+    // the pending PChomePay Token API integration. We must NOT pretend the
+    // cycle was charged: previously this path marked the order "completed",
+    // advanced next_billing_date, and emailed the customer "扣款成功" while
+    // charging nothing. Until the Token API is wired up, leave the cycle in a
+    // state an admin can act on (subscription_orders row stays "pending",
+    // next_billing_date is NOT advanced) and send no success/charged email.
+    console.warn(
+      `[subscription-billing] recurring charge not implemented — skipping order ${subOrder!.id} (subscription ${subscriptionId}), needs manual handling`,
+    )
 
-    await supabase.from("subscriptions").update({
-      next_billing_date: nextBillingDate.toISOString().split("T")[0],
-      retry_count: 0,
-    }).eq("id", subscriptionId)
-
-    await supabase.from("subscription_orders").update({ status: "completed" }).eq("id", subOrder!.id)
-
-    // Resolve user email for notification
-    const { data: user } = await supabase
-      .from("users")
-      .select("email")
-      .eq("id", sub.user_id)
-      .single()
-
-    if (user?.email) {
-      const nextDateStr = nextBillingDate.toISOString().split("T")[0]
-      await renderAndSendEmail({
-        template: "subscription-billed",
-        to: user.email,
-        data: {
-          planName: plan.name,
-          amount: String(plan.price),
-          nextBillingDate: nextDateStr,
-          orderNumber: idempotencyKey,
-        },
-      })
-    }
-
-    return { success: true }
+    return { skipped: true, reason: "charge_not_implemented" }
 
   } catch (err: any) {
     const newRetryCount = (sub.retry_count ?? 0) + 1
@@ -106,13 +85,12 @@ async function processSingleSubscription(subscriptionId: string) {
 
     await supabase.from("subscription_orders").update({ status: "failed" }).eq("id", subOrder!.id)
 
-    // Send failure notification email
+    // Send failure notification email. Email lives in auth.users — there is no
+    // public.users table — so resolve it via the admin API.
     try {
-      const { data: user } = await supabase
-        .from("users")
-        .select("email")
-        .eq("id", sub.user_id)
-        .single()
+      const {
+        data: { user },
+      } = await supabase.auth.admin.getUserById(sub.user_id)
 
       if (user?.email) {
         const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://realreal.cc"

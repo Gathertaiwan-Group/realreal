@@ -57,11 +57,14 @@ couponsRouter.post("/coupons/validate", async (req, res) => {
 
   const { data: coupon, error } = await supabase
     .from("coupons")
-    .select("id, code, type, value, min_order, max_uses, used_count, expires_at, applicable_to, tier_id")
+    .select("id, code, type, value, min_order, max_uses, used_count, expires_at, applicable_to, tier_id, is_active")
     .eq("code", code)
     .single()
 
   if (error || !coupon) { res.status(404).json({ error: "Coupon not found" }); return }
+
+  // Admin-disabled coupons must not validate (mirror POST /orders).
+  if (coupon.is_active === false) { res.status(400).json({ error: "Coupon is not active" }); return }
 
   // Check tier eligibility
   if (coupon.tier_id) {

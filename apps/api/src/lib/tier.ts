@@ -147,14 +147,23 @@ export async function decrementSpendOnRefund(
     return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
   }
 
-  const { data: claimed, error: claimErr } = await supabase.rpc(
-    "claim_order_post_payment_step",
-    { p_order_id: orderId, p_step: "spend_decremented" },
-  )
-  if (claimErr || !claimed) {
-    return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
-  }
-
+  // Idempotency sentinel ordering — claim_order_post_payment_step sets
+  // spend_decremented_at and returns TRUE only the first time; it has NO
+  // reset/unclaim RPC (see migration 0034). The OLD order was claim-THEN-
+  // decrement: if decrement_user_tier_spend failed, the sentinel was already
+  // consumed, so the warn+return left it permanently claimed and the refund's
+  // spend was never reversed → re-opened wash-trade tier upgrades.
+  //
+  // Fix (approach a): run the decrement RPC FIRST and only claim the step once
+  // it has succeeded. A failed decrement now leaves the step UNclaimed, so the
+  // cancel chain can safely retry. The claim still runs afterwards and remains
+  // the idempotency guard against a retried/duplicate cancel (a second run sees
+  // the sentinel set and skips). This mirrors the increment side, where the
+  // claim in enqueue-post-payment.ts only counts a step as done after the
+  // atomic RPC actually ran.
+  //
+  // First peek at the pre-decrement profile (best-effort, for the returned
+  // deltas only). We re-read after the decrement to compute exact deltas.
   const { data: before } = await supabase
     .from("user_profiles")
     .select("total_spend, tier_period_spend, charity_savings")
@@ -164,6 +173,20 @@ export async function decrementSpendOnRefund(
   const currentPeriod = Number((before as any)?.tier_period_spend ?? 0)
   const currentCharity = Number((before as any)?.charity_savings ?? 0)
 
+  // Guard against an already-processed refund BEFORE mutating spend. We read
+  // the sentinel (without consuming it) so a retried cancel does not double-
+  // decrement in the window before we claim. The authoritative claim still
+  // happens after the decrement; this is just an early-out.
+  const { data: priorLog } = await supabase
+    .from("order_post_payment_log")
+    .select("spend_decremented_at")
+    .eq("order_id", orderId)
+    .maybeSingle()
+  if ((priorLog as { spend_decremented_at?: string | null } | null)?.spend_decremented_at) {
+    return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
+  }
+
+  // Decrement FIRST. If this fails, no sentinel is consumed → safe to retry.
   const { data: afterRows, error: decErr } = await supabase.rpc(
     "decrement_user_tier_spend",
     { p_user_id: userId, p_amount: amount },
@@ -173,6 +196,21 @@ export async function decrementSpendOnRefund(
     return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
   }
   const after = Array.isArray(afterRows) ? afterRows[0] : afterRows
+
+  // Only now claim the step. The decrement succeeded; record the sentinel so a
+  // retried cancel skips. (If this claim somehow errors, the decrement has
+  // already applied — we surface it so the caller logs it; a re-run would be
+  // gated by the early-out read above on the next attempt once the row exists.)
+  const { error: claimErr } = await supabase.rpc(
+    "claim_order_post_payment_step",
+    { p_order_id: orderId, p_step: "spend_decremented" },
+  )
+  if (claimErr) {
+    console.warn(
+      `[decrementSpendOnRefund] decrement applied but claim failed for order=${orderId}:`,
+      claimErr,
+    )
+  }
 
   return {
     decremented: true,

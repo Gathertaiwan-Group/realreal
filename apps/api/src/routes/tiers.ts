@@ -18,6 +18,18 @@ const tierCreateSchema = z.object({
   discount_rate: z.number().nonnegative(),
   benefits: z.record(z.string(), z.unknown()).optional().default({}),
   sort_order: z.number().int().nonnegative().optional().default(0),
+  // Fields the admin tier editor (apps/web/.../admin/marketing/tiers/page.tsx)
+  // sends. Previously omitted here, so Zod silently stripped them and they were
+  // never persisted. Columns exist per migrations 0017 (rebate_rate) and 0021
+  // (tagline/perks/validity_months/requalify_*). All optional so partial PUTs
+  // and minimal POSTs still validate.
+  rebate_rate: z.number().nonnegative().optional(),
+  tagline: z.string().optional(),
+  // perks is a JSON array of strings (one perk per line in the UI editor).
+  perks: z.array(z.string()).optional(),
+  validity_months: z.number().int().nonnegative().optional(),
+  requalify_amount: z.number().nonnegative().optional(),
+  requalify_window_months: z.number().int().nonnegative().optional(),
 })
 
 const tierUpdateSchema = tierCreateSchema.partial()
