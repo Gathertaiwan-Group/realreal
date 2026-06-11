@@ -113,6 +113,15 @@ export default async function IdeaPage() {
             <p>創立誠真生活之後，我希望保留這份初衷。</p>
             <p>不只是販售產品，也持續創造讓善意流動的機會。</p>
           </div>
+
+          {/* Photo */}
+          <div className="mt-8 rounded-2xl overflow-hidden shadow-sm">
+            <img
+              src="/idea/charity-action.jpg"
+              alt="善意行動"
+              className="w-full h-auto object-cover"
+            />
+          </div>
         </section>
 
         <hr className="border-zinc-200 mb-10" />
