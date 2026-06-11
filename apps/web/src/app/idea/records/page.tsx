@@ -9,27 +9,18 @@ export const metadata: Metadata = {
 const contentHtml = `
 <img width="576" height="1024" src="https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-576x1024.jpg" alt="" srcset="https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-576x1024.jpg 576w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-169x300.jpg 169w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-768x1366.jpg 768w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-750x1334.jpg 750w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-600x1068.jpg 600w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885.jpg 788w" sizes="(max-width: 576px) 100vw, 576px" />
 
-<h2>第一站：飛揚天使莊園工程款</h2>
+<h2>第一站｜為腦麻兒築一個遮風避雨的家</h2>
+<p style="color:#a09080;margin-top:-0.5rem;margin-bottom:1.5rem;">2024</p>
 
 <p>屏東市私立磐石社會福利事業基金會</p>
 <p>【為腦麻兒築一個遮風避雨的家】</p>
-<p><b>First Stop: Flying Angels Home Project</b></p>
-<p>Pingtung Rock Foundation for Social Welfare</p>
-<p><b>[Building a safe haven for children with cerebral palsy]</b></p>
+
 <p>這個名字，你或許沒聽過。</p>
 <p>正因如此，我選擇了它。</p>
 <p>因為真正需要幫助的人，常常在角落被忽略，而我們想做的，正是雪中送炭的事。</p>
 <p>他們的資料被放在公益文宣架的最底層，封面蒙著一層灰。紙張上，是腦麻兒父母的臉龐，寫滿擔憂：</p>
 <p>「我們會老，我們不在了，孩子怎麼辦？」</p>
 <p>於是，幾個家庭夢想著，為孩子籌建一個能安居的家園。</p>
-<p>You may not have heard of this name.</p>
-<p>That is exactly why I chose it.</p>
-<p>Because those who need help the most are often overlooked in the corners of society—</p>
-<p>and what we wish to do, is to bring warmth in the coldest times.</p>
-<p>Their brochures lie at the very bottom of the charity stand, covered in dust.</p>
-<p>On the faded paper are the faces of parents of children with cerebral palsy, filled with worry:</p>
-<p><i>"We will grow old. One day we will be gone. Who will care for our children then?"</i></p>
-<p>And so, a few families dreamed of building a home where their children could feel safe and secure.</p>
 
 <h2>「好想幫他們啊，但我能做什麼呢？」</h2>
 
@@ -43,17 +34,6 @@ const contentHtml = `
 <li>而只要願意，我們都能多付出一點點，成為自己與他人生命中的溫柔光亮。</li>
 </ul>
 <p>利他，不是遙遠的理想，而是日常裡可以養成的習慣。</p>
-<p><b>"I really want to help them... but what can I do?"</b></p>
-<p>This thought took root in May 2023.</p>
-<p>By March the following year, I began sharing knowledge about wellness on social media, gradually reaching more people. By August, I donated all the earning to support the construction of this shelter for children with cerebral palsy.</p>
-<p>When asked, <i>"Why dedicate so much time and even give away all the earning?"</i></p>
-<p>I answered with what I believe:</p>
-<ul>
-<li>Every person, every life, deserves kindness.</li>
-<li>If we are willing, each of us can give a little more—becoming a gentle light in our own lives and in the lives of others.</li>
-</ul>
-<p>Altruism is not a lofty ideal.</p>
-<p>It is a habit we can nurture, day by day.</p>
 
 <img width="610" height="1024" src="https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-610x1024.jpg" alt="" srcset="https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-610x1024.jpg 610w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-179x300.jpg 179w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-768x1289.jpg 768w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-750x1259.jpg 750w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-600x1007.jpg 600w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881.jpg 803w" sizes="(max-width: 610px) 100vw, 610px" />
 
