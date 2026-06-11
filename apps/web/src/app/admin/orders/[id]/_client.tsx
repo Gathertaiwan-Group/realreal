@@ -40,6 +40,7 @@ interface CancelResponse {
     invoice_void?: CancelActionResult
     logistics_cancel?: CancelActionResult
     payment_refund?: CancelActionResult
+    points_refund?: CancelActionResult
     status_update?: CancelActionResult
   }
   error?: string
@@ -49,6 +50,7 @@ const CANCEL_STEP_LABELS: Record<string, string> = {
   invoice_void: "發票作廢",
   logistics_cancel: "綠界物流取消",
   payment_refund: "退款",
+  points_refund: "點數退還",
   status_update: "訂單狀態",
 }
 
@@ -74,7 +76,14 @@ export function OrderActions({
   const [cancelResult, setCancelResult] = useState<CancelResponse | null>(null)
 
   function handleAction(newStatus: string) {
-    startTransition(() => updateOrderStatusAction(orderId, newStatus))
+    startTransition(async () => {
+      const result = await updateOrderStatusAction(orderId, newStatus)
+      if (result?.error) {
+        toast.error(`狀態更新失敗：${result.error}`)
+      } else {
+        toast.success("訂單狀態已更新")
+      }
+    })
   }
 
   function handleConfirmCancel() {
@@ -83,11 +92,19 @@ export function OrderActions({
     startTransition(async () => {
       try {
         const data = (await cancelOrderAction(orderId, reason)) as CancelResponse
+        if (data?.error) {
+          // Structured error from the server action (real message, unmasked).
+          toast.error(data.error)
+          setCancelResult({ ok: false, error: data.error })
+          return
+        }
         setCancelResult(data)
         if (data?.actions?.status_update?.ok) {
           toast.success("訂單已標記取消")
         }
       } catch (e) {
+        // Belt-and-braces: actions return errors now, but keep the masked-throw
+        // fallback in case something outside the action layer blows up.
         const msg = e instanceof Error ? e.message : "取消訂單失敗"
         toast.error(msg)
         setCancelResult({ ok: false, error: msg })
@@ -181,11 +198,12 @@ function CancelOrderModal({
   const remaining = 200 - reason.length
   const hasResult = result !== null
   const actions = result?.actions ?? null
-  // Render the four steps in a stable order with friendly labels.
+  // Render the steps in a stable order with friendly labels.
   const stepKeys = [
     "invoice_void",
     "logistics_cancel",
     "payment_refund",
+    "points_refund",
     "status_update",
   ] as const
 
@@ -480,13 +498,22 @@ export function InvoiceCard({
   }
 
   function handleReissue() {
-    startTransition(() => reissueInvoiceAction(orderId, invoice!.id))
+    startTransition(async () => {
+      const result = await reissueInvoiceAction(orderId, invoice!.id)
+      if (result?.error) toast.error(`重開發票失敗：${result.error}`)
+      else toast.success("已重新排程開立發票")
+    })
   }
 
   function handleVoid() {
     if (!voidReason.trim()) return
     startTransition(async () => {
-      await voidInvoiceAction(orderId, invoice!.id, voidReason.trim())
+      const result = await voidInvoiceAction(orderId, invoice!.id, voidReason.trim())
+      if (result?.error) {
+        toast.error(`發票作廢失敗：${result.error}`)
+        return
+      }
+      toast.success("發票已作廢")
       setVoidReason("")
       setShowVoidForm(false)
     })
@@ -719,7 +746,11 @@ export function LogisticsCard({
   const cvsLabel = CVS_LABEL[shippingMethod ?? ""] ?? (isCvs ? "超商取貨" : "宅配到府")
 
   function handleRetry() {
-    startTransition(() => retryShipmentAction(orderId))
+    startTransition(async () => {
+      const result = await retryShipmentAction(orderId)
+      if (result?.error) toast.error(`重建物流失敗：${result.error}`)
+      else toast.success("已重新建立物流")
+    })
   }
 
   // Empty state — explain why + offer retry if payment is settled.
