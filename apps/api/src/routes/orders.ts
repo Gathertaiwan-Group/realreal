@@ -713,12 +713,17 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   // 真的需要開給一般登入用戶，必須顯式設定 ALLOW_NON_ADMIN_TEST_PAID=true。
   if (paymentMethod === "test_paid") {
     // Mark order as paid + processing — same end state as a webhook callback
-    // from a real gateway would produce.
-    const nowIso = new Date().toISOString()
-    await supabase
+    // from a real gateway would produce. (Paid time lives on payments.paid_at;
+    // orders has no paid_at column — including one made this update silently
+    // fail and left sandbox orders stuck on pending.)
+    const { error: markPaidError } = await supabase
       .from("orders")
-      .update({ status: "processing", payment_status: "paid", paid_at: nowIso })
+      .update({ status: "processing", payment_status: "paid" })
       .eq("id", order.id)
+    if (markPaidError) {
+      res.status(500).json({ error: `test_paid mark-paid failed: ${markPaidError.message}` })
+      return
+    }
 
     await supabase.from("payments").insert({
       order_id: order.id,
