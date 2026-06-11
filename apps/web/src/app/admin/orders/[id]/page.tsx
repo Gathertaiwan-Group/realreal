@@ -19,7 +19,9 @@ const STATUS_VARIANT: Record<string, "default" | "secondary" | "destructive" | "
 }
 
 const STATUS_LABEL: Record<string, string> = {
-  pending: "待付款",
+  // 訂單狀態的 pending 是「尚未處理」，與付款狀態的「待付款」badge 並排顯示，
+  // 兩個都叫待付款會看起來像重複 — 訂單側用「待處理」。
+  pending: "待處理",
   processing: "處理中",
   shipped: "已出貨",
   completed: "已完成",
@@ -156,7 +158,8 @@ export default async function AdminOrderDetailPage({
                   <tr key={item.id as string}>
                     <td className="px-4 py-3">{(snapshot?.name as string) ?? "—"}</td>
                     <td className="px-4 py-3 text-zinc-500">
-                      {(snapshot?.variant_label as string) ?? (item.variant_id ? String(item.variant_id) : "—")}
+                      {/* snapshot writer (orders.ts) stores variant_name; variant_label kept for older rows */}
+                      {(snapshot?.variant_name as string) ?? (snapshot?.variant_label as string) ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-right">NT$ {unitPrice.toLocaleString()}</td>
                     <td className="px-4 py-3 text-right">{qty}</td>
