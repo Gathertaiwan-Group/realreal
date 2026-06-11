@@ -113,13 +113,13 @@ View：`v_user_points_balance`。
 - Idempotency：`webhook_events` 唯一鍵 + `order_post_payment_log` claim-once → 不重複給點/出貨/退款。
 
 ### 4.3 待修安全項（非 P0，但賣出前要清）
-| 級別 | 位置 | 問題 | 修法 |
-|---|---|---|---|
-| P1 | `variants.ts:80` | 改庫存只擋 requireAuth | 加 requireAdmin + 原子 RPC |
-| P1 | `webhooks/pchomepay.ts` | 沒比對實付金額 vs 訂單金額 | `queryPayment` 回金額並比對 |
-| P2 | `lib/settings.ts` SECRET_KEYS | `linepay.channel_secret`/`ecpay.hash_iv`/`amego.webhook_secret` 未遮罩 | 加入 SECRET_KEYS |
-| P2 | `coupons/validate` | 回完整 coupon 設定，可被列舉 | 只回 `{valid,discount}` + 限流 |
-| — | anon key | 是舊版 anon JWT | 換新版 restricted publishable key（RLS 開了之後此項風險已大幅下降）|
+| 級別 | 位置 | 問題 | 修法 | 狀態 |
+|---|---|---|---|---|
+| P1 | `variants.ts:80` | 改庫存只擋 requireAuth | 加 requireAdmin | ✅ 已修 2026-06-12（無前台在用，純 admin endpoint）|
+| P1 | `webhooks/pchomepay.ts` | 沒比對實付金額 vs 訂單金額 | `queryPayment` 回金額，付款前比對；不符即拒絕標記 paid + log 對帳 | ✅ 已修 2026-06-12 |
+| P2 | `lib/settings.ts` SECRET_KEYS | `linepay.channel_secret`/`ecpay.hash_iv`/`amego.webhook_secret` 未遮罩 | 加入 SECRET_KEYS | 待修 |
+| P2 | `coupons/validate` | 回完整 coupon 設定，可被列舉 | 只回 `{valid,discount}` + 限流 | 待修 |
+| — | anon key | 是舊版 anon JWT | 換新版 restricted publishable key（RLS 開了之後此項風險已大幅下降）| 待修 |
 
 ### 4.4 白標多客戶的新增安全要求
 - **每客戶獨立密鑰**：`SETTINGS_ENCRYPTION_KEY`、`TOKEN_ENCRYPTION_KEY`、`INTERNAL_API_SECRET`、各金流憑證**每個客戶各自一份**——共用一把就等於一個客戶外洩、全部客戶遭殃。

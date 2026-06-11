@@ -43,4 +43,23 @@ describe("PATCH /products/:id/variants/:variantId/stock", () => {
       .send({ delta: -1 })
     expect(res.status).toBe(401)
   })
+
+  it("returns 403 for an authenticated non-admin (must be admin-gated)", async () => {
+    vi.mocked(supabase.auth.getUser).mockResolvedValue({
+      data: { user: { id: "cust-1", email: "c@example.com" } },
+      error: null,
+    } as any)
+    // requireAdmin looks up the role → not admin → 403
+    vi.mocked(supabase.from).mockReturnValue({
+      select: vi.fn().mockReturnThis(),
+      eq: vi.fn().mockReturnThis(),
+      single: vi.fn().mockResolvedValue({ data: { role: "customer" }, error: null }),
+    } as any)
+
+    const res = await request(app)
+      .patch("/products/prod-1/variants/var-1/stock")
+      .set("Authorization", "Bearer faketoken")
+      .send({ delta: -1 })
+    expect(res.status).toBe(403)
+  })
 })

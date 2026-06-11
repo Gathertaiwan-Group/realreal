@@ -75,9 +75,12 @@ variantsRouter.delete("/:variantId", requireAuth, requireAdmin, async (req: Requ
   res.status(204).send()
 })
 
-// PATCH /products/:id/variants/:variantId/stock — auth required (checkout + admin)
-// delta: positive = restock, negative = reserve/reduce
-variantsRouter.patch("/:variantId/stock", requireAuth, async (req: Request<VariantParams>, res: Response) => {
+// PATCH /products/:id/variants/:variantId/stock — ADMIN ONLY.
+// delta: positive = restock, negative = reduce. (Checkout does NOT use this —
+// it decrements stock server-side via the atomic_deduct_stock RPC. This is a
+// manual admin adjustment endpoint, so it must be admin-gated; previously it
+// only required auth, letting any logged-in customer rewrite inventory.)
+variantsRouter.patch("/:variantId/stock", requireAuth, requireAdmin, async (req: Request<VariantParams>, res: Response) => {
   const parseResult = z.object({ delta: z.number().int() }).safeParse(req.body)
   if (!parseResult.success) { res.status(400).json({ error: parseResult.error.flatten() }); return }
   const { delta } = parseResult.data

@@ -157,6 +157,9 @@ export async function queryPayment(orderId: string) {
     order_id: string
     status_code?: string
     pay_type?: string
+    // Authoritative amount the gateway actually collected (integer TWD).
+    // Used by the webhook to reject under/over-payments before marking paid.
+    amount?: number
     payment_info?: Record<string, unknown>
   }
 }

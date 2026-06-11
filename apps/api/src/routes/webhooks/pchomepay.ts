@@ -109,11 +109,30 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
   // Find the payments row by gateway_tx_id (= order_number on PChomePay).
   const { data: tx } = await supabase
     .from("payments")
-    .select("id, order_id")
+    .select("id, order_id, amount")
     .eq("gateway_tx_id", orderNumber)
     .maybeSingle()
 
   if (tx) {
+    // Amount authority: never mark an order paid for less (or more) than it
+    // owes. PChomePay returns the collected amount (integer TWD); compare it
+    // to what we charged (payments.amount, TWD). A mismatch = under/over-pay
+    // or a forged/altered notify → refuse to flip to paid, log loudly for
+    // manual reconciliation, and ack so PChomePay stops retrying. If the
+    // gateway didn't return an amount we can't compare, so we don't block.
+    if (isPaid && authoritative.amount != null) {
+      const collected = Math.round(Number(authoritative.amount))
+      const expected = Math.round(Number(tx.amount ?? 0))
+      if (collected !== expected) {
+        console.error(
+          `[webhooks/pchomepay] AMOUNT MISMATCH order=${orderNumber} ` +
+            `collected=${collected} expected=${expected} — NOT marking paid, needs reconcile`,
+        )
+        res.send("success")
+        return
+      }
+    }
+
     if (isPaid) {
       await supabase
         .from("payments")
