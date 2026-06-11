@@ -37,7 +37,14 @@ export function Header({
       },
       { href: "/about", label: "品牌故事" },
       { href: "/blog", label: "聰明生活" },
-      { href: "/idea", label: "公益存款" },
+      {
+        href: "/idea",
+        label: "公益存款",
+        children: [
+          { href: "/idea", label: "公益存款是什麼？" },
+          { href: "/idea/records", label: "善意行動紀錄" },
+        ],
+      },
       { href: "/membership", label: "會員制度" },
       { href: "/faq", label: "常見問題" },
     ],
@@ -45,7 +52,8 @@ export function Header({
   )
 
   const [mobileOpen, setMobileOpen] = useState(false)
-  const [productOpen, setProductOpen] = useState(false)
+  // openDropdown tracks which nav item's dropdown is open (by href), or null if none
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null)
   const dropdownTimeout = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Close mobile menu on route change (resize)
@@ -59,13 +67,13 @@ export function Header({
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-  const handleDropdownEnter = () => {
+  const handleDropdownEnter = (href: string) => {
     if (dropdownTimeout.current) clearTimeout(dropdownTimeout.current)
-    setProductOpen(true)
+    setOpenDropdown(href)
   }
 
   const handleDropdownLeave = () => {
-    dropdownTimeout.current = setTimeout(() => setProductOpen(false), 150)
+    dropdownTimeout.current = setTimeout(() => setOpenDropdown(null), 150)
   }
 
   return (
@@ -91,11 +99,12 @@ export function Header({
           >
             {NAV_LINKS.map((link) => {
               if (link.children) {
+                const isOpen = openDropdown === link.href
                 return (
                   <div
                     key={link.href}
                     className="relative"
-                    onMouseEnter={handleDropdownEnter}
+                    onMouseEnter={() => handleDropdownEnter(link.href)}
                     onMouseLeave={handleDropdownLeave}
                   >
                     <Link
@@ -107,7 +116,7 @@ export function Header({
                       <ChevronDown
                         className="h-3.5 w-3.5 transition-transform duration-200"
                         style={{
-                          transform: productOpen ? "rotate(180deg)" : "rotate(0deg)",
+                          transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
                         }}
                       />
                       <span className="absolute bottom-0 left-3 right-3 h-0.5 origin-left scale-x-0 bg-[#10305a] transition-transform duration-200 group-hover:scale-x-100" />
@@ -117,8 +126,8 @@ export function Header({
                     <div
                       className="absolute left-0 top-full pt-1"
                       style={{
-                        opacity: productOpen ? 1 : 0,
-                        pointerEvents: productOpen ? "auto" : "none",
+                        opacity: isOpen ? 1 : 0,
+                        pointerEvents: isOpen ? "auto" : "none",
                         transition: "opacity 150ms ease",
                       }}
                     >
@@ -129,7 +138,7 @@ export function Header({
                             href={child.href}
                             className="block px-4 py-2 text-sm font-medium transition-colors hover:bg-gray-50"
                             style={{ color: "#10305a" }}
-                            onClick={() => setProductOpen(false)}
+                            onClick={() => setOpenDropdown(null)}
                           >
                             {child.label}
                           </Link>
@@ -204,23 +213,24 @@ export function Header({
             <nav className="flex flex-col gap-1 pt-2">
               {NAV_LINKS.map((link) => {
                 if (link.children) {
+                  const isOpen = openDropdown === link.href
                   return (
                     <div key={link.href}>
                       <button
                         type="button"
                         className="flex w-full items-center justify-between rounded-md px-3 py-2.5 text-sm font-medium transition-colors hover:bg-gray-50"
                         style={{ color: "#10305a" }}
-                        onClick={() => setProductOpen(!productOpen)}
+                        onClick={() => setOpenDropdown(isOpen ? null : link.href)}
                       >
                         {link.label}
                         <ChevronDown
                           className="h-4 w-4 transition-transform duration-200"
                           style={{
-                            transform: productOpen ? "rotate(180deg)" : "rotate(0deg)",
+                            transform: isOpen ? "rotate(180deg)" : "rotate(0deg)",
                           }}
                         />
                       </button>
-                      {productOpen && (
+                      {isOpen && (
                         <div className="ml-4 flex flex-col gap-1">
                           {link.children.map((child) => (
                             <Link
@@ -228,7 +238,7 @@ export function Header({
                               href={child.href}
                               className="rounded-md px-3 py-2 text-sm font-medium transition-colors hover:bg-gray-50"
                               style={{ color: "#10305a" }}
-                              onClick={() => setMobileOpen(false)}
+                              onClick={() => { setMobileOpen(false); setOpenDropdown(null) }}
                             >
                               {child.label}
                             </Link>

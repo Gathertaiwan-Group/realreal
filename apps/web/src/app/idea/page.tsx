@@ -4,114 +4,161 @@ import { getSiteContent } from "@/lib/content"
 export const dynamic = "force-dynamic"
 
 export const metadata: Metadata = {
-  title: "公益里程 | 誠真生活 RealReal",
+  title: "公益存款是什麼？| 誠真生活 RealReal",
   description:
-    "誠真生活公益里程計畫，每一次消費都為社會注入善意。了解我們如何支持腦麻兒家庭，建立充滿信任與善意的生活方式。",
+    "善意，不必等到富有才開始。每一次消費，都留下看得見的善意足跡。了解誠真生活的公益存款計畫。",
 }
 
 type IdeaContent = { content_html?: string }
 
-const contentHtml = `
-<img width="576" height="1024" src="https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-576x1024.jpg" alt="" srcset="https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-576x1024.jpg 576w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-169x300.jpg 169w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-768x1366.jpg 768w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-750x1334.jpg 750w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-600x1068.jpg 600w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885.jpg 788w" sizes="(max-width: 576px) 100vw, 576px" />
-
-<h2>第一站：飛揚天使莊園工程款</h2>
-
-<p>屏東市私立磐石社會福利事業基金會</p>
-<p>【為腦麻兒築一個遮風避雨的家】</p>
-<p><b>First Stop: Flying Angels Home Project</b></p>
-<p>Pingtung Rock Foundation for Social Welfare</p>
-<p><b>[Building a safe haven for children with cerebral palsy]</b></p>
-<p>這個名字，你或許沒聽過。</p>
-<p>正因如此，我選擇了它。</p>
-<p>因為真正需要幫助的人，常常在角落被忽略，而我們想做的，正是雪中送炭的事。</p>
-<p>他們的資料被放在公益文宣架的最底層，封面蒙著一層灰。紙張上，是腦麻兒父母的臉龐，寫滿擔憂：</p>
-<p>「我們會老，我們不在了，孩子怎麼辦？」</p>
-<p>於是，幾個家庭夢想著，為孩子籌建一個能安居的家園。</p>
-<p>You may not have heard of this name.</p>
-<p>That is exactly why I chose it.</p>
-<p>Because those who need help the most are often overlooked in the corners of society—</p>
-<p>and what we wish to do, is to bring warmth in the coldest times.</p>
-<p>Their brochures lie at the very bottom of the charity stand, covered in dust.</p>
-<p>On the faded paper are the faces of parents of children with cerebral palsy, filled with worry:</p>
-<p><i>"We will grow old. One day we will be gone. Who will care for our children then?"</i></p>
-<p>And so, a few families dreamed of building a home where their children could feel safe and secure.</p>
-
-<h2>「好想幫他們啊，但我能做什麼呢？」</h2>
-
-<p>2023年5月，這個念頭在心裡落下。</p>
-<p>隔年3月，我在社群上分享身心滋養的知識，慢慢被更多人看見。到了8月，我捐出收益，支持腦麻兒蓋起這個遮風避雨的家。</p>
-<p>有人問：</p>
-<p>「為什麼花心力分享，還把收益全數捐出去？」</p>
-<p>因為我相信——</p>
-<ul>
-<li>每個人、每個生命，都值得被善待；</li>
-<li>而只要願意，我們都能多付出一點點，成為自己與他人生命中的溫柔光亮。</li>
-</ul>
-<p>利他，不是遙遠的理想，而是日常裡可以養成的習慣。</p>
-<p><b>"I really want to help them... but what can I do?"</b></p>
-<p>This thought took root in May 2023.</p>
-<p>By March the following year, I began sharing knowledge about wellness on social media, gradually reaching more people. By August, I donated all the earning to support the construction of this shelter for children with cerebral palsy.</p>
-<p>When asked, <i>"Why dedicate so much time and even give away all the earning?"</i></p>
-<p>I answered with what I believe:</p>
-<ul>
-<li>Every person, every life, deserves kindness.</li>
-<li>If we are willing, each of us can give a little more—becoming a gentle light in our own lives and in the lives of others.</li>
-</ul>
-<p>Altruism is not a lofty ideal.</p>
-<p>It is a habit we can nurture, day by day.</p>
-
-<img width="610" height="1024" src="https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-610x1024.jpg" alt="" srcset="https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-610x1024.jpg 610w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-179x300.jpg 179w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-768x1289.jpg 768w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-750x1259.jpg 750w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-600x1007.jpg 600w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881.jpg 803w" sizes="(max-width: 610px) 100vw, 610px" />
-
-<h2>如果你不知道從哪裡開始，就從這裡開始吧</h2>
-
-<p>每一次消費，我們都會替你將 <strong>2.3-3.3% 的金額存入「公益存款」</strong>，</p>
-<p>你可以在會員帳戶中，隨時看見自己累積的善意足跡。</p>
-<p>願我們一起，建立一種充滿信任與善意的生活方式——</p>
-<p>溫柔而堅定。</p>
-<p>讓善意流動，讓希望成真。</p>
-<p>每一次支持，都是愛的延續。</p>
-
-<div class="flex gap-4 flex-wrap mt-4">
-  <a href="/subscribe" class="inline-block px-6 py-2 bg-[#10305a] text-white rounded-lg no-underline hover:opacity-90">了解會員制度</a>
-  <a href="/shop" class="inline-block px-6 py-2 bg-[#10305a] text-white rounded-lg no-underline hover:opacity-90">了解產品</a>
-</div>
-
-<p><b>If you don't know where to begin—start here.</b></p>
-<p>With every purchase, <strong>2.3-3.3% will be set aside as your "Charity Credit."</strong></p>
-<p>You can view your record and watch your kindness grow in your member account.</p>
-<p>Together, let's create a lifestyle built on trust and kindness—</p>
-<p>gentle yet steadfast.</p>
-<p>Let compassion flow.</p>
-<p>Let hope take form.</p>
-<p>Every act of support is a continuation of love.</p>
-
-<div class="flex gap-4 flex-wrap mt-4">
-  <a href="/subscribe" class="inline-block px-6 py-2 bg-[#10305a] text-white rounded-lg no-underline hover:opacity-90">Learn Our Membership</a>
-  <a href="/shop" class="inline-block px-6 py-2 bg-[#10305a] text-white rounded-lg no-underline hover:opacity-90">Explore Our Products</a>
-</div>
-`
-
 export default async function IdeaPage() {
   const content = await getSiteContent<IdeaContent>("idea_page")
-  const htmlContent = content?.content_html?.trim() ? content.content_html : contentHtml
+  if (content?.content_html?.trim()) {
+    return (
+      <div className="container mx-auto px-4 py-12 max-w-2xl">
+        <div
+          className="prose prose-zinc max-w-none
+            prose-headings:text-[#10305a] prose-headings:font-bold
+            prose-p:text-[#687279] prose-p:leading-relaxed
+            prose-blockquote:border-[#10305a]/30 prose-blockquote:text-[#687279]
+            prose-strong:text-[#10305a]"
+          dangerouslySetInnerHTML={{ __html: content.content_html! }}
+        />
+      </div>
+    )
+  }
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-4xl">
-      <h1 className="text-3xl font-bold mb-8 text-center text-[#10305a]">
-        公益里程
-      </h1>
-      <div
-        className="prose prose-zinc max-w-none
-          prose-headings:text-[#10305a] prose-headings:font-bold
-          prose-p:text-[#687279] prose-p:leading-relaxed
-          prose-a:text-[#10305a] prose-a:underline
-          prose-img:rounded-[10px] prose-img:mx-auto
-          prose-li:text-[#687279]
-          prose-blockquote:border-[#10305a]/30 prose-blockquote:text-[#687279]
-          prose-strong:text-[#10305a]"
-        style={{ textAlign: "center" }}
-        dangerouslySetInnerHTML={{ __html: htmlContent }}
-      />
+    <div className="bg-white">
+      <article className="container mx-auto px-4 py-16 max-w-2xl">
+
+        {/* ── 主標題 ── */}
+        <header className="mb-12 text-center">
+          <h1 className="text-3xl font-bold text-[#10305a] mb-3">
+            善意，不必等到富有才開始。
+          </h1>
+          <p className="text-[#a09080]">每一次消費，都留下看得見的善意足跡。</p>
+        </header>
+
+        {/* ── 開場：等待的循環 ── */}
+        <section className="space-y-5 text-[#687279] leading-relaxed mb-10">
+          <p>很多人認為，要等到自己更有能力、更有時間、更有資源之後，才有資格幫助別人。</p>
+          <p>但我發現，真正阻礙善意流動的，往往不是能力不足，而是我們習慣等待。</p>
+          <div className="pl-5 space-y-1 border-l-2 border-zinc-200">
+            <p>等待別人先做。</p>
+            <p>等待企業先做。</p>
+            <p>等待有一天條件更好再做。</p>
+          </div>
+          <p>於是，善意總是停留在想法裡。</p>
+        </section>
+
+        <hr className="border-zinc-200 mb-10" />
+
+        {/* ── Section 1 ── */}
+        <section className="mb-10">
+          <h2 className="text-xl font-bold text-[#10305a] mb-6">
+            公益存款，就是一場小小的實驗
+          </h2>
+          <div className="space-y-5 text-[#687279] leading-relaxed">
+            <p>我一直在想：</p>
+            <blockquote className="border-l-4 border-[#10305a]/25 pl-5 space-y-2 italic">
+              <p>如果行善不必等到未來，而是能成為日常的一部分，會發生什麼事？</p>
+              <p>如果每個人都願意多付出一點點，這些微小的力量又能匯聚成什麼模樣？</p>
+            </blockquote>
+            <p>因此，我們設計了「公益存款」。</p>
+            <p>
+              每一次消費，誠真生活都會提撥 <strong className="text-[#10305a]">2%～3%</strong> 的金額存入你的公益存款帳戶。
+              你可以選擇將它折抵未來消費，也可以讓這份善意持續累積，支持未來的公益行動。
+            </p>
+
+            <div className="pt-2 space-y-3">
+              <p>許多企業都在做公益。</p>
+              <p>但對大多數消費者而言，公益往往停留在品牌端。</p>
+              <p>看得到成果，卻感受不到自己的參與。</p>
+            </div>
+
+            <p>於是我開始思考：</p>
+            <blockquote className="border-l-4 border-[#10305a]/25 pl-5 space-y-2 italic">
+              <p>如果每一次消費所累積的善意，都能被看見，會不會不一樣？</p>
+              <p>如果人們知道——「原來我也是這件事的一部分。」</p>
+              <p>會不會更願意持續參與？</p>
+            </blockquote>
+
+            <div className="pt-2 space-y-2">
+              <p>公益存款想做的，其實很簡單。</p>
+              <p>只是讓善意被看見。</p>
+              <p className="font-medium text-[#10305a]">讓每一次選擇，都留下看得見的善意足跡。</p>
+            </div>
+          </div>
+        </section>
+
+        <hr className="border-zinc-200 mb-10" />
+
+        {/* ── Section 2 ── */}
+        <section className="mb-10">
+          <h2 className="text-xl font-bold text-[#10305a] mb-6">
+            為什麼我想做這件事？
+          </h2>
+          <div className="space-y-5 text-[#687279] leading-relaxed">
+            <p>這個想法，其實來自我一路以來收到的善意。</p>
+            <p>從小看著父親與免疫疾病和癌症共存，他依然樂觀，總提醒我：</p>
+            <blockquote className="border-l-4 border-[#10305a]/25 pl-5 italic">
+              「世界上還有許多比我們更需要幫助的人。」
+            </blockquote>
+            <p>
+              求學期間，我幸運地獲得獎學金完成學業，因此始終相信，人生中收到的善意，
+              有一天也應該回到社會之中。
+            </p>
+            <p>後來，我開始經營分享滋養身心資訊的社群媒體，並將團購收益全數捐出。</p>
+            <p>創立誠真生活之後，我希望保留這份初衷。</p>
+            <p>不只是販售產品，也持續創造讓善意流動的機會。</p>
+          </div>
+        </section>
+
+        <hr className="border-zinc-200 mb-10" />
+
+        {/* ── Section 3 ── */}
+        <section className="mb-10">
+          <h2 className="text-xl font-bold text-[#10305a] mb-6">
+            符合人性，也相信人性
+          </h2>
+          <div className="space-y-5 text-[#687279] leading-relaxed">
+            <p>我知道，不是每個人都能在每個階段把公益放在優先順位。</p>
+            <p>所以公益存款可以折抵消費。</p>
+            <p>這不是妥協，而是一種符合人性的設計。</p>
+            <p>因為我相信：</p>
+            <blockquote className="border-l-4 border-[#10305a]/25 pl-5 space-y-2">
+              <p>當一件事情更容易開始，就會有更多人願意參與。</p>
+              <p>而當越來越多人加入，善意就有機會流向更遠的地方。</p>
+            </blockquote>
+          </div>
+        </section>
+
+        <hr className="border-zinc-200 mb-10" />
+
+        {/* ── Section 4 ── */}
+        <section className="mb-10">
+          <h2 className="text-xl font-bold text-[#10305a] mb-6">
+            願我們一起，把善意變成習慣
+          </h2>
+          <div className="space-y-5 text-[#687279] leading-relaxed">
+            <p>過去，我曾以社群收益支持腦麻兒庇護家園的興建。</p>
+            <p>
+              未來，如果發生重大災害、急難救助需求，或有值得支持的弱勢團體與公益計畫，
+              誠真生活也希望能夠成為其中的一份力量。
+            </p>
+            <p>我不知道這場實驗最後會走到哪裡。</p>
+            <p>但我相信：</p>
+            <blockquote className="border-l-4 border-[#10305a]/25 pl-5">
+              <p>
+                每一次選擇、每一次支持、每一次願意多付出一點點，<br />
+                都能讓世界變得更好一些。
+              </p>
+            </blockquote>
+          </div>
+        </section>
+
+      </article>
     </div>
   )
 }
