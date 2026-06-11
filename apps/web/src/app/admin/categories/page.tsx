@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { AdminTabs } from "../_components/AdminTabs"
 import { CategoriesClient, type CategoryRow } from "./_client"
+import { normalizeAdminCategories } from "@/lib/admin-categories"
 
 export const metadata = { title: "分類管理 | Admin" }
 
@@ -36,13 +37,16 @@ export default async function AdminCategoriesPage() {
 
   let initialData: CategoryRow[] = []
   try {
-    const res = await fetch(`${API_URL}/admin/categories`, {
+    let res = await fetch(`${API_URL}/admin/categories`, {
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       cache: "no-store",
     })
+    if (!res.ok) {
+      res = await fetch(`${API_URL}/categories`, { cache: "no-store" })
+    }
     if (res.ok) {
       const json: CategoriesResponse = await res.json()
-      initialData = json.data ?? json.categories ?? []
+      initialData = normalizeAdminCategories(json.data ?? json.categories ?? [])
     }
   } catch {
     // API unavailable — render empty state

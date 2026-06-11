@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { toast } from "sonner"
 import { Plus, Trash2, GripVertical, ChevronUp, ChevronDown, X } from "lucide-react"
 import { adminFetch } from "@/lib/admin-fetch"
+import { normalizeAdminCategories } from "@/lib/admin-categories"
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
@@ -77,10 +78,15 @@ export function CategoriesClient({ initialData }: CategoriesClientProps) {
 
   const refresh = useCallback(async () => {
     try {
-      const res = await adminFetch(`${API_URL}/admin/categories`)
+      let res = await adminFetch(`${API_URL}/admin/categories`)
+      if (!res.ok) {
+        res = await fetch(`${API_URL}/categories`)
+      }
       if (!res.ok) throw new Error("讀取分類失敗")
       const json = await res.json()
-      const next: CategoryRow[] = json.data ?? json.categories ?? []
+      const next: CategoryRow[] = normalizeAdminCategories(
+        json.data ?? json.categories ?? [],
+      )
       setRows(next)
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "讀取分類失敗")
@@ -691,14 +697,20 @@ function LandingSettings({
         const blocks: FeatureBlock[] = Array.isArray(cat.feature_blocks)
           ? cat.feature_blocks
               .slice(0, MAX_FEATURE_BLOCKS)
-              .map((b: any) => ({
-                heading: typeof b?.heading === "string" ? b.heading : "",
-                body: typeof b?.body === "string" ? b.body : "",
-              }))
+              .map((block: unknown) => {
+                const value =
+                  block && typeof block === "object"
+                    ? block as Record<string, unknown>
+                    : {}
+                return {
+                  heading: typeof value.heading === "string" ? value.heading : "",
+                  body: typeof value.body === "string" ? value.body : "",
+                }
+              })
           : []
         setFeatureBlocks(blocks)
         const slugs: string[] = Array.isArray(cat.related_post_slugs)
-          ? cat.related_post_slugs.filter((s: any) => typeof s === "string")
+          ? cat.related_post_slugs.filter((slug: unknown): slug is string => typeof slug === "string")
           : []
         setRelatedSlugsText(slugs.join("\n"))
         setLoaded(true)
