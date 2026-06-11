@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Card } from "@/components/ui/card"
 import { TiptapEditor } from "@/components/editor"
+import { uploadImage } from "@/components/editor/uploadImage"
 
 export type Post = {
   id?: string
@@ -71,6 +72,26 @@ export function PostForm({ initialData, mode }: PostFormProps) {
   const [status, setStatus] = useState<Post["status"]>(initialData?.status ?? "draft")
   const [scheduledAt, setScheduledAt] = useState(toDatetimeLocal(initialData?.scheduled_at ?? ""))
   const [slugTouched, setSlugTouched] = useState(!!initialData?.slug)
+  const [coverUploading, setCoverUploading] = useState(false)
+  const coverInputRef = useRef<HTMLInputElement>(null)
+
+  async function handleCoverUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    if (!file.type.startsWith("image/")) { toast.error("只接受圖片檔案"); return }
+    if (file.size > 5 * 1024 * 1024) { toast.error("檔案大小不能超過 5MB"); return }
+    setCoverUploading(true)
+    try {
+      const url = await uploadImage(file, "post-covers")
+      setCoverImageUrl(url)
+      toast.success("封面圖片已上傳")
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "上傳失敗，請稍後再試")
+    } finally {
+      setCoverUploading(false)
+      if (coverInputRef.current) coverInputRef.current.value = ""
+    }
+  }
 
   useEffect(() => {
     async function fetchCategories() {
@@ -203,26 +224,64 @@ export function PostForm({ initialData, mode }: PostFormProps) {
       {/* Media & Categorization */}
       <Card className="rounded-[10px] p-6 space-y-5">
         <div className="space-y-2">
-          <Label htmlFor="cover_image_url">封面圖片網址</Label>
-          <Input
-            id="cover_image_url"
-            value={coverImageUrl}
-            onChange={(e) => setCoverImageUrl(e.target.value)}
-            placeholder="https://..."
-            type="url"
-            className="rounded-[10px]"
+          <Label>封面圖片</Label>
+          <input
+            ref={coverInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleCoverUpload}
+            className="hidden"
           />
-          {coverImageUrl && (
-            <div className="mt-2 rounded-[10px] overflow-hidden border max-w-sm">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={coverImageUrl}
-                alt="封面預覽"
-                className="w-full h-auto object-cover"
-                onError={(e) => {
-                  ;(e.target as HTMLImageElement).style.display = "none"
-                }}
-              />
+          {coverImageUrl ? (
+            <div className="space-y-2">
+              <div className="rounded-[10px] overflow-hidden border max-w-sm">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={coverImageUrl}
+                  alt="封面預覽"
+                  className="w-full h-auto object-cover"
+                  onError={(e) => {
+                    ;(e.target as HTMLImageElement).style.display = "none"
+                  }}
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => coverInputRef.current?.click()}
+                  disabled={coverUploading}
+                  className="rounded-[10px]"
+                >
+                  {coverUploading ? "上傳中..." : "更換圖片"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCoverImageUrl("")}
+                  disabled={coverUploading}
+                  className="rounded-[10px] text-red-500 hover:text-red-600"
+                >
+                  移除
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-[10px] border-2 border-dashed border-zinc-300 bg-zinc-50/50 p-6 text-center space-y-2">
+              <p className="text-sm text-zinc-500">尚未設定封面圖片</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => coverInputRef.current?.click()}
+                disabled={coverUploading}
+                className="rounded-[10px]"
+              >
+                {coverUploading ? "上傳中..." : "上傳封面圖片"}
+              </Button>
+              <p className="text-xs text-zinc-400">支援 JPG / PNG / WebP，最大 5MB</p>
             </div>
           )}
         </div>
