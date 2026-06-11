@@ -56,7 +56,7 @@ export default async function AboutPage() {
         <div className="flex flex-col md:flex-row gap-10 md:gap-14 items-start">
 
           {/* Left: founder photo */}
-          <div className="w-full md:w-2/5 flex-shrink-0">
+          <div className="w-full md:w-1/2 flex-shrink-0">
             <div className="relative rounded-2xl overflow-hidden shadow-md">
               <Image
                 src="https://realreal.cc/wp-content/uploads/2025/09/reallightjpeg-865x1024.webp"
