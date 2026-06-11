@@ -45,7 +45,7 @@ export default async function AboutPage() {
     <div className="bg-white">
 
       {/* ── 品牌故事 ── */}
-      <section className="container mx-auto px-4 pt-16 pb-12 max-w-3xl">
+      <section className="container mx-auto px-4 pt-16 pb-12">
 
         {/* Section heading */}
         <h2 className="text-2xl font-bold text-[#10305a] text-center mb-10">
@@ -53,7 +53,7 @@ export default async function AboutPage() {
         </h2>
 
         {/* Two-column: photo left, text right */}
-        <div className="flex flex-col md:flex-row gap-10 md:gap-14 items-start">
+        <div className="flex flex-col md:flex-row gap-10 md:gap-16 items-start">
 
           {/* Left: founder photo */}
           <div className="w-full md:w-1/2 flex-shrink-0">
