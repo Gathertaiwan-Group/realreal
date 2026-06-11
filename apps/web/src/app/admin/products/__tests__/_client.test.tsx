@@ -22,6 +22,7 @@ describe("AdminProductsClient", () => {
             created_at: "2026-06-12T00:00:00.000Z",
           },
         ]}
+        archived={false}
       />,
     )
 

@@ -120,6 +120,7 @@ productsRouter.get("/", async (req, res) => {
     .from("products")
     .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, display_priority, created_at, product_variants(id, sku, name, price, sale_price, stock_qty)", { count: "exact" })
     .eq("is_active", true)
+    .is("deleted_at", null)
     .order("is_featured", { ascending: false })
     .order("display_priority", { ascending: false })
     .order("created_at", { ascending: false })
@@ -172,6 +173,7 @@ productsRouter.get("/:slug", async (req, res) => {
       product_variants (id, sku, name, price, sale_price, stock_qty, weight, attributes)
     `)
     .eq("slug", req.params.slug)
+    .is("deleted_at", null)
     .single()
 
   const err = error as { code?: string; message?: string } | null
@@ -229,15 +231,61 @@ productsRouter.put("/:id", requireAuth, requireAdmin, async (req, res) => {
   res.json({ data })
 })
 
-// DELETE /products/:id — admin only
+// DELETE /products/:id — admin only.
+// Default = soft delete (封存): set deleted_at + is_active=false.
+// ?hard=true = permanent delete, but refused (409) if any variant is still
+// referenced by order_items / subscription_plans (those FKs do NOT cascade).
 productsRouter.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
+  if (req.query.hard === "true") {
+    // Fetch this product's variant ids first.
+    const { data: variants, error: variantsError } = await supabase
+      .from("product_variants")
+      .select("id")
+      .eq("product_id", req.params.id)
+    if (variantsError) { res.status(500).json({ error: variantsError.message }); return }
+
+    const variantIds = (variants ?? []).map((v) => v.id)
+    if (variantIds.length > 0) {
+      // Any historical order referencing these variants?
+      const { data: orderRef, error: orderError } = await supabase
+        .from("order_items")
+        .select("id")
+        .in("variant_id", variantIds)
+        .limit(1)
+      if (orderError) { res.status(500).json({ error: orderError.message }); return }
+
+      // Any subscription plan referencing these variants?
+      const { data: planRef, error: planError } = await supabase
+        .from("subscription_plans")
+        .select("id")
+        .in("variant_id", variantIds)
+        .limit(1)
+      if (planError) { res.status(500).json({ error: planError.message }); return }
+
+      if ((orderRef && orderRef.length > 0) || (planRef && planRef.length > 0)) {
+        res.status(409).json({ error: "此商品有歷史訂單或訂閱方案引用，無法永久刪除，請改用封存" })
+        return
+      }
+    }
+
+    // Safe to hard delete — CASCADE clears variants + reviews.
+    const { error } = await supabase
+      .from("products")
+      .delete()
+      .eq("id", req.params.id)
+    if (error) { res.status(500).json({ error: error.message }); return }
+    res.status(200).json({ ok: true, mode: "deleted" })
+    return
+  }
+
+  // Soft delete (default): archive the product.
   const { error } = await supabase
     .from("products")
-    .delete()
+    .update({ deleted_at: new Date().toISOString(), is_active: false })
     .eq("id", req.params.id)
-
+    .is("deleted_at", null)
   if (error) { res.status(500).json({ error: error.message }); return }
-  res.status(204).send()
+  res.status(200).json({ ok: true, mode: "archived" })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -303,6 +351,19 @@ productsAdminRouter.post("/", requireAuth, requireAdmin, async (req, res) => {
   }
 
   res.status(201).json({ data: { product, variants: variants ?? [] } })
+})
+
+// POST /admin/products/:id/restore — un-archive a product (清除 deleted_at).
+// is_active is left as-is (stays false), so a restored product stays 下架
+// until the admin republishes it.
+productsAdminRouter.post("/:id/restore", requireAuth, requireAdmin, async (req, res) => {
+  const { error } = await supabase
+    .from("products")
+    .update({ deleted_at: null })
+    .eq("id", req.params.id)
+
+  if (error) { res.status(500).json({ error: error.message }); return }
+  res.status(200).json({ ok: true })
 })
 
 const featureSchema = z.object({

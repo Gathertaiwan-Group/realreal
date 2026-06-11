@@ -11,7 +11,12 @@ import { apiClient } from "@/lib/api-client"
 export type ActionResult = { ok: boolean; error?: string }
 
 function toErrorResult(e: unknown): ActionResult {
-  return { ok: false, error: e instanceof Error ? e.message : String(e) }
+  const raw = e instanceof Error ? e.message : String(e)
+  // apiClient throws "[409] <message>" / "[500] <message>". Strip the leading
+  // status prefix so the UI can toast the clean message (e.g. the 409 copy
+  // "已付款或已開立發票的訂單無法永久刪除…") without a "[409]" in front.
+  const message = raw.replace(/^\[\d{3}\]\s*/, "")
+  return { ok: false, error: message }
 }
 
 export async function updateOrderStatusAction(
@@ -111,6 +116,54 @@ export async function cancelOrderAction(orderId: string, reason: string) {
     })
     revalidatePath(`/admin/orders/${orderId}`)
     return data
+  } catch (e) {
+    return toErrorResult(e)
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Delete order — soft archive (sets orders.deleted_at) by default, or a hard
+// permanent purge when { hard: true }. The API rejects hard-deleting paid /
+// invoiced orders with a 409, which apiClient surfaces as a thrown
+// "[409] <message>"; we strip the status prefix so the UI can toast the clean
+// Chinese message. Both the detail path and the list are revalidated because a
+// soft-archived / purged order should disappear from the active list.
+// ---------------------------------------------------------------------------
+
+export async function deleteOrderAction(
+  orderId: string,
+  { hard }: { hard: boolean },
+): Promise<ActionResult> {
+  try {
+    const supabase = await createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    const path = hard
+      ? `/admin/orders/${orderId}?hard=true`
+      : `/admin/orders/${orderId}`
+    await apiClient(path, {
+      method: "DELETE",
+      token: session?.access_token,
+    })
+    revalidatePath(`/admin/orders/${orderId}`)
+    revalidatePath("/admin/orders")
+    return { ok: true }
+  } catch (e) {
+    return toErrorResult(e)
+  }
+}
+
+export async function restoreOrderAction(orderId: string): Promise<ActionResult> {
+  try {
+    const supabase = await createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    await apiClient(`/admin/orders/${orderId}/restore`, {
+      method: "POST",
+      body: JSON.stringify({}),
+      token: session?.access_token,
+    })
+    revalidatePath(`/admin/orders/${orderId}`)
+    revalidatePath("/admin/orders")
+    return { ok: true }
   } catch (e) {
     return toErrorResult(e)
   }

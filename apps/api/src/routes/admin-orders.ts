@@ -526,3 +526,186 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
 
   res.json({ ok: true, actions })
 })
+
+// DELETE /admin/orders/:id — archive (soft) or permanently remove (hard) an order.
+//
+// Soft delete (default): just stamp deleted_at=now() so the row disappears from
+// active listings but stays fully intact (money/invoice/points/stock history is
+// preserved). Reversible via POST /:id/restore. This is the SAFE default.
+//
+// Hard delete (?hard=true): physically removes the order and untangles the FK
+// web. Heavily guarded — refused for anything that touched real money (paid /
+// refunded payment, or an issued invoice) so we never destroy financial records.
+// Only pending / failed / cancelled orders with no settled money can be erased.
+adminOrdersRouter.delete("/:id", async (req, res) => {
+  const orderId = req.params.id
+  const hard = req.query.hard === "true"
+
+  // ---- Soft delete (archive) ----
+  if (!hard) {
+    // Only flip rows that are still active so a double-archive is a no-op rather
+    // than re-stamping a newer timestamp over an existing one.
+    const { error } = await supabase
+      .from("orders")
+      .update({ deleted_at: new Date().toISOString() })
+      .eq("id", orderId)
+      .is("deleted_at", null)
+    if (error) {
+      console.error("[admin/orders] soft delete failed:", error)
+      res.status(500).json({ error: "Failed to archive order" }); return
+    }
+    res.json({ ok: true, mode: "archived" }); return
+  }
+
+  // ---- Hard delete (permanent) ----
+  const { data: order, error: fetchError } = await supabase
+    .from("orders")
+    .select("id, status, payment_status")
+    .eq("id", orderId)
+    .single()
+  if (fetchError || !order) {
+    res.status(404).json({ error: "Order not found" }); return
+  }
+
+  // Invoices for this order — we need to know if any are already 'issued'
+  // (a real tax document was emitted; that order must never be hard-deleted).
+  const { data: invoiceRows, error: invFetchError } = await supabase
+    .from("invoices")
+    .select("status")
+    .eq("order_id", orderId)
+  if (invFetchError) {
+    console.error("[admin/orders] hard delete invoice fetch failed:", invFetchError)
+    res.status(500).json({ error: invFetchError.message, step: "fetch_invoices" }); return
+  }
+
+  // Guard: allow ONLY when no real money has settled. Refuse otherwise — the
+  // SAFE choice is to keep the record and tell the admin to cancel/archive.
+  const paymentSettled = order.payment_status === "paid" || order.payment_status === "refunded"
+  const deletableStatus =
+    order.status === "pending" || order.status === "failed" || order.status === "cancelled"
+  const hasIssuedInvoice = (invoiceRows ?? []).some((inv) => inv.status === "issued")
+  if (paymentSettled || !deletableStatus || hasIssuedInvoice) {
+    res.status(409).json({
+      error: "已付款或已開立發票的訂單無法永久刪除，請改用『取消訂單』或封存",
+    }); return
+  }
+
+  // Execute in FK-safe order. After EVERY write we check .error (Supabase JS
+  // fails silently) and bail with the offending step so we never half-delete.
+
+  // 1. Restore stock ONLY for pending orders. A pending order still holds its
+  //    reserved stock; a cancelled order already had it restored by the cancel
+  //    flow (restoring again would oversell); a persisted 'failed' order has an
+  //    ambiguous stock state so we deliberately leave it alone to avoid oversell.
+  if (order.status === "pending") {
+    await restoreOrderStock(orderId)
+  }
+
+  // 2. Roll back coupon usage: decrement each used coupon's used_count (floored
+  //    at 0) then remove the coupon_uses rows.
+  const { data: couponUses, error: cuFetchError } = await supabase
+    .from("coupon_uses")
+    .select("id, coupon_id")
+    .eq("order_id", orderId)
+  if (cuFetchError) {
+    res.status(500).json({ error: cuFetchError.message, step: "fetch_coupon_uses" }); return
+  }
+  for (const use of (couponUses ?? []) as { id: string; coupon_id: string | null }[]) {
+    if (!use.coupon_id) continue
+    const { data: coupon, error: cReadError } = await supabase
+      .from("coupons")
+      .select("used_count")
+      .eq("id", use.coupon_id)
+      .single()
+    if (cReadError) {
+      res.status(500).json({ error: cReadError.message, step: "read_coupon_used_count" }); return
+    }
+    const next = Math.max(0, Number(coupon?.used_count ?? 0) - 1)
+    const { error: cUpdateError } = await supabase
+      .from("coupons")
+      .update({ used_count: next })
+      .eq("id", use.coupon_id)
+    if (cUpdateError) {
+      res.status(500).json({ error: cUpdateError.message, step: "decrement_coupon_used_count" }); return
+    }
+  }
+  const { error: cuDeleteError } = await supabase
+    .from("coupon_uses")
+    .delete()
+    .eq("order_id", orderId)
+  if (cuDeleteError) {
+    res.status(500).json({ error: cuDeleteError.message, step: "delete_coupon_uses" }); return
+  }
+
+  // 3. Null the parent FK (orders.invoice_id) so the invoice rows are no longer
+  //    referenced and can be deleted in the next step.
+  const { error: nullInvoiceFkError } = await supabase
+    .from("orders")
+    .update({ invoice_id: null })
+    .eq("id", orderId)
+  if (nullInvoiceFkError) {
+    res.status(500).json({ error: nullInvoiceFkError.message, step: "null_invoice_fk" }); return
+  }
+
+  // 4. Delete invoices (only pending invoice rows can exist past the guard).
+  const { error: invDeleteError } = await supabase
+    .from("invoices")
+    .delete()
+    .eq("order_id", orderId)
+  if (invDeleteError) {
+    res.status(500).json({ error: invDeleteError.message, step: "delete_invoices" }); return
+  }
+
+  // 5. Delete payments.
+  const { error: payDeleteError } = await supabase
+    .from("payments")
+    .delete()
+    .eq("order_id", orderId)
+  if (payDeleteError) {
+    res.status(500).json({ error: payDeleteError.message, step: "delete_payments" }); return
+  }
+
+  // 6. Delete logistics.
+  const { error: logDeleteError } = await supabase
+    .from("logistics")
+    .delete()
+    .eq("order_id", orderId)
+  if (logDeleteError) {
+    res.status(500).json({ error: logDeleteError.message, step: "delete_logistics" }); return
+  }
+
+  // 7. Preserve subscription history: detach instead of delete.
+  const { error: subDetachError } = await supabase
+    .from("subscription_orders")
+    .update({ order_id: null })
+    .eq("order_id", orderId)
+  if (subDetachError) {
+    res.status(500).json({ error: subDetachError.message, step: "detach_subscription_orders" }); return
+  }
+
+  // 8. Finally delete the order itself. CASCADE clears order_items,
+  //    order_addresses, and order_post_payment_log.
+  const { error: orderDeleteError } = await supabase
+    .from("orders")
+    .delete()
+    .eq("id", orderId)
+  if (orderDeleteError) {
+    res.status(500).json({ error: orderDeleteError.message, step: "delete_order" }); return
+  }
+
+  res.json({ ok: true, mode: "deleted" })
+})
+
+// POST /admin/orders/:id/restore — un-archive a soft-deleted order.
+adminOrdersRouter.post("/:id/restore", async (req, res) => {
+  const orderId = req.params.id
+  const { error } = await supabase
+    .from("orders")
+    .update({ deleted_at: null })
+    .eq("id", orderId)
+  if (error) {
+    console.error("[admin/orders] restore failed:", error)
+    res.status(500).json({ error: "Failed to restore order" }); return
+  }
+  res.json({ ok: true })
+})

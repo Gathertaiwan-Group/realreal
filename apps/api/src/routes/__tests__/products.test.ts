@@ -61,6 +61,7 @@ describe("GET /products", () => {
     const mockProductsQuery = {
       select,
       eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
       ilike: vi.fn().mockReturnThis(),
       textSearch: vi.fn().mockReturnThis(),
       range: vi.fn().mockResolvedValue({
@@ -114,6 +115,7 @@ describe("GET /products/:slug", () => {
     vi.mocked(supabase.from).mockReturnValue({
       select: vi.fn().mockReturnThis(),
       eq: vi.fn().mockReturnThis(),
+      is: vi.fn().mockReturnThis(),
       single: vi.fn().mockResolvedValue({ data: null, error: { code: "PGRST116" } }),
     } as any)
 
@@ -235,5 +237,168 @@ describe("POST /admin/products", () => {
 
     expect(res.status).toBe(500)
     expect(deleteEq).toHaveBeenCalledWith("id", "product-rollback")
+  })
+})
+
+function mockUserProfilesAdmin() {
+  return {
+    select: vi.fn().mockReturnThis(),
+    eq: vi.fn().mockReturnThis(),
+    single: vi.fn().mockResolvedValue({ data: { role: "admin" }, error: null }),
+  }
+}
+
+describe("DELETE /products/:id (soft delete)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAdminAuth()
+  })
+
+  it("archives the product (deleted_at + is_active=false) and returns mode: archived", async () => {
+    const updatePayloadSpy = vi.fn()
+    // update().eq().is() resolves with no error
+    const isFn = vi.fn().mockResolvedValue({ error: null })
+    const eqFn = vi.fn().mockReturnValue({ is: isFn })
+    const updateFn = vi.fn().mockImplementation((payload: unknown) => {
+      updatePayloadSpy(payload)
+      return { eq: eqFn }
+    })
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "user_profiles") return mockUserProfilesAdmin() as never
+      if (table === "products") return { update: updateFn } as never
+      throw new Error(`Unexpected table ${table}`)
+    })
+
+    const res = await request(app)
+      .delete("/products/prod-1")
+      .set("Authorization", "Bearer test-token")
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ ok: true, mode: "archived" })
+    // sets is_active=false and a deleted_at timestamp
+    const payload = updatePayloadSpy.mock.calls[0][0]
+    expect(payload.is_active).toBe(false)
+    expect(payload.deleted_at).toBeTruthy()
+    expect(eqFn).toHaveBeenCalledWith("id", "prod-1")
+    expect(isFn).toHaveBeenCalledWith("deleted_at", null)
+  })
+})
+
+describe("DELETE /products/:id?hard=true (hard delete)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAdminAuth()
+  })
+
+  it("returns 409 when a variant is referenced by order_items", async () => {
+    const productsDelete = vi.fn()
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "user_profiles") return mockUserProfilesAdmin() as never
+      if (table === "product_variants") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockResolvedValue({ data: [{ id: "variant-1" }], error: null }),
+        } as never
+      }
+      if (table === "order_items") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue({ data: [{ id: "oi-1" }], error: null }),
+        } as never
+      }
+      if (table === "subscription_plans") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+        } as never
+      }
+      if (table === "products") {
+        return { delete: productsDelete } as never
+      }
+      throw new Error(`Unexpected table ${table}`)
+    })
+
+    const res = await request(app)
+      .delete("/products/prod-1?hard=true")
+      .set("Authorization", "Bearer test-token")
+
+    expect(res.status).toBe(409)
+    expect(res.body.error).toContain("無法永久刪除")
+    // must NOT delete the product
+    expect(productsDelete).not.toHaveBeenCalled()
+  })
+
+  it("hard-deletes the product (mode: deleted) when no references exist", async () => {
+    const deleteEq = vi.fn().mockResolvedValue({ error: null })
+    const productsDelete = vi.fn().mockReturnValue({ eq: deleteEq })
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "user_profiles") return mockUserProfilesAdmin() as never
+      if (table === "product_variants") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockResolvedValue({ data: [{ id: "variant-1" }], error: null }),
+        } as never
+      }
+      if (table === "order_items") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+        } as never
+      }
+      if (table === "subscription_plans") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          in: vi.fn().mockReturnThis(),
+          limit: vi.fn().mockResolvedValue({ data: [], error: null }),
+        } as never
+      }
+      if (table === "products") {
+        return { delete: productsDelete } as never
+      }
+      throw new Error(`Unexpected table ${table}`)
+    })
+
+    const res = await request(app)
+      .delete("/products/prod-1?hard=true")
+      .set("Authorization", "Bearer test-token")
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ ok: true, mode: "deleted" })
+    expect(deleteEq).toHaveBeenCalledWith("id", "prod-1")
+  })
+})
+
+describe("POST /admin/products/:id/restore", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAdminAuth()
+  })
+
+  it("clears deleted_at and returns ok", async () => {
+    const updatePayloadSpy = vi.fn()
+    const eqFn = vi.fn().mockResolvedValue({ error: null })
+    const updateFn = vi.fn().mockImplementation((payload: unknown) => {
+      updatePayloadSpy(payload)
+      return { eq: eqFn }
+    })
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "user_profiles") return mockUserProfilesAdmin() as never
+      if (table === "products") return { update: updateFn } as never
+      throw new Error(`Unexpected table ${table}`)
+    })
+
+    const res = await request(app)
+      .post("/admin/products/prod-1/restore")
+      .set("Authorization", "Bearer test-token")
+
+    expect(res.status).toBe(200)
+    expect(res.body).toEqual({ ok: true })
+    expect(updatePayloadSpy.mock.calls[0][0]).toEqual({ deleted_at: null })
+    expect(eqFn).toHaveBeenCalledWith("id", "prod-1")
   })
 })

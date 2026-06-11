@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {
@@ -14,10 +15,13 @@ import {
   X,
   CheckCircle2,
   XCircle,
+  Archive,
+  Trash2,
 } from "lucide-react"
 import { toast } from "sonner"
 import {
   cancelOrderAction,
+  deleteOrderAction,
   reissueInvoiceAction,
   retryShipmentAction,
   updateOrderStatusAction,
@@ -72,10 +76,12 @@ export function OrderActions({
   // logistics is accepted so page.tsx can pass it for parity with the
   // other components; OrderActions itself only branches on order.status.
   void _logistics
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [cancelReason, setCancelReason] = useState("")
   const [cancelResult, setCancelResult] = useState<CancelResponse | null>(null)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
 
   function handleAction(newStatus: string) {
     startTransition(async () => {
@@ -121,6 +127,28 @@ export function OrderActions({
     setCancelResult(null)
   }
 
+  // Soft archive (hard=false) or permanent purge (hard=true). On success the
+  // order is gone/hidden from the active list, so we leave the detail page.
+  // On error (e.g. the 409 for paid/invoiced orders) we keep the modal open
+  // and toast the server's clean message.
+  function handleDelete(hard: boolean) {
+    startTransition(async () => {
+      const result = await deleteOrderAction(orderId, { hard })
+      if (result.ok) {
+        toast.success(hard ? "訂單已永久刪除" : "訂單已封存")
+        setShowDeleteModal(false)
+        router.push("/admin/orders")
+      } else {
+        toast.error(result.error ?? "刪除訂單失敗")
+      }
+    })
+  }
+
+  function closeDeleteModal() {
+    if (isPending) return
+    setShowDeleteModal(false)
+  }
+
   const showConfirmPayment = status === "pending" && paymentStatus !== "paid"
   const showShip = status === "processing"
   // Spec section 2: 「完成訂單」manual fallback only when shipped.
@@ -128,7 +156,9 @@ export function OrderActions({
   // Spec section 3: cancellation only allowed in pending / processing / shipped.
   const showCancel = CANCELLABLE_STATUSES.includes(status)
 
-  if (!showConfirmPayment && !showShip && !showComplete && !showCancel) return null
+  // The 「刪除訂單」(archive / permanent delete) control is always available,
+  // so this component no longer short-circuits to null when there are no
+  // status-based actions.
 
   return (
     <>
@@ -162,6 +192,15 @@ export function OrderActions({
             取消訂單
           </Button>
         )}
+        <Button
+          size="sm"
+          variant="outline"
+          disabled={isPending}
+          onClick={() => setShowDeleteModal(true)}
+        >
+          <Archive className="mr-1 h-3.5 w-3.5" />
+          刪除訂單
+        </Button>
       </div>
 
       {showCancelModal && (
@@ -174,7 +213,153 @@ export function OrderActions({
           onClose={closeModal}
         />
       )}
+
+      {showDeleteModal && (
+        <DeleteOrderModal
+          isPending={isPending}
+          onArchive={() => handleDelete(false)}
+          onHardDelete={() => handleDelete(true)}
+          onClose={closeDeleteModal}
+        />
+      )}
     </>
+  )
+}
+
+/* ---------- Delete Order Modal ---------- */
+
+interface DeleteOrderModalProps {
+  isPending: boolean
+  onArchive: () => void
+  onHardDelete: () => void
+  onClose: () => void
+}
+
+// Offers two destructive paths with very different blast radius:
+//   封存 (archive)  — the safe default: hides the order from the active list
+//                     but keeps the row, fully reversible via 還原.
+//   永久刪除 (hard)  — irreversible, and the API only permits it for unpaid /
+//                     un-invoiced orders (otherwise it 409s and we keep the
+//                     modal open with the server's explanation toasted).
+// 封存 is styled as the primary CTA; 永久刪除 is a low-emphasis destructive
+// link guarded behind a second confirm so it can't be fat-fingered.
+function DeleteOrderModal({
+  isPending,
+  onArchive,
+  onHardDelete,
+  onClose,
+}: DeleteOrderModalProps) {
+  const [confirmHard, setConfirmHard] = useState(false)
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="delete-order-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose()
+      }}
+    >
+      <div className="w-full max-w-md rounded-lg bg-white shadow-lg">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h2 id="delete-order-title" className="text-sm font-semibold">
+            刪除訂單
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isPending}
+            aria-label="關閉"
+            className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-3 p-4">
+          <p className="text-sm text-zinc-600">請選擇處理方式：</p>
+
+          {/* 封存 — safe default */}
+          <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
+            <div className="mb-1 flex items-center gap-2 text-sm font-medium text-zinc-900">
+              <Archive className="h-4 w-4" />
+              封存
+            </div>
+            <p className="text-xs text-zinc-500">
+              從列表隱藏，可還原
+            </p>
+          </div>
+
+          {/* 永久刪除 — destructive, explained */}
+          <div className="rounded-md border border-red-200 bg-red-50/60 p-3">
+            <div className="mb-1 flex items-center gap-2 text-sm font-medium text-red-700">
+              <Trash2 className="h-4 w-4" />
+              永久刪除
+            </div>
+            <p className="text-xs text-red-600">
+              僅限未付款訂單，無法復原
+            </p>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-2 border-t px-4 py-3">
+          {!confirmHard ? (
+            <>
+              <Button
+                size="sm"
+                onClick={onArchive}
+                disabled={isPending}
+              >
+                <Archive className="mr-1 h-3.5 w-3.5" />
+                {isPending ? "處理中…" : "封存（建議）"}
+              </Button>
+              <div className="flex items-center justify-between">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={onClose}
+                  disabled={isPending}
+                >
+                  取消
+                </Button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmHard(true)}
+                  disabled={isPending}
+                  className="text-xs font-medium text-red-600 underline-offset-2 hover:underline disabled:opacity-50"
+                >
+                  改為永久刪除
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-xs text-red-700">
+                確定要永久刪除此訂單？此動作無法復原。
+              </p>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={onHardDelete}
+                disabled={isPending}
+              >
+                <Trash2 className="mr-1 h-3.5 w-3.5" />
+                {isPending ? "刪除中…" : "確認永久刪除"}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setConfirmHard(false)}
+                disabled={isPending}
+              >
+                返回
+              </Button>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 

@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { AdminTabs } from "../_components/AdminTabs"
+import { ArchivedRowActions } from "./_row-actions"
 import {
   getOrderDisplayStatus,
   type DisplayStatus,
@@ -34,25 +35,49 @@ const DISPLAY_BADGE_CLASSES: Record<DisplayStatus["color"], string> = {
 export default async function AdminOrdersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string; from?: string; to?: string; payment?: string }>
+  searchParams: Promise<{
+    status?: string
+    from?: string
+    to?: string
+    payment?: string
+    archived?: string
+  }>
 }) {
   const params = await searchParams
   const supabase = await createClient()
+  // archived=1 → show only soft-archived orders (deleted_at IS NOT NULL).
+  // Default → only active orders (deleted_at IS NULL).
+  const showArchived = params.archived === "1"
 
   let query = supabase
     .from("orders")
     .select(
-      "id, order_number, status, payment_status, payment_method, total, created_at, user_id, guest_email, logistics(status, type)"
+      "id, order_number, status, payment_status, payment_method, total, created_at, deleted_at, user_id, guest_email, logistics(status, type)"
     )
     .order("created_at", { ascending: false })
     .limit(200)
 
+  if (showArchived) {
+    query = query.not("deleted_at", "is", null)
+  } else {
+    query = query.is("deleted_at", null)
+  }
   if (params.status) query = query.eq("status", params.status)
   if (params.payment) query = query.eq("payment_status", params.payment)
   if (params.from) query = query.gte("created_at", params.from)
   if (params.to) query = query.lte("created_at", params.to)
 
   const { data: orders } = await query
+
+  // Toggle link target: preserve status/payment/date filters, flip archived.
+  const toggleParams = new URLSearchParams()
+  if (params.status) toggleParams.set("status", params.status)
+  if (params.payment) toggleParams.set("payment", params.payment)
+  if (params.from) toggleParams.set("from", params.from)
+  if (params.to) toggleParams.set("to", params.to)
+  if (!showArchived) toggleParams.set("archived", "1")
+  const toggleQs = toggleParams.toString()
+  const toggleHref = toggleQs ? `/admin/orders?${toggleQs}` : "/admin/orders"
 
   // orders has no FK to user_profiles, so resolve display names in a second query
   const userIds = [
@@ -72,11 +97,16 @@ export default async function AdminOrdersPage({
       <h1 className="text-xl font-semibold mb-2 text-[#10305a]">訂單</h1>
       <AdminTabs tabs={ORDER_TABS} />
 
-      {/* Status filter tabs */}
-      <div className="flex gap-2 mb-4 flex-wrap">
+      {/* Status filter tabs + archived toggle */}
+      <div className="flex gap-2 mb-4 flex-wrap items-center">
         {STATUS_TABS.map((tab) => {
           const isActive = (params.status ?? "") === tab.value
-          const href = tab.value ? `/admin/orders?status=${tab.value}` : "/admin/orders"
+          // Keep the archived view when switching status tabs.
+          const tabParams = new URLSearchParams()
+          if (tab.value) tabParams.set("status", tab.value)
+          if (showArchived) tabParams.set("archived", "1")
+          const tabQs = tabParams.toString()
+          const href = tabQs ? `/admin/orders?${tabQs}` : "/admin/orders"
           return (
             <Link
               key={tab.value}
@@ -91,6 +121,19 @@ export default async function AdminOrdersPage({
             </Link>
           )
         })}
+
+        <span className="mx-1 h-5 w-px bg-[#10305a]/15" aria-hidden />
+
+        <Link
+          href={toggleHref}
+          className={`px-3 py-1.5 rounded-[10px] text-sm border transition-colors ${
+            showArchived
+              ? "bg-amber-500 text-white border-amber-500 hover:bg-amber-600"
+              : "bg-white text-[#687279] border-[#10305a]/20 hover:bg-[#10305a]/5"
+          }`}
+        >
+          {showArchived ? "← 返回作用中" : "顯示已封存"}
+        </Link>
       </div>
 
       <div className="border rounded-lg overflow-hidden bg-white">
@@ -138,12 +181,17 @@ export default async function AdminOrdersPage({
                       {new Date(order.created_at).toLocaleDateString("zh-TW")}
                     </td>
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/admin/orders/${order.id}`}
-                        className="text-[#10305a] hover:underline text-xs font-medium"
-                      >
-                        查看
-                      </Link>
+                      <div className="flex items-center gap-3">
+                        <Link
+                          href={`/admin/orders/${order.id}`}
+                          className="text-[#10305a] hover:underline text-xs font-medium"
+                        >
+                          查看
+                        </Link>
+                        {order.deleted_at && (
+                          <ArchivedRowActions orderId={order.id} />
+                        )}
+                      </div>
                     </td>
                   </tr>
                 )
