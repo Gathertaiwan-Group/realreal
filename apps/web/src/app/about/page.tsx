@@ -12,64 +12,44 @@ type AboutContent = {
 }
 
 const wpContent = `
-<img
-  width="865"
-  height="1024"
-  src="https://realreal.cc/wp-content/uploads/2025/09/reallightjpeg-865x1024.webp"
-  alt="誠真生活品牌故事"
-  srcset="https://realreal.cc/wp-content/uploads/2025/09/reallightjpeg-865x1024.webp 865w, https://realreal.cc/wp-content/uploads/2025/09/reallightjpeg-253x300.webp 253w, https://realreal.cc/wp-content/uploads/2025/09/reallightjpeg-768x909.webp 768w, https://realreal.cc/wp-content/uploads/2025/09/reallightjpeg-750x888.webp 750w, https://realreal.cc/wp-content/uploads/2025/09/reallightjpeg-600x710.webp 600w, https://realreal.cc/wp-content/uploads/2025/09/reallightjpeg.webp 936w"
-  sizes="(max-width: 865px) 100vw, 865px"
-/>
+<p style="font-size:1.1rem;font-weight:600;color:#10305a;margin-bottom:2rem;">誠真生活，不是因為想創業而誕生</p>
 
-<h2>品牌故事 Our Story</h2>
+<p>在創立誠真生活之前，我從事的是海事保賠協會（Protection &amp; Indemnity Clubs）相關工作。</p>
+<p>當時的我從未想過要創業，更沒有打算成立自己的品牌。</p>
 
-<p><b>像孩子般純真，讓世界更美好</b></p>
-<p>從小看著爸爸與免疫病變和癌症共存，他依然樂觀，總提醒我：「世界上還有許多比我們更需要幫助的人」。</p>
-<p>我幸運地靠著獎學金完成學業，心中滿懷感恩，更希望能將這份善意回饋社會。</p>
-<p>從工作之餘，經營分享滋養身心資訊的社群媒體開始，聚集眾人之力，並將收益捐助給更需要幫助的人。</p>
-<p>我相信，每個人都能多付出一些，成為彼此生命中的溫柔光亮。</p>
-<p>我相信，這正是我們最純粹的模樣——像孩子般，樂善好施，自在純真。</p>
-<p><strong>創辦人 尹昕</strong></p>
+<p>一次因緣際會下，我認識了一位食品大廠的老闆。原本只是希望與他合作團購產品，沒想到在交流過程中，他分享了一個埋藏多年的想法。</p>
+<p>他一直希望能開發真正有益健康的產品，但現實市場卻讓他感到兩難。</p>
+<p>許多熱銷產品追求的是好吃、口感佳，卻未必符合健康需求；而另一類產品則強調高 CP 值，往往難以兼顧原料品質與營養價值。</p>
+<p>他認為自己始終找不到足夠的市場，因此遲遲無法實現這個理想。</p>
 
-<p><b>Pure as a child, making the world a better place</b></p>
-<p>Inspired by my father's fight life alongside autoimmune disease and cancer, I carry forward his reminder: <i>"There are always people who need help more than we do".</i></p>
-<p>Blessed to have completed my studies through scholarships, I started giving back—sharing wellness on Instagram and turning its proceeds into support for those who need it most.</p>
-<p>I believe that each of us can give a little more, becoming a gentle light in one another's lives.</p>
-<p>I believe this is our truest nature, like a child—kind, joyful, free, and pure.</p>
-<p><b>Yin Hsin, Founder</b></p>
+<p>後來，他反而問我：</p>
+<blockquote>「如果真的相信健康應該有更好的選擇，為什麼不做自己的品牌？」</blockquote>
+<p>這句話，成了誠真生活的起點。</p>
 
-<h2>品牌願景 Our Vision</h2>
-<p>每個人都能活得像個孩子，樂善好施，自在純真。</p>
-<p>Everyone can live like a child—kind, joyful, free, and pure.</p>
+<p>我是素食者，也長期關注健康與身心平衡。</p>
+<p>在尋找營養補充品的過程中，我發現許多產品成分複雜、添加物偏多，與自己期待的方向並不一致。</p>
 
-<img
-  width="1024"
-  height="683"
-  src="https://realreal.cc/wp-content/uploads/2025/09/AdobeStock_365765933-1024x683.webp"
-  alt="誠真生活品牌願景"
-  srcset="https://realreal.cc/wp-content/uploads/2025/09/AdobeStock_365765933-1024x683.webp 1024w, https://realreal.cc/wp-content/uploads/2025/09/AdobeStock_365765933-300x200.webp 300w, https://realreal.cc/wp-content/uploads/2025/09/AdobeStock_365765933-768x512.webp 768w, https://realreal.cc/wp-content/uploads/2025/09/AdobeStock_365765933-1536x1024.webp 1536w, https://realreal.cc/wp-content/uploads/2025/09/AdobeStock_365765933-2048x1365.webp 2048w, https://realreal.cc/wp-content/uploads/2025/09/AdobeStock_365765933-750x500.webp 750w, https://realreal.cc/wp-content/uploads/2025/09/AdobeStock_365765933-600x400.webp 600w"
-  sizes="(max-width: 1024px) 100vw, 1024px"
-/>
+<p>我開始思考：</p>
+<p>如果市場上缺少自己真正願意長期使用的產品，那麼是否有機會親手把它做出來？</p>
 
-<h2>品牌使命 Our Mission</h2>
-<p>滋養每個人的童心與純真，喚醒內在的善念與喜悅，讓身心回歸自在與健康。</p>
-<p>To nurture innocence and purity, awaken kindness and joy within, and bring body and mind back to ease and vitality.</p>
+<p>於是，我們決定先做產品，再決定是否創業。</p>
+<p>從原料選擇、配方設計到反覆試喝與調整，每一步都回到最初的問題：</p>
+<blockquote>這是不是一款我們願意每天食用，也願意推薦給家人朋友的產品？</blockquote>
+<p>當答案終於是肯定的，誠真生活才正式誕生。</p>
 
-<h2>品牌目標 Our Goal</h2>
-<p>提供滋養身心的食物、資訊與用品。</p>
-<p>將日常支出，化成支持弱勢的資糧。</p>
-<p>讓健康成為關懷與慈悲的生活方式。</p>
-<p>Providing nourishing food, knowledge, and essentials for body and soul.</p>
-<p>Transforming daily spending into resources that support the vulnerable.</p>
-<p>Making health a way of living—rooted in care and compassion.</p>
+<hr style="margin:2.5rem 0;border-color:#e5e0d8;" />
 
-<h2>品牌承諾 Our Promises</h2>
-<p>合作工廠通過HACCP及ISO22000品質認證</p>
-<p>產品經第三方檢驗機構品質把關</p>
-<p>商品投保產品責任險</p>
-<p>Made in HACCP &amp; ISO 22000 certified factories</p>
-<p>Quality tested by independent labs</p>
-<p>Covered by product liability insurance</p>
+<p>我們相信，健康不該建立在複雜與妥協之上。</p>
+<p>而是從日常的每一次選擇開始。</p>
+
+<p style="margin-top:1.5rem;">選擇更單純的成分。</p>
+<p>選擇更真實的原料。</p>
+<p>選擇更誠實地對待自己的身體。</p>
+
+<p style="margin-top:1.5rem;">這也是「誠真生活」名字所代表的精神。</p>
+<p>願我們在照顧身體的同時，也能活得自在、真誠而純粹。</p>
+
+<p style="margin-top:2.5rem;font-size:0.9rem;color:#a09080;">創辦人 尹昕</p>
 `
 
 export default async function AboutPage() {
@@ -92,7 +72,6 @@ export default async function AboutPage() {
           prose-strong:text-[#10305a]
           prose-b:text-[#10305a]
           prose-i:text-[#687279]"
-        style={{ textAlign: "center" }}
         dangerouslySetInnerHTML={{ __html: htmlContent }}
       />
     </div>
