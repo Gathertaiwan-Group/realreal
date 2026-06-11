@@ -46,10 +46,26 @@ const addressSchema = z.object({
   addressType: z.enum(["home", "cvs", "overseas"]),  // 新增 "overseas"
   address: z.string().optional(),
   city: z.string().optional(),
+  district: z.string().optional(),   // 鄉鎮市區 — 先前整路遺失，宅配地址不完整
   postalCode: z.string().optional(),
   cvsStoreId: z.string().optional(),
   cvsType: z.string().optional(),
   country: z.string().optional(),    // 新增 country 欄位
+})
+
+// Electronic invoice selection (InvoiceSelector). Persisted on the order and
+// read by the post-payment pipeline so B2B/載具/愛心碼 actually issue correctly
+// instead of everyone getting a default B2C_2.
+const invoiceSchema = z.object({
+  type: z.enum(["B2C_2", "B2C_3", "B2B"]),
+  carrierType: z.enum(["phone", "natural_person", "love_code"]).optional(),
+  carrierNumber: z.string().optional(),
+  loveCode: z.string().optional(),
+  taxId: z.string().optional(),
+  companyTitle: z.string().optional(),
+}).refine((v) => v.type !== "B2B" || (v.taxId && /^\d{8}$/.test(v.taxId)), {
+  message: "B2B 發票需要 8 碼統一編號",
+  path: ["taxId"],
 })
 
 const createOrderSchema = z.object({
@@ -60,7 +76,7 @@ const createOrderSchema = z.object({
   guestEmail: z.string().email().optional(),
   couponCode: z.string().optional(),
   points_used: z.number().int().min(0).optional(),
-  invoice: z.any().optional(),
+  invoice: invoiceSchema.optional(),
 })
 
 // POST /orders/preview — price-only preview (subtotal + campaigns + total).
@@ -333,7 +349,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     res.status(400).json({ error: "Invalid request", details: parsed.error.flatten() }); return
   }
 
-  const { items, address, shippingMethod, paymentMethod, guestEmail } = parsed.data
+  const { items, address, shippingMethod, paymentMethod, guestEmail, invoice } = parsed.data
   let { couponCode } = parsed.data
   const requestedPointsUsed = parsed.data.points_used ?? 0
   const userId: string | undefined = res.locals.userId
@@ -659,11 +675,16 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       points_used: pointsUsed,
       attributed_kol_id: attributedKolId,
       attributed_kol_slug: attributedKolSlug,
-      metadata: couponCode
+      metadata: (couponCode || invoice)
         ? {
-          coupon_code: couponCode,
-          coupon_id: appliedCouponId,
-          coupon_discount: centsToTwd(couponDiscountCents),
+          ...(couponCode ? {
+            coupon_code: couponCode,
+            coupon_id: appliedCouponId,
+            coupon_discount: centsToTwd(couponDiscountCents),
+          } : {}),
+          // Persist the chosen invoice so the post-payment pipeline issues the
+          // right type (B2B 統編 / 載具 / 愛心碼) instead of a default B2C_2.
+          ...(invoice ? { invoice } : {}),
         }
         : null,
     })
@@ -705,10 +726,14 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   }
 
   // Insert order address
-  // 若有 country，在 address 前加 [Country] 前綴（因 DB 無 country 欄位）
+  // DB order_addresses has no country/district column, so fold both into the
+  // address string: "[Country] 鄉鎮市區 街道…". District was previously dropped
+  // entirely, leaving home-delivery addresses missing 行政區.
+  const districtPrefix = address.addressType === "home" && address.district ? address.district : ""
+  const streetPart = `${districtPrefix}${address.address ?? ""}`.trim()
   const fullAddress = address.country
-    ? `[${address.country}] ${address.address ?? ""}`.trim()
-    : (address.address ?? null)
+    ? `[${address.country}] ${streetPart}`.trim()
+    : (streetPart || null)
 
   const { error: addrError } = await supabase
     .from("order_addresses")

@@ -17,7 +17,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   // Fetch order details needed for the email
   const { data: order } = await supabase
     .from("orders")
-    .select("id, order_number, subtotal, discount_amount, total, guest_email, user_id, points_used, attributed_kol_slug, order_items(*)")
+    .select("id, order_number, subtotal, discount_amount, total, guest_email, user_id, points_used, attributed_kol_slug, metadata, order_items(*)")
     .eq("id", orderId)
     .single()
 
@@ -165,10 +165,18 @@ export async function enqueuePostPaymentJobs(orderId: string) {
       // Schema enum (0001_initial.sql + 0003_invoice_extensions.sql):
       //   type        ∈ B2C_2 / B2C_3 / B2B
       //   carrier_type∈ phone / natural_person / love_code (or NULL)
-      // The previous "b2c" + "member" violated both check constraints, the
-      // insert silently 23514'd, and the worker logged "No pending invoice
-      // found" forever. B2C_2 = 雲端發票二聯式, no carrier = "會員載具" by
-      // default at Amego (handled in amego.ts when carrier_type is null).
+      // Use the buyer's chosen invoice (persisted on order.metadata.invoice by
+      // POST /orders) so B2B 統編 / 手機載具 / 愛心碼 issue correctly. Falls back
+      // to B2C_2 (雲端發票二聯式, 會員載具 at Amego) when none was provided.
+      const inv = (order as { metadata?: { invoice?: {
+        type?: "B2C_2" | "B2C_3" | "B2B"
+        carrierType?: "phone" | "natural_person" | "love_code"
+        carrierNumber?: string
+        loveCode?: string
+        taxId?: string
+        companyTitle?: string
+      } } | null }).metadata?.invoice
+      const invType = inv?.type ?? "B2C_2"
       const { error: invErr } = await supabase
         .from("invoices")
         .insert({
@@ -176,8 +184,12 @@ export async function enqueuePostPaymentJobs(orderId: string) {
           amount: totalTwd,
           tax_amount: 0,
           status: "pending",
-          type: "B2C_2",
-          carrier_type: null,
+          type: invType,
+          carrier_type: invType === "B2C_3" ? (inv?.carrierType ?? null) : null,
+          carrier_number: invType === "B2C_3" && inv?.carrierType !== "love_code" ? (inv?.carrierNumber ?? null) : null,
+          love_code: invType === "B2C_3" && inv?.carrierType === "love_code" ? (inv?.loveCode ?? inv?.carrierNumber ?? null) : null,
+          tax_id: invType === "B2B" ? (inv?.taxId ?? null) : null,
+          company_title: invType === "B2B" ? (inv?.companyTitle ?? null) : null,
         })
       if (invErr) {
         console.warn("[post-payment] invoice insert failed:", invErr.message)

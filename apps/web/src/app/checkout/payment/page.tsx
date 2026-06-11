@@ -384,6 +384,7 @@ export default function PaymentPage() {
           checkoutData.address.cvsStoreName ||
           undefined,
         city: checkoutData.address.city || undefined,
+        district: checkoutData.address.district || undefined,
         postalCode: checkoutData.address.postalCode || undefined,
         cvsStoreId: checkoutData.address.cvsStoreId || undefined,
         cvsType: cvsTypeMap[shippingMethod],
