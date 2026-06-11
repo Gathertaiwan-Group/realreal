@@ -12,46 +12,6 @@ type AboutContent = {
   content_html?: string
 }
 
-// CMS override fallback — rendered via dangerouslySetInnerHTML when Supabase returns custom HTML
-const wpContent = `
-<p style="font-size:1.1rem;font-weight:600;color:#10305a;margin-bottom:2rem;">誠真生活，不是因為想創業而誕生</p>
-
-<p>在創立誠真生活之前，我從事的是海事保賠協會（Protection &amp; Indemnity Clubs）相關工作。</p>
-<p>當時的我從未想過要創業，更沒有打算成立自己的品牌。</p>
-
-<p>一次因緣際會下，我認識了一位食品業前輩。原本只是希望與他合作團購，沒想到在交流過程中，我們發現彼此都有共通點：</p>
-<p>希望市場上能有更多成分單純、真正以養生為出發點的產品。</p>
-
-<p>後來，他看了我分享滋養身心資訊的 Instagram，問我：</p>
-<blockquote>「如果你希望大家都能活得更健康自在，為什麼不做自己的品牌？」</blockquote>
-<p>這句話，成了誠真生活的起點。</p>
-
-<p>我是素食者，也長期關注健康與身心平衡。</p>
-<p>在尋找營養補充品的過程中，我發現許多產品成分複雜、添加物偏多，與自己期待的方向並不一致。</p>
-
-<p>我開始思考：</p>
-<p>如果市場上缺少自己真正願意長期使用的產品，那麼是否有機會親手把它做出來？</p>
-
-<p>於是，我們決定先做產品，再決定是否創業。</p>
-<p>從原料選擇、配方設計到反覆試喝與調整，每一步都回到最初的問題：</p>
-<blockquote>這是不是一款我們願意每天食用，也願意推薦給家人朋友的產品？</blockquote>
-<p>當答案終於是肯定的，誠真生活才正式誕生。</p>
-
-<hr style="margin:2.5rem 0;border-color:#e5e0d8;" />
-
-<p>我們相信，健康不該建立在複雜與妥協之上。</p>
-<p>而是從日常的每一次選擇開始。</p>
-
-<p style="margin-top:1.5rem;">選擇更單純的成分。</p>
-<p>選擇更真實的原料。</p>
-<p>選擇更誠實地對待自己的身體。</p>
-
-<p style="margin-top:1.5rem;">這也是「誠真生活」名字所代表的精神。</p>
-<p>願我們在照顧身體的同時，也能活得自在、真誠而純粹。</p>
-
-<p style="margin-top:2.5rem;font-size:0.9rem;color:#a09080;">創辦人 尹昕</p>
-`
-
 const promises = [
   "合作工廠通過 HACCP 與 ISO22000 品質認證",
   "產品經第三方檢驗機構把關",
@@ -66,7 +26,6 @@ export default async function AboutPage() {
   if (hasCustomContent) {
     return (
       <div className="container mx-auto px-4 py-12 max-w-3xl">
-        <h1 className="text-3xl font-bold mb-8 text-[#10305a] text-center">品牌故事</h1>
         <div
           className="prose prose-zinc max-w-none
             prose-headings:text-[#10305a] prose-headings:font-bold
@@ -75,9 +34,7 @@ export default async function AboutPage() {
             prose-img:rounded-[10px] prose-img:mx-auto
             prose-li:text-[#687279]
             prose-blockquote:border-[#10305a]/30 prose-blockquote:text-[#687279]
-            prose-strong:text-[#10305a]
-            prose-b:text-[#10305a]
-            prose-i:text-[#687279]"
+            prose-strong:text-[#10305a]"
           dangerouslySetInnerHTML={{ __html: content!.content_html! }}
         />
       </div>
@@ -88,12 +45,16 @@ export default async function AboutPage() {
     <div className="bg-white">
 
       {/* ── 品牌故事 ── */}
-      <section className="container mx-auto px-4 py-16 max-w-3xl">
-        <h1 className="text-3xl font-bold mb-10 text-[#10305a] text-center">品牌故事</h1>
+      <section className="container mx-auto px-4 pt-16 pb-12 max-w-3xl">
 
-        {/* Founder photo */}
-        <div className="flex justify-center mb-10">
-          <div className="relative w-56 sm:w-72 rounded-2xl overflow-hidden shadow-md">
+        {/* Section heading */}
+        <h2 className="text-2xl font-bold text-[#10305a] text-center mb-10">
+          品牌故事 <span className="font-normal text-[#a09080]">Our Story</span>
+        </h2>
+
+        {/* Founder photo + tagline */}
+        <div className="flex flex-col items-center mb-10">
+          <div className="relative w-52 sm:w-64 rounded-2xl overflow-hidden shadow-md mb-4">
             <Image
               src="https://realreal.cc/wp-content/uploads/2025/09/reallightjpeg-865x1024.webp"
               alt="誠真生活創辦人"
@@ -103,28 +64,65 @@ export default async function AboutPage() {
               priority
             />
           </div>
+          <p className="text-sm text-[#a09080] italic text-center">
+            活得像個孩子，樂善好施，自在純真
+          </p>
         </div>
 
-        <div
-          className="prose prose-zinc max-w-none
-            prose-headings:text-[#10305a] prose-headings:font-bold
-            prose-p:text-[#687279] prose-p:leading-relaxed
-            prose-blockquote:border-l-4 prose-blockquote:border-[#10305a]/30
-            prose-blockquote:text-[#687279] prose-blockquote:italic
-            prose-strong:text-[#10305a]"
-          dangerouslySetInnerHTML={{ __html: wpContent }}
-        />
+        {/* H4 subheading */}
+        <h4 className="text-base font-semibold text-[#10305a] mb-5">
+          誠真生活，不是因為想創業而誕生
+        </h4>
+
+        {/* Story — part 1 */}
+        <div className="space-y-4 text-[#687279] leading-relaxed">
+          <p>在創立誠真生活之前，我從事法律與海事相關工作，從未想過有一天會投入食品產業。</p>
+          <p>一次因緣際會下，我認識了一位食品業前輩。原本只是希望與他合作團購，沒想到在交流過程中，我們發現彼此都有共通點：</p>
+          <p className="font-medium text-[#10305a]">希望市場上能有更多成分單純、真正以養生為出發點的產品。</p>
+          <p>後來，他看了我分享滋養身心資訊的 Instagram，問我：</p>
+          <blockquote className="border-l-4 border-[#10305a]/30 pl-4 italic text-[#687279]">
+            「如果你希望大家都能活得更健康自在，為什麼不做自己的品牌？」
+          </blockquote>
+          <p>這句話，成了誠真生活的起點。</p>
+        </div>
+
+        <hr className="my-8 border-zinc-200" />
+
+        {/* Story — part 2 */}
+        <p className="text-[#687279] leading-relaxed">
+          我是素食者，也長期關注健康與身心平衡。喜歡瑜珈、戶外活動，也一直認為自己算是健康的人。直到一次受傷後，我才意識到，即使飲食看似均衡，蛋白質仍可能攝取不足。當我開始尋找適合自己的營養補充品時，卻發現許多產品成分複雜、添加物偏多，與自己期待的方向並不一致。於是，我們決定先做產品，再決定是否創業。如果要做，就做一款自己願意每天食用，也願意推薦給家人朋友的產品。產品先誕生，而品牌是後來才出現的。
+        </p>
+
+        <hr className="my-8 border-zinc-200" />
+
+        {/* Story — part 3: philosophy */}
+        <div className="space-y-3 text-[#687279] leading-relaxed">
+          <p>我們相信，生活不該建立在複雜與妥協之上。而是從日常的每一次選擇開始。</p>
+          <p>選擇更單純的成分。</p>
+          <p>選擇更真實的原料。</p>
+          <p>選擇更誠實地對待自己的身體。</p>
+          <p>這也是「誠真生活」名字所代表的精神。</p>
+          <p className="font-medium text-[#10305a]">以更誠實的方式照顧自己，以更真誠的態度面對生活。</p>
+        </div>
+
+        <hr className="my-8 border-zinc-200" />
+
+        <p className="text-sm text-[#a09080]">創辦人 尹昕</p>
       </section>
 
       {/* ── 品牌願景 ── */}
-      <section className="bg-[#f7f4ef] py-16">
+      <section className="border-t border-zinc-100 py-16">
         <div className="container mx-auto px-4 max-w-3xl">
-          <h2 className="text-2xl font-bold mb-6 text-[#10305a] text-center">
-            品牌願景 <span className="text-base font-normal text-[#a09080] ml-1">Our Vision</span>
+
+          <h2 className="text-2xl font-bold text-[#10305a] text-center mb-2">
+            品牌願景 <span className="font-normal text-[#a09080]">Our Vision</span>
           </h2>
 
+          <h4 className="text-base font-semibold text-[#10305a] text-center mb-8">
+            願更多人在照顧自己的同時，也有餘裕照亮他人。
+          </h4>
+
           <p className="text-[#687279] leading-relaxed text-center mb-10">
-            願更多人在照顧自己的同時，也有餘裕照亮他人。<br />
             我們相信，健康不只是身體的狀態，更是一種生活方式。<br />
             當一個人擁有更好的身心狀態，也更有能力關心家人、支持朋友，甚至幫助需要幫助的人。<br />
             誠真生活希望透過產品、知識與行動，讓照顧自己與照顧世界，成為可以同時存在的選擇。
@@ -143,23 +141,22 @@ export default async function AboutPage() {
       </section>
 
       {/* ── 品牌承諾 ── */}
-      <section className="container mx-auto px-4 py-16 max-w-3xl">
-        <h2 className="text-2xl font-bold mb-8 text-[#10305a] text-center">
-          品牌承諾 <span className="text-base font-normal text-[#a09080] ml-1">Our Promises</span>
-        </h2>
+      <section className="border-t border-zinc-100 py-16">
+        <div className="container mx-auto px-4 max-w-3xl">
 
-        <ul className="space-y-4">
-          {promises.map((item) => (
-            <li key={item} className="flex items-start gap-3">
-              <span className="mt-0.5 flex-shrink-0 w-6 h-6 rounded-full bg-[#10305a] flex items-center justify-center">
-                <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                </svg>
-              </span>
-              <span className="text-[#687279] leading-relaxed">{item}</span>
-            </li>
-          ))}
-        </ul>
+          <h2 className="text-2xl font-bold text-[#10305a] text-center mb-10">
+            品牌承諾 <span className="font-normal text-[#a09080]">Our Promises</span>
+          </h2>
+
+          <ul className="space-y-4">
+            {promises.map((item) => (
+              <li key={item} className="flex items-center justify-center gap-3">
+                <span className="text-[#10305a] font-bold text-lg leading-none">✓</span>
+                <span className="text-[#687279]">{item}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
       </section>
 
     </div>
