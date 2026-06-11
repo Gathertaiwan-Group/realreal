@@ -39,17 +39,12 @@ const contentHtml = `
 
 <h2>如果你不知道從哪裡開始，就從這裡開始吧</h2>
 
-<p>每一次消費，我們都會替你將 <strong>2.3-3.3% 的金額存入「公益存款」</strong>，</p>
+<p>每一次消費，我們都會替你將 <strong>2-3% 的金額存入「公益存款」</strong>，</p>
 <p>你可以在會員帳戶中，隨時看見自己累積的善意足跡。</p>
 <p>願我們一起，建立一種充滿信任與善意的生活方式——</p>
 <p>溫柔而堅定。</p>
 <p>讓善意流動，讓希望成真。</p>
 <p>每一次支持，都是愛的延續。</p>
-
-<div class="flex gap-4 flex-wrap mt-4">
-  <a href="/subscribe" class="inline-block px-6 py-2 bg-[#10305a] text-white rounded-lg no-underline hover:opacity-90">了解會員制度</a>
-  <a href="/shop" class="inline-block px-6 py-2 bg-[#10305a] text-white rounded-lg no-underline hover:opacity-90">了解產品</a>
-</div>
 `
 
 export default function RecordsPage() {
