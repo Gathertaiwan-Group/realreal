@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Image from "next/image"
 import { getSiteContent } from "@/lib/content"
 
 export const metadata: Metadata = {
@@ -11,6 +12,7 @@ type AboutContent = {
   content_html?: string
 }
 
+// CMS override fallback — rendered via dangerouslySetInnerHTML when Supabase returns custom HTML
 const wpContent = `
 <p style="font-size:1.1rem;font-weight:600;color:#10305a;margin-bottom:2rem;">誠真生活，不是因為想創業而誕生</p>
 
@@ -52,28 +54,116 @@ const wpContent = `
 <p style="margin-top:2.5rem;font-size:0.9rem;color:#a09080;">創辦人 尹昕</p>
 `
 
+const promises = [
+  "合作工廠通過 HACCP 與 ISO22000 品質認證",
+  "產品經第三方檢驗機構把關",
+  "商品投保產品責任險",
+  "持續分享實用、易懂的健康知識",
+]
+
 export default async function AboutPage() {
   const content = await getSiteContent<AboutContent>("about_page")
   const hasCustomContent = content?.content_html && content.content_html.trim().length > 0
 
-  const htmlContent = hasCustomContent ? content!.content_html! : wpContent
+  if (hasCustomContent) {
+    return (
+      <div className="container mx-auto px-4 py-12 max-w-3xl">
+        <h1 className="text-3xl font-bold mb-8 text-[#10305a] text-center">品牌故事</h1>
+        <div
+          className="prose prose-zinc max-w-none
+            prose-headings:text-[#10305a] prose-headings:font-bold
+            prose-p:text-[#687279] prose-p:leading-relaxed
+            prose-a:text-[#10305a] prose-a:underline
+            prose-img:rounded-[10px] prose-img:mx-auto
+            prose-li:text-[#687279]
+            prose-blockquote:border-[#10305a]/30 prose-blockquote:text-[#687279]
+            prose-strong:text-[#10305a]
+            prose-b:text-[#10305a]
+            prose-i:text-[#687279]"
+          dangerouslySetInnerHTML={{ __html: content!.content_html! }}
+        />
+      </div>
+    )
+  }
 
   return (
-    <div className="container mx-auto px-4 py-12 max-w-3xl">
-      <h1 className="text-3xl font-bold mb-8 text-[#10305a] text-center">品牌故事</h1>
-      <div
-        className="prose prose-zinc max-w-none
-          prose-headings:text-[#10305a] prose-headings:font-bold
-          prose-p:text-[#687279] prose-p:leading-relaxed
-          prose-a:text-[#10305a] prose-a:underline
-          prose-img:rounded-[10px] prose-img:mx-auto
-          prose-li:text-[#687279]
-          prose-blockquote:border-[#10305a]/30 prose-blockquote:text-[#687279]
-          prose-strong:text-[#10305a]
-          prose-b:text-[#10305a]
-          prose-i:text-[#687279]"
-        dangerouslySetInnerHTML={{ __html: htmlContent }}
-      />
+    <div className="bg-white">
+
+      {/* ── 品牌故事 ── */}
+      <section className="container mx-auto px-4 py-16 max-w-3xl">
+        <h1 className="text-3xl font-bold mb-10 text-[#10305a] text-center">品牌故事</h1>
+
+        {/* Founder photo */}
+        <div className="flex justify-center mb-10">
+          <div className="relative w-56 sm:w-72 rounded-2xl overflow-hidden shadow-md">
+            <Image
+              src="https://realreal.cc/wp-content/uploads/2025/09/reallightjpeg-865x1024.webp"
+              alt="誠真生活創辦人"
+              width={865}
+              height={1024}
+              className="w-full h-auto object-cover"
+              priority
+            />
+          </div>
+        </div>
+
+        <div
+          className="prose prose-zinc max-w-none
+            prose-headings:text-[#10305a] prose-headings:font-bold
+            prose-p:text-[#687279] prose-p:leading-relaxed
+            prose-blockquote:border-l-4 prose-blockquote:border-[#10305a]/30
+            prose-blockquote:text-[#687279] prose-blockquote:italic
+            prose-strong:text-[#10305a]"
+          dangerouslySetInnerHTML={{ __html: wpContent }}
+        />
+      </section>
+
+      {/* ── 品牌願景 ── */}
+      <section className="bg-[#f7f4ef] py-16">
+        <div className="container mx-auto px-4 max-w-3xl">
+          <h2 className="text-2xl font-bold mb-6 text-[#10305a] text-center">
+            品牌願景 <span className="text-base font-normal text-[#a09080] ml-1">Our Vision</span>
+          </h2>
+
+          <p className="text-[#687279] leading-relaxed text-center mb-10">
+            願更多人在照顧自己的同時，也有餘裕照亮他人。<br />
+            我們相信，健康不只是身體的狀態，更是一種生活方式。<br />
+            當一個人擁有更好的身心狀態，也更有能力關心家人、支持朋友，甚至幫助需要幫助的人。<br />
+            誠真生活希望透過產品、知識與行動，讓照顧自己與照顧世界，成為可以同時存在的選擇。
+          </p>
+
+          <div className="relative rounded-2xl overflow-hidden shadow-sm">
+            <Image
+              src="https://realreal.cc/wp-content/uploads/2025/09/AdobeStock_365765933-1024x683.webp"
+              alt="品牌願景"
+              width={1024}
+              height={683}
+              className="w-full h-auto object-cover"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* ── 品牌承諾 ── */}
+      <section className="container mx-auto px-4 py-16 max-w-3xl">
+        <h2 className="text-2xl font-bold mb-8 text-[#10305a] text-center">
+          品牌承諾 <span className="text-base font-normal text-[#a09080] ml-1">Our Promises</span>
+        </h2>
+
+        <ul className="space-y-4">
+          {promises.map((item) => (
+            <li key={item} className="flex items-start gap-3">
+              <span className="mt-0.5 flex-shrink-0 w-6 h-6 rounded-full bg-[#10305a] flex items-center justify-center">
+                <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              <span className="text-[#687279] leading-relaxed">{item}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+
     </div>
   )
 }
