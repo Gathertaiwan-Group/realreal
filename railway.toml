@@ -3,7 +3,10 @@
 # only by the APP_ENTRYPOINT env var (unset -> index; "worker" -> worker).
 [build]
 builder = "NIXPACKS"
-buildCommand = "npm install --workspaces && npx turbo build --filter=api"
+# npm ci, NOT `npm install --workspaces`: the builder's npm 9 prunes workspace
+# devDependencies (@types/*) that the nixpacks install phase just installed,
+# which broke tsc with TS7016 on every fresh (non-turbo-cached) build.
+buildCommand = "npm ci && npx turbo build --filter=api"
 
 [deploy]
 startCommand = "node apps/api/dist/${APP_ENTRYPOINT:-index}.js"
