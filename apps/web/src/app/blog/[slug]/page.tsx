@@ -1,5 +1,4 @@
 import Link from "next/link"
-import Image from "next/image"
 import { notFound } from "next/navigation"
 import { getPostBySlug } from "@/lib/content"
 import type { Metadata } from "next"
@@ -46,20 +45,6 @@ export default async function BlogPostPage({ params }: Props) {
 
   return (
     <article className="min-h-screen">
-      {/* Cover image */}
-      {post.cover_image && (
-        <div className="relative aspect-[21/9] w-full max-h-[480px] bg-zinc-100 overflow-hidden">
-          <Image
-            src={post.cover_image}
-            alt={post.title}
-            fill
-            sizes="100vw"
-            className="object-cover"
-            priority
-          />
-        </div>
-      )}
-
       <div className="mx-auto max-w-3xl px-4 sm:px-6 lg:px-8 py-10">
         {/* Breadcrumb */}
         <nav className="mb-8 text-sm text-[#687279]">
