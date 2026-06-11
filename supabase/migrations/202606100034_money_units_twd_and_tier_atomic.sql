@@ -180,8 +180,10 @@ BEGIN
 
   IF v_rebate > 0 THEN
     v_charity_increment := ROUND(p_amount * (v_rebate / 100.0), 2);
+    -- RHS must be table-qualified: charity_savings is also a RETURNS TABLE
+    -- column, and plpgsql treats those as variables → 42702 ambiguous.
     UPDATE user_profiles
-    SET charity_savings = COALESCE(charity_savings, 0) + v_charity_increment
+    SET charity_savings = COALESCE(user_profiles.charity_savings, 0) + v_charity_increment
     WHERE user_id = p_user_id
     RETURNING * INTO v_profile;
   END IF;
@@ -234,10 +236,11 @@ BEGIN
     v_charity_decrement := ROUND(p_amount * (v_rebate / 100.0), 2);
   END IF;
 
+  -- RHS table-qualified: these three are also RETURNS TABLE columns (42702).
   UPDATE user_profiles
-  SET total_spend = GREATEST(0, COALESCE(total_spend, 0) - p_amount),
-      tier_period_spend = GREATEST(0, COALESCE(tier_period_spend, 0) - p_amount),
-      charity_savings = GREATEST(0, COALESCE(charity_savings, 0) - v_charity_decrement)
+  SET total_spend = GREATEST(0, COALESCE(user_profiles.total_spend, 0) - p_amount),
+      tier_period_spend = GREATEST(0, COALESCE(user_profiles.tier_period_spend, 0) - p_amount),
+      charity_savings = GREATEST(0, COALESCE(user_profiles.charity_savings, 0) - v_charity_decrement)
   WHERE user_id = p_user_id
   RETURNING * INTO v_profile;
 
