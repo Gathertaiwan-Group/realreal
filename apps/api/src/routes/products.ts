@@ -20,7 +20,27 @@ const productSchema = z.object({
     sort_order: z.number().int().nonnegative(),
   })).optional(),
   is_active: z.boolean().optional(),
+  is_featured: z.boolean().optional(),
   is_addon: z.boolean().optional(),
+  display_priority: z.number().int().min(0).max(99999).optional(),
+})
+
+const nestedVariantSchema = z.object({
+  sku: z.string().max(100).optional(),
+  name: z.string().min(1),
+  price: z.number().positive(),
+  sale_price: z.number().positive().nullable().optional(),
+  stock_qty: z.number().int().nonnegative(),
+  weight: z.number().nonnegative().nullable().optional(),
+  attributes: z.record(z.string(), z.string()).nullable().optional(),
+}).refine(
+  (variant) => variant.sale_price == null || variant.sale_price <= variant.price,
+  { message: "Sale price cannot exceed regular price", path: ["sale_price"] },
+)
+
+const nestedProductCreateSchema = z.object({
+  product: productSchema,
+  variants: z.array(nestedVariantSchema).min(1),
 })
 
 // Helper: enrich products with prices, total_stock, and flatten image URLs
@@ -224,6 +244,66 @@ productsRouter.delete("/:id", requireAuth, requireAdmin, async (req, res) => {
 // Admin endpoints — display control (Spec B Section 2)
 // Mounted at /admin/products in app.ts
 // ─────────────────────────────────────────────────────────────────────────────
+
+// POST /admin/products — create a product and all variants in one workflow.
+productsAdminRouter.post("/", requireAuth, requireAdmin, async (req, res) => {
+  const parsed = nestedProductCreateSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() })
+    return
+  }
+
+  const seenSkus = new Set<string>()
+  for (const variant of parsed.data.variants) {
+    const sku = variant.sku?.trim().toUpperCase()
+    if (!sku) continue
+    if (seenSkus.has(sku)) {
+      res.status(400).json({ error: `Duplicate SKU: ${sku}` })
+      return
+    }
+    seenSkus.add(sku)
+  }
+
+  const productPayload = {
+    ...parsed.data.product,
+    category_id: parsed.data.product.category_id ?? null,
+  }
+  const { data: product, error: productError } = await supabase
+    .from("products")
+    .insert(productPayload)
+    .select()
+    .single()
+
+  if (productError || !product) {
+    res.status(500).json({ error: productError?.message ?? "Failed to create product" })
+    return
+  }
+
+  const variantsPayload = parsed.data.variants.map((variant) => ({
+    ...variant,
+    sku: variant.sku?.trim() || null,
+    product_id: product.id,
+  }))
+  const { data: variants, error: variantsError } = await supabase
+    .from("product_variants")
+    .insert(variantsPayload)
+    .select()
+
+  if (variantsError) {
+    const { error: rollbackError } = await supabase
+      .from("products")
+      .delete()
+      .eq("id", product.id)
+    res.status(500).json({
+      error: "Failed to create product variants",
+      details: variantsError.message,
+      rollback_failed: Boolean(rollbackError),
+    })
+    return
+  }
+
+  res.status(201).json({ data: { product, variants: variants ?? [] } })
+})
 
 const featureSchema = z.object({
   is_featured: z.boolean(),
