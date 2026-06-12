@@ -1,7 +1,21 @@
 # 待修 Bug 清單（2026-06-12 註冊/忘記密碼/行銷模組體檢）
 
 > 來源：2026-06-12 三面向平行體檢（auth flows / coupons+campaigns / tiers+points+KOL）。
-> ✅ 已修並上線的不在此列（見 git log）。本檔只列**尚未修**的，給決策 + 交接用。
+
+## ✅ 2026-06-12 全部已修並上線（wave A + wave B）
+- **Wave A**（commit e6cef23）：固定券折扣差 100 倍、登入 open redirect、登入回跳/錯誤顯示。
+- **Wave B**（commit be4c9fc，migration 0037 已套用線上）：B1 點數併發重複折抵、B2 退款消費額併發重複扣、B3 優惠券用量寫入+取消回補、B4 退款降等、B5 點數金流吞錯、B6 升等 claim-after-success、B7 忘記密碼/註冊確認跨裝置（token-hash）、B8 KOL 自我推薦排除（+ kols.user_id + 後台綁定）、B9 生日券折數防呆。
+
+## ⚠️ 還需「你手動操作」才完整生效
+1. **B7**：到 Supabase Dashboard → Authentication → Email Templates，把「Reset Password」「Confirm signup」改成 token-hash 連結（步驟見 `apps/web/docs/auth-email-templates.md`），並把 `/auth/confirm` 加進 URL Configuration 的 Redirect URLs。**沒做這步，跨裝置重設密碼仍不會生效**（程式已就緒，等範本切換）。
+2. **B8**：到後台 KOL 編輯頁，把每個 KOL「綁定使用者帳號 ID」填上（該 KOL 自己的 auth.users UUID）。沒綁的 KOL 無法判斷自我推薦（不綁也不會壞，只是排除不到自買）。
+
+## 🔧 仍開著的次要項（非本次體檢的功能 bug）
+- **lint**：`apps/web/.../admin/kols/_client.tsx:122` `setState-in-effect`（KOL 轉換率儀表板舊碼，commit 978dccc，與本次無關）。已另開背景任務追蹤。
+- 下方 P2 清單仍可擇期清理。
+
+---
+## （歷史）原始發現清單
 
 ## ✅ 本次已修（wave A，commit e6cef23 / 2c5e105 / abd42bd）
 - **固定金額優惠券差 100 倍**：`coupon.value` 是元、卻當分套用（NT$200 券只折 NT$2）。已修 `orders.ts:585/271` + `campaigns.ts:314`（×100）。
