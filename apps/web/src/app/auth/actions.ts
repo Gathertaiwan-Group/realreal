@@ -30,7 +30,11 @@ export async function loginAction(_prev: unknown, formData: FormData) {
   const { error } = await supabase.auth.signInWithPassword(parsed.data)
   if (error) return { error: error.message }
 
-  const redirectTo = (formData.get("redirectTo") as string) || "/"
+  // Only allow same-origin relative paths. An attacker-supplied absolute or
+  // protocol-relative URL (?redirect=//evil.example) would otherwise bounce the
+  // freshly-authenticated user to a phishing site.
+  const requested = (formData.get("redirectTo") as string) || "/"
+  const redirectTo = requested.startsWith("/") && !requested.startsWith("//") ? requested : "/"
   redirect(redirectTo)
 }
 

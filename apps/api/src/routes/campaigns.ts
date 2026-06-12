@@ -311,7 +311,8 @@ campaignsRouter.post("/admin/campaigns/preview", requireAuth, requireAdmin, asyn
         if (c.type === "percentage") {
           couponDiscountCents = Math.round(baseAfterCampaigns * (Number(c.value) / 100))
         } else if (c.type === "fixed") {
-          couponDiscountCents = Math.min(baseAfterCampaigns, Math.round(Number(c.value)))
+          // c.value is TWD dollars; admin-preview math is in cents → ×100.
+          couponDiscountCents = Math.min(baseAfterCampaigns, Math.round(Number(c.value) * 100))
         } else if (c.type === "free_shipping") {
           shippingFeeCents = 0
         }

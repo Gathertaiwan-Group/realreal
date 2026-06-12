@@ -268,7 +268,8 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
         if (coupon.type === "percentage") {
           couponDiscountCents = Math.round(baseAfter * (clampedPctValue / 100))
         } else if (coupon.type === "fixed") {
-          couponDiscountCents = Math.min(baseAfter, Math.round(rawValue))
+          // coupon.value is TWD dollars; preview math is in cents → ×100.
+          couponDiscountCents = Math.min(baseAfter, Math.round(rawValue * 100))
         } else if (coupon.type === "free_shipping") {
           // Audit L12 (round 2): report actual shipping savings on the coupon
           // info line so UI can show "免運費 -NT$ X".
@@ -582,7 +583,10 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
             if (coupon.type === "percentage") {
               couponDiscountCents = Math.round(baseAfterCampaigns * (clampedPctValue / 100))
             } else if (coupon.type === "fixed") {
-              couponDiscountCents = Math.min(baseAfterCampaigns, Math.round(rawValue))
+              // coupon.value is TWD dollars; order math is in cents → ×100.
+              // (Was applying the dollar figure as cents, so a NT$200 coupon
+              // only took NT$2 off while the widget showed the full NT$200.)
+              couponDiscountCents = Math.min(baseAfterCampaigns, Math.round(rawValue * 100))
             } else if (coupon.type === "free_shipping") {
               // Don't deduct from items; zero the shipping fee instead.
               shippingFeeCents = 0

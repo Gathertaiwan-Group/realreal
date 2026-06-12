@@ -21,13 +21,29 @@ import Image from "next/image"
 export default function LoginPage() {
   const [state, formAction, isPending] = useActionState(loginAction, null)
   const searchParams = useSearchParams()
-  const redirectTo = searchParams.get("redirect") || "/"
+  // The proxy/middleware bounces unauthenticated users here with `?next=`;
+  // accept the legacy `?redirect=` too. (Previously only `redirect` was read,
+  // so the deep-link-back after login never worked.)
+  const redirectTo = searchParams.get("next") || searchParams.get("redirect") || "/"
+  const callbackError = searchParams.get("error")
 
   useEffect(() => {
     if (state?.error) {
       toast.error(state.error)
     }
   }, [state])
+
+  useEffect(() => {
+    // Surface auth-callback failures (expired/used recovery or confirm links)
+    // that redirect here with ?error=… — otherwise the user sees nothing.
+    if (callbackError) {
+      toast.error(
+        callbackError === "auth_callback_failed"
+          ? "登入連結已失效或已使用，請重新登入或重新寄送連結"
+          : decodeURIComponent(callbackError),
+      )
+    }
+  }, [callbackError])
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4 py-12">
