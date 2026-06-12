@@ -6,6 +6,12 @@ import { CategoryFilter } from "@/components/catalog/CategoryFilter"
 import { SortSelect } from "@/components/catalog/SortSelect"
 import { Pagination } from "@/components/catalog/Pagination"
 import { BannerCarousel } from "@/components/catalog/BannerCarousel"
+import { ExplainCarousel } from "@/components/catalog/ExplainCarousel"
+
+const PROTEIN_EXPLAIN = Array.from({ length: 11 }, (_, i) => ({
+  src: `/shop/protein-explain/${i + 1}.jpg`,
+  alt: `植物蛋白粉說明 ${i + 1}`,
+}))
 
 const FRUIT_SLIDES = [
   {
@@ -104,7 +110,10 @@ export default async function ShopPage({
       <div className="container mx-auto px-4 py-12 max-w-7xl">
         {/* Category banner carousels */}
         {isProteinCategory && (
-          <BannerCarousel slides={PROTEIN_SLIDES} />
+          <>
+            <BannerCarousel slides={PROTEIN_SLIDES} />
+            <ExplainCarousel images={PROTEIN_EXPLAIN} />
+          </>
         )}
         {isFruitCategory && (
           <BannerCarousel slides={FRUIT_SLIDES} />
