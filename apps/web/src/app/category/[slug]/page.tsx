@@ -1,12 +1,6 @@
 import { notFound } from "next/navigation"
 import { CategoryHero } from "@/components/category/CategoryHero"
 import { BannerCarousel } from "@/components/catalog/BannerCarousel"
-import { ExplainCarousel } from "@/components/catalog/ExplainCarousel"
-
-const PROTEIN_EXPLAIN = Array.from({ length: 11 }, (_, i) => ({
-  src: `/shop/protein-explain/${i + 1}.jpg`,
-  alt: `植物蛋白粉說明 ${i + 1}`,
-}))
 import { FeatureBlocks, type FeatureBlock } from "@/components/category/FeatureBlocks"
 import { RelatedPosts, type RelatedPost } from "@/components/category/RelatedPosts"
 import { ProductGrid } from "@/components/catalog/ProductGrid"
@@ -124,10 +118,7 @@ export default async function CategoryLandingPage({
   return (
     <div className="min-h-screen bg-white">
       {isProtein ? (
-        <>
-          <BannerCarousel slides={PROTEIN_SLIDES} />
-          <ExplainCarousel images={PROTEIN_EXPLAIN} />
-        </>
+        <BannerCarousel slides={PROTEIN_SLIDES} />
       ) : isFruit ? (
         <BannerCarousel slides={FRUIT_SLIDES} />
       ) : (
