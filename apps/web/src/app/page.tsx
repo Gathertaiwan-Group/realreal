@@ -396,7 +396,7 @@ function RetailSection() {
       name: "夢田藥局",
       type: "藥局",
       address: "桃園市中壢區龍慈路91號1樓",
-      phone: "03-4601966",
+      phone: "(03)4601966",
       mapUrl: "https://share.google/vZ79fBx7uAgcFZUMx",
       fbUrl: null,
       icon: "💊",
