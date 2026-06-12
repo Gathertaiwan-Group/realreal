@@ -11,8 +11,9 @@ type Post = {
   id: string
   title: string
   status: "draft" | "published" | "scheduled"
-  // Supabase join returns the related row under the table name (plural)
-  post_categories?: { id: string; name: string; slug: string } | null
+  category_id?: string | null
+  // Supabase join — may or may not include slug depending on API version
+  post_categories?: { id?: string; name: string; slug?: string } | null
   author?: { display_name: string } | null
   published_at: string | null
   created_at: string
@@ -112,11 +113,19 @@ export default async function AdminPostsPage({
     // API unavailable — no chips
   }
 
-  // Client-side filter posts by selected category slug
+  // Build lookup maps from the categories list
+  const categoryBySlug = new Map(categories.map((c) => [c.slug, c]))
+  const categoryById = new Map(categories.map((c) => [c.id, c]))
+
+  // Filter by category_id — does NOT depend on the API join returning slug
+  const selectedCategoryId = activeCategory !== "all"
+    ? categoryBySlug.get(activeCategory)?.id
+    : null
+
   const filteredPosts =
     activeCategory === "all"
       ? posts
-      : posts.filter((p) => p.post_categories?.slug === activeCategory)
+      : posts.filter((p) => p.category_id === selectedCategoryId)
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
@@ -194,7 +203,10 @@ export default async function AdminPostsPage({
           )}
           {filteredPosts.map((post) => {
             const cfg = STATUS_CONFIG[post.status] ?? STATUS_CONFIG.draft
-            const categoryName = post.post_categories?.name ?? "—"
+            const categoryName =
+              post.post_categories?.name
+              ?? (post.category_id ? categoryById.get(post.category_id)?.name : null)
+              ?? "—"
             return (
               <div
                 key={post.id}
