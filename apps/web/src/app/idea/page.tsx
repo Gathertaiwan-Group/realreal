@@ -30,15 +30,24 @@ export default async function IdeaPage() {
 
   return (
     <div className="bg-white">
-      <article className="container mx-auto px-4 py-16 max-w-2xl">
 
-        {/* ── 主標題 ── */}
-        <header className="mb-12 text-center">
-          <h1 className="text-3xl font-bold text-[#10305a] mb-3">
+      {/* ── Banner ── */}
+      <section
+        className="relative py-24 bg-cover bg-center"
+        style={{ backgroundImage: "url('/idea/banner.png')" }}
+      >
+        <div className="absolute inset-0 bg-white/40" />
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
+          <h1 className="text-3xl font-bold tracking-tight text-[#10305a] sm:text-4xl">
             善意，不必等到富有才開始。
           </h1>
-          <p className="text-[#a09080]">每一次消費，都留下看得見的善意足跡。</p>
-        </header>
+          <p className="mt-4 text-[#687279] text-lg max-w-2xl mx-auto">
+            每一次消費，都留下看得見的善意足跡。
+          </p>
+        </div>
+      </section>
+
+      <article className="container mx-auto px-4 py-12 max-w-2xl">
 
         {/* ── 開場：等待的循環 ── */}
         <section className="space-y-5 text-[#687279] leading-relaxed mb-10">
