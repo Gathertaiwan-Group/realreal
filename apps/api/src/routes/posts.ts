@@ -276,9 +276,17 @@ postsAdminRouter.post("/", requireAuth, requireEditor, async (req, res) => {
     postData.slug = slugify(postData.title)
   }
 
+  // Auto-set published_at when creating a published post
+  const now = new Date().toISOString()
+  const insertData: Record<string, unknown> = {
+    ...postData,
+    author_id: res.locals.userId,
+    ...(postData.status === "published" ? { published_at: now } : {}),
+  }
+
   const { data, error } = await supabase
     .from("posts")
-    .insert({ ...postData, author_id: res.locals.userId })
+    .insert(insertData)
     .select()
     .single()
 
@@ -301,9 +309,22 @@ postsAdminRouter.put("/:id", requireAuth, requireEditor, async (req, res) => {
 
   const { tags, ...postData } = parsed.data
 
+  // If transitioning to published, set published_at only if not already set
+  const updateData: Record<string, unknown> = { ...postData }
+  if (postData.status === "published") {
+    const { data: existing } = await supabase
+      .from("posts")
+      .select("published_at")
+      .eq("id", req.params.id)
+      .single()
+    if (!existing?.published_at) {
+      updateData.published_at = new Date().toISOString()
+    }
+  }
+
   const { data, error } = await supabase
     .from("posts")
-    .update(postData)
+    .update(updateData)
     .eq("id", req.params.id)
     .select()
     .single()
