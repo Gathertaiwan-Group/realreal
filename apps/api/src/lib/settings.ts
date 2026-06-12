@@ -160,6 +160,7 @@ export const ALLOWED_KEYS = new Set<string>([
   "amego.tax_id",
   "amego.app_key",
   "amego.sandbox",
+  "amego.webhook_secret",
   // Resend email
   "resend.api_key",
   "resend.from_address",
@@ -210,6 +211,7 @@ export const SECRET_KEYS = new Set<string>([
   "ecpay.hash_iv",
   "amego.tax_id",
   "amego.app_key",
+  "amego.webhook_secret",
   "resend.api_key",
   "notifications.line_notify_token",
 ])
@@ -265,6 +267,7 @@ export const SECTIONS: Record<string, { label: string; keys: string[] }> = {
       "amego.tax_id",
       "amego.app_key",
       "amego.sandbox",
+      "amego.webhook_secret",
     ],
   },
   resend: {

@@ -108,15 +108,15 @@ couponsRouter.post("/coupons/validate", async (req, res) => {
     discount = Math.min(Number(coupon.value), orderAmt)
   }
 
+  // Return only what the client needs to display (the computed discount).
+  // Previously this leaked the coupon's internal id + full config (type / value
+  // / applicable_to) to any caller who guessed a code, enabling coupon
+  // enumeration/harvesting. The order endpoint re-validates by `code`
+  // server-side, so the client never needs the id or raw config.
   res.json({
     data: {
-      coupon_id: coupon.id,
-      code: coupon.code,
-      type: coupon.type,
-      value: coupon.value,
       discount,
       final_amount: Math.max(0, orderAmt - discount),
-      applicable_to: coupon.applicable_to,
     },
   })
 })
