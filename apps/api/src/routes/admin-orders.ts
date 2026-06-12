@@ -45,6 +45,53 @@ async function restoreOrderStock(orderId: string): Promise<void> {
   if (error) console.warn(`[admin/orders] restore stock failed for ${orderId} (non-fatal):`, error.message)
 }
 
+/**
+ * Return the coupon usage an order consumed at checkout. For every coupon_uses
+ * row tied to this order we decrement the coupon's used_count (RPC floors at 0)
+ * then delete the coupon_uses rows, so the customer's use no longer counts
+ * against max_uses. Mirrors restoreOrderStock: call ONLY when an order
+ * transitions into cancelled/refunded; non-fatal (logs and continues).
+ *
+ * Idempotent: step 3's delete removes the rows, so a second run finds nothing
+ * to decrement — a double-cancel can't over-decrement used_count. This is the
+ * SAME rollback the hard-delete path performs inline; the two never run for the
+ * same order because the delete leaves no rows for the other to act on (and a
+ * cancelled order's rows are already gone before any later hard-delete).
+ */
+async function refundCouponUsage(orderId: string): Promise<void> {
+  const { data: uses, error: fetchError } = await supabase
+    .from("coupon_uses")
+    .select("id, coupon_id")
+    .eq("order_id", orderId)
+  if (fetchError) {
+    console.warn(`[admin/orders] refundCouponUsage fetch failed for ${orderId} (non-fatal):`, fetchError.message)
+    return
+  }
+  const rows = (uses ?? []) as { id: string; coupon_id: string | null }[]
+  if (rows.length === 0) return
+
+  for (const use of rows) {
+    if (!use.coupon_id) continue
+    const { error: rpcError } = await supabase.rpc("atomic_decrement_coupon_usage", {
+      p_coupon_id: use.coupon_id,
+    })
+    if (rpcError) {
+      console.warn(
+        `[admin/orders] atomic_decrement_coupon_usage failed for coupon ${use.coupon_id} (order ${orderId}, non-fatal):`,
+        rpcError.message,
+      )
+    }
+  }
+
+  const { error: deleteError } = await supabase
+    .from("coupon_uses")
+    .delete()
+    .eq("order_id", orderId)
+  if (deleteError) {
+    console.warn(`[admin/orders] refundCouponUsage delete failed for ${orderId} (non-fatal):`, deleteError.message)
+  }
+}
+
 // PATCH /admin/orders/:id/status — update order status (admin only)
 adminOrdersRouter.patch("/:id/status", async (req, res) => {
   const parsed = updateStatusSchema.safeParse(req.body)
@@ -115,10 +162,12 @@ adminOrdersRouter.patch("/:id/status", async (req, res) => {
     }
   }
 
-  // Restore stock when transitioning into cancelled (the order.status !==
-  // "cancelled" check makes this idempotent against repeated cancels).
+  // Restore stock + return coupon usage when transitioning into cancelled (the
+  // order.status !== "cancelled" check makes both idempotent against repeated
+  // cancels; refundCouponUsage is also self-idempotent via its row delete).
   if (newStatus === "cancelled" && order.status !== "cancelled") {
     await restoreOrderStock(orderId)
+    await refundCouponUsage(orderId)
   }
 
   res.json({ data: updated })
@@ -189,9 +238,11 @@ adminOrdersRouter.post("/bulk-status", async (req, res) => {
       }
     }
 
-    // Restore stock for every order that actually transitioned into cancelled.
+    // Restore stock + return coupon usage for every order that actually
+    // transitioned into cancelled (same idempotency snapshot as stock).
     for (const o of (toRestore ?? []) as { id: string }[]) {
       await restoreOrderStock(o.id)
+      await refundCouponUsage(o.id)
     }
   } else {
     const update: Record<string, string> = { status: newStatus, updated_at: new Date().toISOString() }
@@ -515,8 +566,10 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
     if (statusError) throw new Error(statusError.message)
     actions.status_update = { ok: true, message: "訂單狀態已標記取消" }
     // order.status was guaranteed non-cancelled (CANCELLABLE_STATUSES gate
-    // above), so restoring stock here runs exactly once per cancel.
+    // above), so restoring stock + returning coupon usage here each run exactly
+    // once per cancel (refundCouponUsage is additionally self-idempotent).
     await restoreOrderStock(orderId)
+    await refundCouponUsage(orderId)
   } catch (err) {
     actions.status_update = {
       ok: false,

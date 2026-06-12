@@ -233,6 +233,10 @@ adminCustomersRouter.post("/:id/points/adjust", async (req, res) => {
   const actorId = res.locals.userId as string
 
   try {
+    // B5: adjustPoints now throws when the points_ledger insert returns an
+    // error (previously it swallowed `.error` and this route reported ok:true
+    // on a write that never landed). A throw here → 500, so the admin never
+    // sees a phantom "granted" for a failed money write.
     await adjustPoints(userId, parsed.data.delta, parsed.data.note, actorId)
     res.json({ ok: true })
   } catch (err) {

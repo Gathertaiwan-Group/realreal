@@ -30,18 +30,48 @@ export async function enqueuePostPaymentJobs(orderId: string) {
 
   // 0) Update total_spend, check tier upgrade, accumulate charity_savings.
   // Idempotency: stamp order_post_payment_log.tier_incremented_at so webhook
-  // retries / admin POST /retry-post-payment can't double-count. The unique
-  // PK (order_id) means a 2nd run sees `prior.tier_incremented_at != null`
-  // and skips. See migration 0032.
+  // retries / admin POST /retry-post-payment can't double-count.
+  //
+  // B6: the claim used to be stamped BEFORE incrementSpendAndUpgrade ran, so a
+  // transient RPC failure left the step claimed → the retry saw it claimed,
+  // skipped, and the spend was never counted. `claim_order_post_payment_step`
+  // has no unclaim (migration 0034), so we use claim-AFTER-success instead:
+  //   1. read the sentinel as an early-out for an already-completed run
+  //      (sequential webhook retry / admin retry-post-payment),
+  //   2. run incrementSpendAndUpgrade,
+  //   3. claim the step only AFTER it succeeds.
+  // A failure now leaves the step UNclaimed so the next retry re-runs it.
   if (order.user_id) {
     try {
-      const { data: claimed, error: claimError } = await supabase.rpc(
-        "claim_order_post_payment_step",
-        { p_order_id: orderId, p_step: "tier_incremented" },
+      const { data: priorLog } = await supabase
+        .from("order_post_payment_log")
+        .select("tier_incremented_at")
+        .eq("order_id", orderId)
+        .maybeSingle()
+      const alreadyIncremented = Boolean(
+        (priorLog as { tier_incremented_at?: string | null } | null)
+          ?.tier_incremented_at,
       )
-      if (claimError) throw claimError
-      if (claimed) {
+      if (!alreadyIncremented) {
+        // Do the work first. If this throws, no sentinel is stamped → retry-safe.
         await incrementSpendAndUpgrade(order.user_id, totalTwd)
+        // Stamp the sentinel only now that the increment actually applied. The
+        // test-and-set (WHERE tier_incremented_at IS NULL) keeps a duplicate
+        // webhook that slipped past the read above from re-counting.
+        const { error: claimError } = await supabase.rpc(
+          "claim_order_post_payment_step",
+          { p_order_id: orderId, p_step: "tier_incremented" },
+        )
+        if (claimError) {
+          // Increment already applied; we just couldn't stamp the sentinel.
+          // Surface it (don't claim phantom success) — a retry is gated by the
+          // read above once the row's timestamp lands, and incrementSpend's own
+          // FOR UPDATE makes a worst-case re-run observable rather than silent.
+          console.warn(
+            `[post-payment] tier increment applied but claim failed for order=${orderId}:`,
+            claimError,
+          )
+        }
       }
     } catch (err) {
       console.warn("[post-payment] tier upgrade failed (non-fatal):", err)
@@ -251,7 +281,18 @@ export async function enqueuePostPaymentJobs(orderId: string) {
       await grantPoints(orderId, order.user_id, earnBaseTwd, tierId)
 
       if (pointsUsed > 0) {
-        await redeemPoints(orderId, order.user_id, pointsUsed)
+        // B6: redeemPoints now returns a status instead of swallowing the
+        // insert error. A real failure means the user's points were NOT burned
+        // for an order they already paid with them — log it loudly (the points
+        // lifecycle is non-fatal to the rest of post-payment, but we must not
+        // pretend the burn succeeded). The expire/refund chains and the
+        // SELECT-first guard keep a later retry idempotent.
+        const redeemResult = await redeemPoints(orderId, order.user_id, pointsUsed)
+        if (!redeemResult.ok) {
+          console.error(
+            `[post-payment] redeemPoints did NOT burn ${pointsUsed} pts for order=${orderId}: ${redeemResult.error}`,
+          )
+        }
       }
     } catch (err) {
       console.warn("[post-payment] points grant/redeem failed (non-fatal):", err)

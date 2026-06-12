@@ -34,14 +34,16 @@ export default function LoginPage() {
   }, [state])
 
   useEffect(() => {
-    // Surface auth-callback failures (expired/used recovery or confirm links)
-    // that redirect here with ?error=… — otherwise the user sees nothing.
+    // Surface auth-callback / confirm failures (expired/used recovery or
+    // confirm links) that redirect here with ?error=… — otherwise the user
+    // sees nothing. `auth_callback_failed` comes from the PKCE /auth/callback
+    // route; `link_expired` comes from the token-hash /auth/confirm route.
     if (callbackError) {
-      toast.error(
-        callbackError === "auth_callback_failed"
-          ? "登入連結已失效或已使用，請重新登入或重新寄送連結"
-          : decodeURIComponent(callbackError),
-      )
+      const knownErrors: Record<string, string> = {
+        auth_callback_failed: "登入連結已失效或已使用，請重新登入或重新寄送連結",
+        link_expired: "確認連結已失效或已使用，請重新登入或重新寄送連結",
+      }
+      toast.error(knownErrors[callbackError] ?? decodeURIComponent(callbackError))
     }
   }, [callbackError])
 

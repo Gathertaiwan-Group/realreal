@@ -426,11 +426,19 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   if (kolRefCookie && /^[a-z0-9-]+$/.test(kolRefCookie)) {
     const { data: kol } = await supabase
       .from("kols")
-      .select("id, slug, coupon_id, is_active")
+      // user_id (migration 0037) links a KOL to a user account — needed to
+      // detect self-referral below.
+      .select("id, slug, coupon_id, is_active, user_id")
       .eq("slug", kolRefCookie)
       .eq("is_active", true)
       .maybeSingle()
-    if (kol) {
+    // Self-referral guard (B8): a KOL buying via their own link must NOT earn
+    // attribution commission nor get their own KOL coupon force-applied. If the
+    // KOL is linked to a user account and that account is the buyer, skip the
+    // whole block — leave attributedKolId/Slug null and keep the user's own
+    // coupon untouched.
+    const isSelfReferral = kol?.user_id != null && userId != null && kol.user_id === userId
+    if (kol && !isSelfReferral) {
       attributedKolId = kol.id as string
       attributedKolSlug = kol.slug as string
       if (kol.coupon_id) {
@@ -700,6 +708,50 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     // Rollback: restore stock since order creation failed.
     await supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload })
     res.status(500).json({ error: "Failed to create order" }); return
+  }
+
+  // -------------------------------------------------------------------------
+  // B1: guard points redemption against the concurrent double-redeem race.
+  // The effective-balance check above can pass for two parallel checkouts that
+  // both see the full balance → both redeem → negative ledger. Now that the
+  // order row exists (with its points_used intent persisted), ask the DB to
+  // confirm cumulative points intent across live orders up to THIS one does not
+  // exceed the user's ledger. If it does, this order lost the race: tear it down
+  // and 409. Guests have no points, so only run for logged-in users.
+  // -------------------------------------------------------------------------
+  if (userId && pointsUsed > 0) {
+    const { data: pointsOk, error: pointsCheckError } = await supabase.rpc(
+      "check_points_not_oversubscribed",
+      { p_user_id: userId, p_order_id: order.id },
+    )
+    if (pointsCheckError) {
+      console.error("[orders] check_points_not_oversubscribed failed:", pointsCheckError)
+    }
+    if (pointsOk === false) {
+      // Lost the race. Delete the just-created order; no child rows have been
+      // written yet at this point, but restore stock too (deducted above).
+      await Promise.all([
+        supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload }),
+        supabase.from("orders").delete().eq("id", order.id),
+      ])
+      res.status(409).json({ error: "點數不足，可能因同時下單，請重新結帳" })
+      return
+    }
+  }
+
+  // B3: record the coupon use now that we have the order id. The code already
+  // bumped coupons.used_count via atomic_increment_coupon_usage, but without a
+  // coupon_uses row per-user limits can't be enforced and the cancel-path
+  // rollback (which deletes coupon_uses for the order) has nothing to reverse.
+  // Non-fatal: a paid order must not fail over this ledger row — but log loudly.
+  // UNIQUE(coupon_id, order_id) makes a duplicate harmless.
+  if (appliedCouponId) {
+    const { error: couponUseError } = await supabase
+      .from("coupon_uses")
+      .insert({ coupon_id: appliedCouponId, user_id: userId ?? null, order_id: order.id })
+    if (couponUseError) {
+      console.error("[orders] insert coupon_uses failed (non-fatal):", couponUseError)
+    }
   }
 
   // Insert order items

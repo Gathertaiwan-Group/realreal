@@ -237,15 +237,28 @@ export async function grantPoints(
 // ---------------------------------------------------------------------------
 
 /**
+ * Result of a redeem attempt. B5: redeemPoints used to return void and only
+ * `console.warn` on a real failure, so callers (enqueue-post-payment.ts) had no
+ * way to know the burn never landed. We now surface a status: `ok` is true when
+ * the redeem row exists (freshly inserted, already present, or a 23505 race —
+ * all "the points are burned"); `ok` is false only when a real insert error
+ * left no row, with `error` carrying the message.
+ */
+export type RedeemResult =
+  | { ok: true; alreadyRedeemed: boolean }
+  | { ok: false; error: string }
+
+/**
  * Burn points used on an order. Writes a single negative ledger row with
- * source='redeem'. No-op when pointsUsed <= 0.
+ * source='redeem'. No-op when pointsUsed <= 0 (treated as a successful redeem
+ * of nothing).
  */
 export async function redeemPoints(
   orderId: string,
   userId: string,
   pointsUsed: number,
-): Promise<void> {
-  if (pointsUsed <= 0) return
+): Promise<RedeemResult> {
+  if (pointsUsed <= 0) return { ok: true, alreadyRedeemed: false }
   // Idempotency guard — same hazards as grantPoints (webhook retry / admin
   // retry / IPN dual-notify). Migration 0032 enforces a DB UNIQUE partial
   // index too.
@@ -255,7 +268,7 @@ export async function redeemPoints(
     .eq("source", "redeem")
     .eq("source_ref_id", orderId)
     .maybeSingle()
-  if (existing) return
+  if (existing) return { ok: true, alreadyRedeemed: true }
 
   const { error: insertErr } = await supabase.from("points_ledger").insert({
     user_id: userId,
@@ -263,9 +276,13 @@ export async function redeemPoints(
     source: "redeem",
     source_ref_id: orderId,
   })
+  // 23505 = lost the race to a concurrent insert; the row exists, so the burn
+  // is done — treat as success. Any other error means no row landed: surface it.
   if (insertErr && insertErr.code !== "23505") {
     console.warn(`[redeemPoints] insert failed for order=${orderId}:`, insertErr)
+    return { ok: false, error: insertErr.message }
   }
+  return { ok: true, alreadyRedeemed: insertErr?.code === "23505" }
 }
 
 // ---------------------------------------------------------------------------
@@ -447,7 +464,17 @@ export async function refundOrderPoints(
   }
 
   if (inserts.length > 0) {
-    await supabase.from("points_ledger").insert(inserts)
+    // B5: money-path write — must not swallow `.error`. A silently-failed
+    // insert here would leave the refund chain reporting success while the
+    // user's clawback / point return never landed. Throw so the cancel chain
+    // (admin-orders.ts) surfaces it as points_refund.ok=false and a retry can
+    // re-run (the SELECT-first guard above keeps it idempotent).
+    const { error: insertErr } = await supabase
+      .from("points_ledger")
+      .insert(inserts)
+    if (insertErr) {
+      throw new Error(`refundOrderPoints insert failed: ${insertErr.message}`)
+    }
   }
 
   return { earned_reverted: earnedReverted, redeemed_returned: redeemedReturned }
@@ -481,7 +508,12 @@ export async function adjustPoints(
   if (!Number.isFinite(delta) || delta === 0) {
     throw new Error("delta must be a non-zero finite number")
   }
-  await supabase.from("points_ledger").insert({
+  // B5: this is a money-path write — Supabase insert errors are returned, not
+  // thrown, so swallowing `.error` made every caller see a phantom success
+  // (the manual-grant route returned ok:true and the tier-upgrade bonus
+  // reported a bonus that never landed). Surface failures by throwing; callers
+  // decide whether to 500 (admin route) or log-and-continue (tier bonus).
+  const { error: insertErr } = await supabase.from("points_ledger").insert({
     user_id: userId,
     delta: Math.trunc(delta),
     source,
@@ -490,6 +522,9 @@ export async function adjustPoints(
     actor_id: actorId,
     expires_at: null,
   })
+  if (insertErr) {
+    throw new Error(`adjustPoints insert failed: ${insertErr.message}`)
+  }
 }
 
 // ---------------------------------------------------------------------------

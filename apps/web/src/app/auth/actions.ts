@@ -52,7 +52,14 @@ export async function registerAction(_prev: unknown, formData: FormData) {
     password: parsed.data.password,
     options: {
       data: { display_name: parsed.data.displayName },
-      emailRedirectTo: `${getSiteUrl()}/auth/callback?next=/`,
+      // Point signup confirmation at the device-independent token-hash handler
+      // so the confirm link works even when opened on a different device. As
+      // with recovery, the Supabase dashboard "Confirm signup" email template
+      // MUST use the token-hash URL:
+      //   {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup&next=/
+      // (See docs/auth-email-templates.md.) The /auth/callback PKCE route still
+      // works for the same-device case.
+      emailRedirectTo: `${getSiteUrl()}/auth/confirm?next=/`,
     },
   })
   if (error) return { error: error.message }
@@ -68,11 +75,19 @@ export async function forgotPasswordAction(_prev: unknown, formData: FormData) {
 
   const supabase = await createClient()
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    // Route the PKCE recovery code through /auth/callback so the code is
-    // exchanged for a session (cookie set) before landing on the reset page.
-    // Without this, resetPasswordAction's updateUser({password}) has no
-    // session and fails with "Auth session missing".
-    redirectTo: `${getSiteUrl()}/auth/callback?next=/auth/reset-password`,
+    // Point recovery at the device-independent token-hash handler so the reset
+    // link works even when opened on a different device than the one that
+    // requested it (e.g. request on desktop, open on phone). /auth/confirm uses
+    // verifyOtp({ token_hash, type }) which does NOT need the PKCE verifier
+    // cookie, unlike the /auth/callback exchangeCodeForSession path.
+    //
+    // IMPORTANT: this `redirectTo` only sets {{ .SiteURL }} / {{ .RedirectTo }}
+    // for the email; it does NOT by itself switch the email to the token-hash
+    // link. The Supabase dashboard "Reset Password" email template MUST be set
+    // to use the token-hash URL:
+    //   {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=recovery&next=/auth/reset-password
+    // See docs/auth-email-templates.md for the full dashboard instructions.
+    redirectTo: `${getSiteUrl()}/auth/confirm?next=/auth/reset-password`,
   })
   if (error) return { error: error.message }
 

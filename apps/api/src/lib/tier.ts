@@ -121,6 +121,75 @@ export async function incrementPeriodSpend(userId: string, amount: number) {
 }
 
 /**
+ * B4: re-evaluate a user's tier after their total_spend dropped (e.g. a refund)
+ * and downgrade immediately if they no longer meet their current tier's
+ * min_spend. Picks the highest tier whose min_spend <= newTotalSpend.
+ *
+ * Reads membership_tiers ordered by min_spend ASC and walks to the highest
+ * qualifying one. Only writes when the tier actually changes, and surfaces any
+ * write error to the caller (checked `.error`). Returns the resulting tier id
+ * (unchanged or downgraded), or null if it couldn't evaluate.
+ *
+ * NOTE: this is the *immediate* downgrade-on-refund. The separate non-expiring-
+ * tier sweep (a tier with validity_months = NULL never hits tier-expire.ts, so
+ * a wash-trade that doesn't cross min_spend wouldn't otherwise be reconsidered)
+ * is tracked separately and intentionally NOT handled here (tier-expire.ts is
+ * out of scope for this change).
+ */
+async function downgradeTierIfBelowMin(
+  userId: string,
+  newTotalSpend: number,
+  currentTierId: string | null,
+): Promise<{ ok: boolean; tierId: string | null; changed: boolean; error?: string }> {
+  // Ascending so we can scan for the highest tier still satisfied by the
+  // (now lower) spend.
+  const { data: tiers, error: tiersErr } = await supabase
+    .from("membership_tiers")
+    .select("id, min_spend")
+    .order("min_spend", { ascending: true })
+  if (tiersErr) {
+    console.warn(`[downgradeTierIfBelowMin] tiers query failed for user=${userId}:`, tiersErr)
+    return { ok: false, tierId: currentTierId, changed: false, error: tiersErr.message }
+  }
+  const rows = (tiers ?? []) as Array<{ id: string; min_spend: number | string }>
+  if (rows.length === 0) {
+    return { ok: true, tierId: currentTierId, changed: false }
+  }
+
+  // Highest tier whose min_spend <= newTotalSpend (rows are ASC by min_spend).
+  let target: { id: string; min_spend: number | string } | null = null
+  for (const t of rows) {
+    if (newTotalSpend >= Number(t.min_spend)) target = t
+  }
+  // No tier qualifies (e.g. negative spend) → fall back to the lowest tier.
+  if (!target) target = rows[0]
+
+  const currentMinSpend = (() => {
+    const cur = rows.find((t) => t.id === currentTierId)
+    return cur ? Number(cur.min_spend) : null
+  })()
+
+  // Only act when the user is genuinely below their current tier's floor.
+  // If we can't find their current tier in the list (stale FK / null), still
+  // apply the computed target so the profile self-heals.
+  const belowCurrentFloor =
+    currentMinSpend === null || newTotalSpend < currentMinSpend
+  if (!belowCurrentFloor || target.id === currentTierId) {
+    return { ok: true, tierId: currentTierId, changed: false }
+  }
+
+  const { error: updErr } = await supabase
+    .from("user_profiles")
+    .update({ membership_tier_id: target.id })
+    .eq("user_id", userId)
+  if (updErr) {
+    console.warn(`[downgradeTierIfBelowMin] downgrade update failed for user=${userId}:`, updErr)
+    return { ok: false, tierId: currentTierId, changed: false, error: updErr.message }
+  }
+  return { ok: true, tierId: target.id, changed: true }
+}
+
+/**
  * Reverse of incrementSpendAndUpgrade — used by the cancel chain to undo the
  * spend bookkeeping when a paid order is refunded. Round-2 audit (2026-06-09)
  * found refunded orders were permanently boosting tier eligibility (wash-trade
@@ -133,10 +202,18 @@ export async function incrementPeriodSpend(userId: string, amount: number) {
  *   - user_profiles.tier_period_spend
  *   - user_profiles.charity_savings (legacy display mirror)
  *
- * Does NOT auto-downgrade — tier stays as-is and the user keeps the rebate
- * benefits for the rest of the period. The tier-expire worker re-evaluates
- * at requalification time using the decremented numbers, so a wash-trade
- * eventually corrects itself instead of becoming permanent.
+ * B2: the claim + decrement is now ONE atomic RPC
+ * (`claim_and_decrement_tier_spend`, migration 0037) instead of the previous
+ * read-sentinel → decrement → claim sequence. The old shape let two concurrent
+ * cancels both pass the early-out sentinel read and each run the decrement
+ * before either claimed → double-decrement. The RPC does the claim + decrement
+ * in a single transaction and rolls the decrement back if the claim didn't win,
+ * so concurrency is safe and the decision (`claimed`) is authoritative.
+ *
+ * B4: after a successful claim we re-evaluate the tier and downgrade
+ * immediately if total_spend fell below the current tier's min_spend (the old
+ * code never downgraded, so a wash-trade kept its tier until — for expiring
+ * tiers — the tier-expire worker swept it; non-expiring tiers never got swept).
  */
 export async function decrementSpendOnRefund(
   orderId: string,
@@ -147,76 +224,59 @@ export async function decrementSpendOnRefund(
     return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
   }
 
-  // Idempotency sentinel ordering — claim_order_post_payment_step sets
-  // spend_decremented_at and returns TRUE only the first time; it has NO
-  // reset/unclaim RPC (see migration 0034). The OLD order was claim-THEN-
-  // decrement: if decrement_user_tier_spend failed, the sentinel was already
-  // consumed, so the warn+return left it permanently claimed and the refund's
-  // spend was never reversed → re-opened wash-trade tier upgrades.
-  //
-  // Fix (approach a): run the decrement RPC FIRST and only claim the step once
-  // it has succeeded. A failed decrement now leaves the step UNclaimed, so the
-  // cancel chain can safely retry. The claim still runs afterwards and remains
-  // the idempotency guard against a retried/duplicate cancel (a second run sees
-  // the sentinel set and skips). This mirrors the increment side, where the
-  // claim in enqueue-post-payment.ts only counts a step as done after the
-  // atomic RPC actually ran.
-  //
-  // First peek at the pre-decrement profile (best-effort, for the returned
-  // deltas only). We re-read after the decrement to compute exact deltas.
+  // Best-effort pre-state read for the returned deltas ONLY. The decision to
+  // decrement and the decrement itself come exclusively from the RPC below —
+  // never from this read — so a concurrent cancel reading the same pre-state
+  // cannot cause a double-decrement (only one RPC call wins the claim).
   const { data: before } = await supabase
     .from("user_profiles")
-    .select("total_spend, tier_period_spend, charity_savings")
+    .select("total_spend, tier_period_spend, charity_savings, membership_tier_id")
     .eq("user_id", userId)
     .maybeSingle()
   const currentTotal = Number((before as any)?.total_spend ?? 0)
   const currentPeriod = Number((before as any)?.tier_period_spend ?? 0)
   const currentCharity = Number((before as any)?.charity_savings ?? 0)
+  const currentTierId = ((before as any)?.membership_tier_id ?? null) as string | null
 
-  // Guard against an already-processed refund BEFORE mutating spend. We read
-  // the sentinel (without consuming it) so a retried cancel does not double-
-  // decrement in the window before we claim. The authoritative claim still
-  // happens after the decrement; this is just an early-out.
-  const { data: priorLog } = await supabase
-    .from("order_post_payment_log")
-    .select("spend_decremented_at")
-    .eq("order_id", orderId)
-    .maybeSingle()
-  if ((priorLog as { spend_decremented_at?: string | null } | null)?.spend_decremented_at) {
+  // Atomic claim + decrement. `claimed=false` → another cancel already did it
+  // (or this is a duplicate webhook) → no-op. `claimed=true` → this call owns
+  // the decrement and the returned totals are post-decrement.
+  const { data: rpcRows, error: rpcErr } = await supabase.rpc(
+    "claim_and_decrement_tier_spend",
+    { p_order_id: orderId, p_user_id: userId, p_amount: amount },
+  )
+  if (rpcErr) {
+    console.warn(`[decrementSpendOnRefund] rpc failed for order=${orderId}:`, rpcErr)
+    return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
+  }
+  const rpc = Array.isArray(rpcRows) ? rpcRows[0] : rpcRows
+  const claimed = Boolean((rpc as any)?.claimed)
+  if (!claimed) {
+    // Already decremented by a prior/concurrent cancel — idempotent no-op.
     return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
   }
 
-  // Decrement FIRST. If this fails, no sentinel is consumed → safe to retry.
-  const { data: afterRows, error: decErr } = await supabase.rpc(
-    "decrement_user_tier_spend",
-    { p_user_id: userId, p_amount: amount },
-  )
-  if (decErr) {
-    console.warn(`[decrementSpendOnRefund] rpc failed for order=${orderId}:`, decErr)
-    return { decremented: false, total_spend_delta: 0, period_spend_delta: 0, charity_delta: 0 }
-  }
-  const after = Array.isArray(afterRows) ? afterRows[0] : afterRows
+  const newTotal = Number((rpc as any)?.total_spend ?? currentTotal)
+  const newPeriod = Number((rpc as any)?.tier_period_spend ?? currentPeriod)
+  const newCharity = Number((rpc as any)?.charity_savings ?? currentCharity)
 
-  // Only now claim the step. The decrement succeeded; record the sentinel so a
-  // retried cancel skips. (If this claim somehow errors, the decrement has
-  // already applied — we surface it so the caller logs it; a re-run would be
-  // gated by the early-out read above on the next attempt once the row exists.)
-  const { error: claimErr } = await supabase.rpc(
-    "claim_order_post_payment_step",
-    { p_order_id: orderId, p_step: "spend_decremented" },
-  )
-  if (claimErr) {
+  // B4: immediate downgrade if the refund dropped them below their tier floor.
+  // Non-fatal to the spend reversal — a downgrade write failure is logged but
+  // doesn't undo the (already-committed) decrement.
+  try {
+    await downgradeTierIfBelowMin(userId, newTotal, currentTierId)
+  } catch (err) {
     console.warn(
-      `[decrementSpendOnRefund] decrement applied but claim failed for order=${orderId}:`,
-      claimErr,
+      `[decrementSpendOnRefund] tier re-eval failed for order=${orderId} (spend already decremented):`,
+      err,
     )
   }
 
   return {
     decremented: true,
-    total_spend_delta: currentTotal - Number((after as any)?.total_spend ?? currentTotal),
-    period_spend_delta: currentPeriod - Number((after as any)?.tier_period_spend ?? currentPeriod),
-    charity_delta: currentCharity - Number((after as any)?.charity_savings ?? currentCharity),
+    total_spend_delta: currentTotal - newTotal,
+    period_spend_delta: currentPeriod - newPeriod,
+    charity_delta: currentCharity - newCharity,
   }
 }
 

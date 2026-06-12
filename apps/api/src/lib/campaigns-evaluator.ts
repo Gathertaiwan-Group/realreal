@@ -264,9 +264,14 @@ export async function evalDiscount(
   if (items.length === 0) return notApplied(c, "scope 內無商品")
 
   const sub = sumItems(items)
+  // Defensive: a percent value in (0,1) is almost certainly a 折-multiplier
+  // (e.g. 0.95 = 95折 = 5% off) mistakenly stored instead of a whole percent.
+  // Treat it as such so it doesn't silently become a 0.95%-off. Whole-number
+  // percents (the current data convention) are unaffected.
+  const pctValue = method === "percent" && value > 0 && value < 1 ? (1 - value) * 100 : value
   const discount =
     method === "percent"
-      ? Math.min(Math.round((sub * value) / 100), sub)
+      ? Math.min(Math.round((sub * pctValue) / 100), sub)
       : Math.min(value, sub)
 
   return { ...applied(c), discount_amount: discount }
@@ -581,9 +586,12 @@ export function evalBirthdayBonus(
     return notApplied(c, "不在生日當月 window 內")
   }
 
+  // Same 折-multiplier guard as evalDiscount: a percent value in (0,1) means
+  // 95折 (=5% off), not 0.95% off. Whole-number percents unaffected.
+  const pctValue = method === "percent" && value > 0 && value < 1 ? (1 - value) * 100 : value
   const discount =
     method === "percent"
-      ? Math.min(Math.round((ctx.cart.subtotal * value) / 100), ctx.cart.subtotal)
+      ? Math.min(Math.round((ctx.cart.subtotal * pctValue) / 100), ctx.cart.subtotal)
       : Math.min(value, ctx.cart.subtotal)
 
   const result: EvaluatorResult = {

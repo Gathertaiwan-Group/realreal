@@ -85,7 +85,9 @@ describe("registerAction", () => {
       password: "password123",
       options: {
         data: { display_name: "Test User" },
-        emailRedirectTo: "https://realreal.cc/auth/callback?next=/",
+        // Signup confirmation routes through the device-independent token-hash
+        // handler (/auth/confirm) so the link works cross-device.
+        emailRedirectTo: "https://realreal.cc/auth/confirm?next=/",
       },
     })
   })
@@ -108,10 +110,12 @@ describe("forgotPasswordAction", () => {
     fd.set("email", "user@example.com")
     const result = await forgotPasswordAction(null, fd)
     expect(result?.success).toBeTruthy()
-    // Recovery now routes through /auth/callback so the PKCE code is exchanged
-    // into a session before reaching the reset-password page.
+    // Recovery now routes through the device-independent token-hash handler
+    // (/auth/confirm) so the reset link works even when opened on a different
+    // device. The matching dashboard email template uses {{ .TokenHash }} —
+    // see docs/auth-email-templates.md.
     expect(mockResetPassword).toHaveBeenCalledWith("user@example.com", {
-      redirectTo: "https://realreal.cc/auth/callback?next=/auth/reset-password",
+      redirectTo: "https://realreal.cc/auth/confirm?next=/auth/reset-password",
     })
   })
 })

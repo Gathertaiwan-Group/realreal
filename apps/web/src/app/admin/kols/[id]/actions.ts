@@ -25,6 +25,7 @@ export interface KolUpsertInput {
   youtube_handle: string | null
   tiktok_handle: string | null
   coupon_id: string | null
+  user_id: string | null
   commission_rate: number
   is_active: boolean
   notes?: string | null
@@ -39,6 +40,7 @@ export interface KolUpdateInput {
   youtube_handle?: string | null
   tiktok_handle?: string | null
   coupon_id?: string | null
+  user_id?: string | null
   commission_rate?: number
   is_active?: boolean
   notes?: string | null

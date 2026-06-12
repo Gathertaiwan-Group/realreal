@@ -1,6 +1,7 @@
 "use client"
 
 import { useActionState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +20,8 @@ import Image from "next/image"
 
 export default function ForgotPasswordPage() {
   const [state, formAction, isPending] = useActionState(forgotPasswordAction, null)
+  const searchParams = useSearchParams()
+  const callbackError = searchParams.get("error")
 
   useEffect(() => {
     if (state?.success) {
@@ -27,6 +30,18 @@ export default function ForgotPasswordPage() {
       toast.error(state.error)
     }
   }, [state])
+
+  useEffect(() => {
+    // /auth/confirm bounces expired/used recovery links back here with
+    // ?error=link_expired — surface it so the user knows to re-request a link.
+    if (callbackError) {
+      toast.error(
+        callbackError === "link_expired"
+          ? "重設密碼連結已失效或已使用，請重新寄送連結"
+          : decodeURIComponent(callbackError),
+      )
+    }
+  }, [callbackError])
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-muted/40 px-4 py-12">

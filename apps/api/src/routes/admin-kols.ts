@@ -44,6 +44,7 @@ const kolCreateSchema = z.object({
   youtube_handle: z.string().max(64).optional().nullable(),
   tiktok_handle: z.string().max(64).optional().nullable(),
   coupon_id: z.string().uuid().optional().nullable(),
+  user_id: z.string().uuid().optional().nullable(),
   commission_rate: z.number().min(0).max(100).optional().default(10),
   is_active: z.boolean().optional().default(true),
   notes: z.string().max(2000).optional().nullable(),
@@ -94,7 +95,7 @@ adminKolsRouter.get("/", async (_req, res) => {
     .from("kols")
     .select(
       "id, slug, name, avatar_url, bio, instagram_handle, youtube_handle, tiktok_handle, " +
-        "coupon_id, commission_rate, is_active, notes, created_at, updated_at, " +
+        "coupon_id, user_id, commission_rate, is_active, notes, created_at, updated_at, " +
         "coupons(id, code, type, value)",
     )
     .order("created_at", { ascending: false })
@@ -143,7 +144,7 @@ adminKolsRouter.get("/:id", async (req, res) => {
     .from("kols")
     .select(
       "id, slug, name, avatar_url, bio, instagram_handle, youtube_handle, tiktok_handle, " +
-        "coupon_id, commission_rate, is_active, notes, created_at, updated_at, " +
+        "coupon_id, user_id, commission_rate, is_active, notes, created_at, updated_at, " +
         "coupons(id, code, type, value)",
     )
     .eq("id", req.params.id)

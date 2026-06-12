@@ -61,6 +61,7 @@ export interface KolDetailData {
   youtube_handle: string | null
   tiktok_handle: string | null
   coupon_id: string | null
+  user_id: string | null
   commission_rate: number | string
   is_active: boolean
   notes: string | null
@@ -397,6 +398,7 @@ function EditFormCard({
         ((fd.get("youtube_handle") as string) || "").trim() || null,
       tiktok_handle: ((fd.get("tiktok_handle") as string) || "").trim() || null,
       coupon_id: ((fd.get("coupon_id") as string) || "").trim() || null,
+      user_id: ((fd.get("user_id") as string) || "").trim() || null,
       commission_rate: Number(fd.get("commission_rate")) || 0,
       is_active: fd.get("is_active") === "on",
       notes: ((fd.get("notes") as string) || "").trim() || null,
@@ -502,6 +504,18 @@ function EditFormCard({
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs">綁定 coupon</Label>
               <CouponPicker name="coupon_id" defaultValue={kol.coupon_id ?? ""} />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2 md:col-span-3">
+              <Label htmlFor="f-user-id" className="text-xs">
+                綁定使用者帳號 ID（用於排除自買佣金）
+              </Label>
+              <Input
+                id="f-user-id"
+                name="user_id"
+                defaultValue={kol.user_id ?? ""}
+                placeholder="auth.users 的 UUID（選填）"
+                className="font-mono"
+              />
             </div>
             <div className="sm:col-span-2 md:col-span-3 space-y-1.5">
               <Label htmlFor="f-bio" className="text-xs">

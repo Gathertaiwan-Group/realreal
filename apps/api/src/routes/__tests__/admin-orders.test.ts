@@ -281,6 +281,98 @@ describe("DELETE /admin/orders/:id?hard=true (execute)", () => {
   })
 })
 
+describe("PATCH /admin/orders/:id/status → cancelled (coupon refund, bug B3)", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAdminAuth()
+  })
+
+  it("decrements used_count via RPC and deletes coupon_uses when cancelling", async () => {
+    // Order builder: the initial fetch (.select().eq().single()) returns a
+    // non-cancelled, unpaid order; the status flip (.update().eq().select()
+    // .single()) returns the updated row. Both share one chain.
+    const ordersChain = chain({
+      single: {
+        data: {
+          id: ORDER_ID,
+          status: "processing",
+          payment_status: "pending",
+          total: 1000,
+          updated_at: "2026-06-12T00:00:00.000Z",
+          user_id: "user-1",
+        },
+        error: null,
+      },
+    })
+    // coupon_uses: select().eq() yields one row; delete().eq() yields no error.
+    const couponUsesChain = chain({
+      terminal: { data: [{ id: "cu-1", coupon_id: "coupon-9" }], error: null },
+    })
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "user_profiles") return adminProfileChain() as any
+      if (table === "orders") return ordersChain as any
+      if (table === "coupon_uses") return couponUsesChain as any
+      // restoreOrderStock reads order_items — return none so the stock RPC is a no-op.
+      if (table === "order_items") return chain({ terminal: { data: [], error: null } }) as any
+      return chain() as any
+    })
+
+    const res = await request(app)
+      .patch(`/admin/orders/${ORDER_ID}/status`)
+      .set("Authorization", "Bearer test-token")
+      .send({ status: "cancelled" })
+
+    expect(res.status).toBe(200)
+    // The coupon-usage rollback RPC fired with the order's coupon id.
+    expect(supabase.rpc).toHaveBeenCalledWith("atomic_decrement_coupon_usage", {
+      p_coupon_id: "coupon-9",
+    })
+    // The coupon_uses rows for this order were deleted (idempotency guard).
+    expect(couponUsesChain.delete).toHaveBeenCalled()
+    expect(couponUsesChain.eq).toHaveBeenCalledWith("order_id", ORDER_ID)
+  })
+
+  it("is a no-op (no RPC, no delete) when the order has no coupon_uses", async () => {
+    const ordersChain = chain({
+      single: {
+        data: {
+          id: ORDER_ID,
+          status: "processing",
+          payment_status: "pending",
+          total: 1000,
+          updated_at: "2026-06-12T00:00:00.000Z",
+          user_id: "user-1",
+        },
+        error: null,
+      },
+    })
+    // No coupon_uses rows for this order.
+    const couponUsesChain = chain({ terminal: { data: [], error: null } })
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "user_profiles") return adminProfileChain() as any
+      if (table === "orders") return ordersChain as any
+      if (table === "coupon_uses") return couponUsesChain as any
+      if (table === "order_items") return chain({ terminal: { data: [], error: null } }) as any
+      return chain() as any
+    })
+
+    const res = await request(app)
+      .patch(`/admin/orders/${ORDER_ID}/status`)
+      .set("Authorization", "Bearer test-token")
+      .send({ status: "cancelled" })
+
+    expect(res.status).toBe(200)
+    // No coupon to decrement → the rollback RPC must not fire, and nothing is deleted.
+    expect(supabase.rpc).not.toHaveBeenCalledWith(
+      "atomic_decrement_coupon_usage",
+      expect.anything(),
+    )
+    expect(couponUsesChain.delete).not.toHaveBeenCalled()
+  })
+})
+
 describe("POST /admin/orders/:id/restore", () => {
   beforeEach(() => {
     vi.clearAllMocks()
