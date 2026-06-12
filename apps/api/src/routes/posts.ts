@@ -234,7 +234,7 @@ postsAdminRouter.get("/", requireAuth, requireEditor, async (req, res) => {
   const to = from + limit - 1
   let query = supabase
     .from("posts")
-    .select("id, title, slug, status, published_at, created_at, category_id, author_id, post_categories(name)", { count: "exact" })
+    .select("id, title, slug, status, published_at, created_at, category_id, author_id, post_categories(id, name, slug)", { count: "exact" })
     .order("created_at", { ascending: false, nullsFirst: false })
     .range(from, to)
   const status = req.query.status as string | undefined

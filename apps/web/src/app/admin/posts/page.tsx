@@ -11,8 +11,8 @@ type Post = {
   id: string
   title: string
   status: "draft" | "published" | "scheduled"
-  category?: { name: string; slug?: string } | null
-  post_category?: { name: string; slug?: string } | null
+  // Supabase join returns the related row under the table name (plural)
+  post_categories?: { id: string; name: string; slug: string } | null
   author?: { display_name: string } | null
   published_at: string | null
   created_at: string
@@ -116,10 +116,7 @@ export default async function AdminPostsPage({
   const filteredPosts =
     activeCategory === "all"
       ? posts
-      : posts.filter((p) => {
-          const slug = p.post_category?.slug ?? p.category?.slug
-          return slug === activeCategory
-        })
+      : posts.filter((p) => p.post_categories?.slug === activeCategory)
 
   return (
     <div className="container mx-auto px-4 py-8 space-y-6">
@@ -197,8 +194,7 @@ export default async function AdminPostsPage({
           )}
           {filteredPosts.map((post) => {
             const cfg = STATUS_CONFIG[post.status] ?? STATUS_CONFIG.draft
-            const categoryName =
-              post.post_category?.name ?? post.category?.name ?? "—"
+            const categoryName = post.post_categories?.name ?? "—"
             return (
               <div
                 key={post.id}
