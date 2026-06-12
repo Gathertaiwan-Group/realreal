@@ -111,8 +111,12 @@ export default async function BlogPage({
   return (
     <div className="min-h-screen">
       {/* Header */}
-      <section className="bg-gradient-to-br from-[#f5f0fa] via-[#f8f4f0] to-[#faf6f2] py-16">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
+      <section
+        className="relative py-24 bg-cover bg-center"
+        style={{ backgroundImage: "url('/blog/banner.jpg')" }}
+      >
+        <div className="absolute inset-0 bg-white/40" />
+        <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 text-center">
           <h1 className="text-3xl font-bold tracking-tight text-[#10305a] sm:text-4xl">
             聰明生活
           </h1>
