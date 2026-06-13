@@ -7,7 +7,6 @@ import type { Product } from "@/lib/catalog"
 import { getSiteContent, getPosts } from "@/lib/content"
 import type { Post } from "@/lib/content"
 import type { Metadata } from "next"
-import { ReviewImagesCarousel } from "@/components/ui/review-images-carousel"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -240,6 +239,60 @@ function ProductSection({
         )}
       </div>
     </section>
+  )
+}
+
+function TestimonialPostsSection({ posts }: { posts: Post[] }) {
+  if (!posts.length) {
+    return (
+      <p className="mt-8 text-center text-sm text-zinc-400">見證故事陸續更新中，敬請期待。</p>
+    )
+  }
+
+  return (
+    <>
+      <div className="mt-8 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
+        {posts.map((post) => (
+          <Link
+            key={post.id}
+            href={`/blog/${post.slug}`}
+            className="group block relative overflow-hidden rounded-xl shadow-sm hover:shadow-md transition-shadow"
+          >
+            <div className="aspect-[16/9] relative bg-gradient-to-br from-[#f5f0fa] to-[#faf6f2] overflow-hidden">
+              {post.cover_image ? (
+                <Image
+                  src={post.cover_image}
+                  alt={post.title}
+                  fill
+                  sizes="(max-width: 640px) 50vw, 25vw"
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-[#10305a]/20 text-3xl">
+                  💬
+                </div>
+              )}
+              <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/15 to-transparent" />
+              <div className="absolute bottom-0 left-0 right-0 p-3">
+                <p className="text-white text-xs font-semibold line-clamp-2 leading-snug">
+                  {post.title}
+                </p>
+              </div>
+            </div>
+          </Link>
+        ))}
+      </div>
+      <div className="mt-7 text-center">
+        <Button
+          asChild
+          variant="outline"
+          size="lg"
+          className="rounded-[10px] border-[#10305a]/30 text-[#10305a] hover:bg-[#10305a]/5 px-8"
+        >
+          <Link href="/blog?category=真實見證">查看更多見證 →</Link>
+        </Button>
+      </div>
+    </>
   )
 }
 
@@ -512,12 +565,18 @@ function RetailSection() {
 export default async function HomePage() {
   // Resolve category slugs for the two product sections
   // Fetch products, content and blog posts in parallel
-  const [bestSellers, heroContent, blogResult] =
+  const [bestSellers, heroContent, allPostsResult, testimonialResult] =
     await Promise.all([
       getBestSellers(),
       getSiteContent<HeroContent>("homepage_hero"),
-      getPosts({ limit: 3 }),
+      getPosts({ limit: 20 }),
+      getPosts({ category: "真實見證", limit: 10 }),
     ])
+
+  const testimonialPosts = testimonialResult.data
+  const nonTestimonialPosts = allPostsResult.data
+    .filter((p) => p.category !== "真實見證")
+    .slice(0, 3)
 
   return (
     <main className="min-h-screen">
@@ -536,19 +595,19 @@ export default async function HomePage() {
       {/* 1b. Square images */}
       <HomeSquareImages />
 
-      {/* 6. Customer reviews carousel */}
+      {/* 真實見證 posts */}
       <section className="py-10 sm:py-12">
         <div className="px-3 sm:px-4">
           <h2 className="text-center text-2xl font-bold tracking-tight text-[#10305a] sm:text-3xl mb-2">
             真實見證
           </h2>
           <p className="text-center text-sm text-zinc-500 mb-0">從學生到退休生活，不同人生階段的共同選擇。</p>
-          <ReviewImagesCarousel />
+          <TestimonialPostsSection posts={testimonialPosts} />
         </div>
       </section>
 
-      {/* 5. Blog section */}
-      <BlogSection posts={blogResult.data} />
+      {/* 聰明生活 — non-testimonial posts */}
+      <BlogSection posts={nonTestimonialPosts} />
 
       {/* 7. Retail stores */}
       <RetailSection />
