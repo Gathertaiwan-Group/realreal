@@ -46,7 +46,7 @@ export function TestimonialsCarousel({ posts }: { posts: Post[] }) {
             <Link
               key={post.id}
               href={`/blog/${post.slug}`}
-              className="group snap-start shrink-0 w-[calc(80%-8px)] sm:w-[calc(46%-10px)] lg:w-[calc(30%-12px)]"
+              className="group snap-start shrink-0 w-[calc(50%-8px)] sm:w-[calc(25%-12px)]"
             >
               <div className="relative overflow-hidden rounded-2xl shadow-md hover:shadow-xl transition-shadow aspect-[3/4] bg-gradient-to-br from-[#f5f0fa] to-[#faf6f2]">
                 {post.cover_image ? (
@@ -54,7 +54,7 @@ export function TestimonialsCarousel({ posts }: { posts: Post[] }) {
                     src={post.cover_image}
                     alt={post.title}
                     fill
-                    sizes="(max-width: 640px) 80vw, (max-width: 1024px) 46vw, 30vw"
+                    sizes="(max-width: 640px) 50vw, 25vw"
                     className="object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                 ) : (
