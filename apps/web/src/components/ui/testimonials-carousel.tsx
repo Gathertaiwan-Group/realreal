@@ -46,15 +46,15 @@ export function TestimonialsCarousel({ posts }: { posts: Post[] }) {
             <Link
               key={post.id}
               href={`/blog/${post.slug}`}
-              className="group snap-start shrink-0 w-[calc(50%-8px)] sm:w-[calc(33.333%-11px)] lg:w-[calc(25%-12px)]"
+              className="group snap-start shrink-0 w-[calc(80%-8px)] sm:w-[calc(46%-10px)] lg:w-[calc(30%-12px)]"
             >
-              <div className="relative overflow-hidden rounded-xl shadow-sm hover:shadow-md transition-shadow aspect-[16/9] bg-gradient-to-br from-[#f5f0fa] to-[#faf6f2]">
+              <div className="relative overflow-hidden rounded-2xl shadow-md hover:shadow-xl transition-shadow aspect-[3/4] bg-gradient-to-br from-[#f5f0fa] to-[#faf6f2]">
                 {post.cover_image ? (
                   <Image
                     src={post.cover_image}
                     alt={post.title}
                     fill
-                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                    sizes="(max-width: 640px) 80vw, (max-width: 1024px) 46vw, 30vw"
                     className="object-cover transition-transform duration-500 group-hover:scale-105"
                   />
                 ) : (
@@ -62,9 +62,9 @@ export function TestimonialsCarousel({ posts }: { posts: Post[] }) {
                     💬
                   </div>
                 )}
-                <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 p-3">
-                  <p className="text-white text-xs font-semibold line-clamp-2 leading-snug">
+                <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-4">
+                  <p className="text-white text-sm font-semibold line-clamp-3 leading-snug">
                     {post.title}
                   </p>
                 </div>
