@@ -35,7 +35,7 @@ export function Header({
         label: "商品選購",
         children: productChildren,
       },
-      { href: "/about", label: "品牌故事" },
+      { href: "/blog?category=真實見證", label: "真實見證" },
       { href: "/blog", label: "聰明生活" },
       {
         href: "/idea",
@@ -45,7 +45,7 @@ export function Header({
           { href: "/idea/records", label: "善意行動紀錄" },
         ],
       },
-      { href: "/membership", label: "會員制度" },
+      { href: "/about", label: "品牌故事" },
       { href: "/faq", label: "常見問題" },
     ],
     [productChildren],
