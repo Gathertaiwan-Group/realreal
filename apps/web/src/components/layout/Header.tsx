@@ -35,8 +35,9 @@ export function Header({
         label: "商品選購",
         children: productChildren,
       },
-      { href: "/blog?category=真實見證", label: "真實見證" },
+      { href: "/testimonials", label: "真實見證" },
       { href: "/blog", label: "聰明生活" },
+      { href: "/membership", label: "會員制度" },
       {
         href: "/idea",
         label: "公益存款",
