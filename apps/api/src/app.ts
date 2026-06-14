@@ -11,6 +11,7 @@ const ALLOWED_ORIGINS = [
 ]
 import healthRouter from "./routes/health"
 import { contactRouter } from "./routes/contact"
+import { configRouter } from "./routes/config"
 import { categoriesRouter, categoriesAdminRouter } from "./routes/categories"
 import { productsRouter, productsAdminRouter } from "./routes/products"
 import { variantsRouter } from "./routes/variants"
@@ -80,6 +81,7 @@ app.use(
 app.use(cookieParser())
 app.use("/health", healthRouter)
 app.use("/contact", contactRouter)
+app.use("/config", configRouter)
 app.use("/categories", categoriesRouter)
 app.use("/admin/categories", categoriesAdminRouter)
 app.use("/products/:id/variants", variantsRouter)

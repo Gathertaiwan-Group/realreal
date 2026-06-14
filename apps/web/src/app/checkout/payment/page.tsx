@@ -145,6 +145,10 @@ export default function PaymentPage() {
   // Mirror the server check (orders.ts) + admin layout: read user_profiles.role
   // for the logged-in user and require "admin".
   const [isAdmin, setIsAdmin] = useState(false)
+  // Runtime flag from the API (mirrors server ALLOW_NON_ADMIN_TEST_PAID). Fetched
+  // rather than read from a NEXT_PUBLIC build-time env, which this Next build does
+  // not reliably inline for newly-added vars.
+  const [configAllowTestPaid, setConfigAllowTestPaid] = useState(false)
   useEffect(() => {
     let cancelled = false
     void (async () => {
@@ -166,14 +170,29 @@ export default function PaymentPage() {
     return () => { cancelled = true }
   }, [])
 
+  // Sandbox visibility for non-admins: ask the API whether ALLOW_NON_ADMIN_TEST_PAID
+  // is on. Runtime fetch keeps UI visibility consistent with what POST /orders will
+  // actually accept, and sidesteps the build-time NEXT_PUBLIC inlining pitfall.
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await fetch(`${API_URL}/config`)
+        if (!res.ok || cancelled) return
+        const data = (await res.json()) as { allowTestPaid?: boolean }
+        if (!cancelled) setConfigAllowTestPaid(Boolean(data.allowTestPaid))
+      } catch { /* API down → leave sandbox hidden */ }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
   const isCvsShipping = checkoutData?.shippingMethod === "711" || checkoutData?.shippingMethod === "family"
   const forcedPayment = checkoutData?.forcedPaymentMethod as PaymentMethod | undefined
 
-  // 是否對非 admin 顯示「沙盒測試付款」。來自 build 時的 Vercel 環境變數
-  // NEXT_PUBLIC_ALLOW_TEST_PAID（測試階段為 "true"）。⚠️ Next 會在 build 時把此值
-  // inline 進 bundle，單純在 Vercel 改環境變數不會生效——必須重新 build 且不能命中
-  // 舊的 chunk 快取，因此調整這段邏輯時務必確認線上 bundle 已重新編譯。
-  const allowTestPaid = isAdmin || process.env.NEXT_PUBLIC_ALLOW_TEST_PAID === "true"
+  // 是否顯示「沙盒測試付款」：admin 一律可見；非 admin 則依後端 /config 回傳的
+  // allowTestPaid（＝伺服器端 ALLOW_NON_ADMIN_TEST_PAID）。改用 runtime 旗標，與
+  // 後端 POST /orders 實際接受條件永遠一致，並避開 NEXT_PUBLIC build-time inline 的坑。
+  const allowTestPaid = isAdmin || configAllowTestPaid
 
   const PAYMENT_OPTIONS: PaymentOption[] = forcedPayment === "cvs_cod"
     ? [
