@@ -33,6 +33,12 @@ type OrderDetail = {
   discount_amount?: number
   campaign_discount?: number
   points_used?: number
+  /**
+   * 本次訂單實際入帳的公益存款（= 公益點數，1 點 = NT$1）。
+   * 來源：API 直接讀 points_ledger 的 earn 列（source_ref_id = 此訂單），
+   * 等於 post-payment pipeline grantPoints() 入帳的數字（含活動加倍）。
+   */
+  charity_points?: number
   metadata?: { coupon_code?: string | null; coupon_discount?: number | null } | null
   campaign_names?: string[]
   attributed_kol_slug?: string | null
@@ -229,6 +235,19 @@ export default async function OrderDetailPage({
                   NT$ {Number(order.total).toLocaleString()}
                 </td>
               </tr>
+              {Number(order.charity_points ?? 0) > 0 && (
+                <tr>
+                  <td colSpan={2} className="p-3 text-right text-emerald-700">
+                    💚 本次公益存款
+                  </td>
+                  <td className="p-3 text-right font-medium text-emerald-700">
+                    {Number(order.charity_points).toLocaleString()} 點
+                    <span className="text-xs font-normal text-emerald-600">
+                      {" "}(= NT$ {Number(order.charity_points).toLocaleString()})
+                    </span>
+                  </td>
+                </tr>
+              )}
             </tfoot>
           </table>
         </div>

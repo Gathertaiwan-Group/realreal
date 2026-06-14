@@ -1009,6 +1009,27 @@ ordersRouter.get("/:id", requireAuth, async (req, res) => {
     supabase.from("payments").select("*").eq("order_id", orderId).order("created_at", { ascending: false }).limit(1),
   ])
 
+  // 本次訂單的公益存款（= 公益點數）。
+  // 真實入帳來源：post-payment pipeline 的 grantPoints() 寫進 points_ledger 的
+  // source='earn' 列（source_ref_id = 此訂單），delta =
+  //   floor(earnBaseTwd * tier.rebate_rate / 100) × 活動加倍係數
+  // 1 點 = NT$1（見前台 PointsCard）。直接讀回該列 delta 才能保證顯示金額
+  // 等於實際入帳金額（不重算、不四捨五入漂移、含活動加倍）。未付款 / 訪客 /
+  // 0% 回饋的訂單沒有 earn 列 → 回 0，符合實際情況。
+  let charityPoints = 0
+  {
+    const { data: earnRows } = await supabase
+      .from("points_ledger")
+      .select("delta")
+      .eq("source", "earn")
+      .eq("source_ref_id", orderId)
+      .eq("user_id", userId)
+    charityPoints = (earnRows ?? []).reduce(
+      (sum: number, r: Record<string, unknown>) => sum + Number(r.delta ?? 0),
+      0,
+    )
+  }
+
   // Resolve campaign names so the customer-facing breakdown can label the
   // campaign discount (mirrors the admin order page).
   let campaignNames: string[] = []
@@ -1034,6 +1055,7 @@ ordersRouter.get("/:id", requireAuth, async (req, res) => {
       discount_amount: Number(order.discount_amount),
       campaign_discount: Number((order as Record<string, unknown>).campaign_discount ?? 0),
       points_used: Number((order as Record<string, unknown>).points_used ?? 0),
+      charity_points: charityPoints,
       metadata: (order as Record<string, unknown>).metadata ?? null,
       campaign_names: campaignNames,
       attributed_kol_slug: (order as Record<string, unknown>).attributed_kol_slug ?? null,
