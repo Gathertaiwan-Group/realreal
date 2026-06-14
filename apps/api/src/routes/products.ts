@@ -15,7 +15,14 @@ const productSchema = z.object({
   excerpt: z.string().optional(),
   category_id: z.string().uuid().nullable().optional(),
   images: z.array(z.object({
-    url: z.string().url(),
+    // Accept absolute http(s) URLs (Supabase public URLs) OR root-relative
+    // paths (legacy data already stored as "/uploads/...."). Strict .url()
+    // rejected relative paths, 400-ing every edit of older products. Empty
+    // strings are still rejected — the admin UI strips blanks before sending.
+    url: z.string().trim().min(1).refine(
+      (v) => /^https?:\/\//.test(v) || v.startsWith("/"),
+      { message: "Invalid URL" },
+    ),
     alt: z.string().optional(),
     sort_order: z.number().int().nonnegative(),
   })).optional(),

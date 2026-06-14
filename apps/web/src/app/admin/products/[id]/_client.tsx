@@ -1,6 +1,8 @@
 "use client"
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { ChevronLeft } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -38,11 +40,32 @@ function toHtml(text: string): string {
     .join("\n")
 }
 
-export default function AdminProductEditClient({ product }: { product: any }) {
+type ProductRow = {
+  id: string
+  name: string
+  slug: string
+  description?: string | null
+  excerpt?: string | null
+  category_id?: string | null
+  is_active?: boolean | null
+  is_addon?: boolean | null
+  images?: unknown
+}
+
+function imageToUrl(img: unknown): string {
+  if (typeof img === "string") return img
+  if (img && typeof img === "object" && "url" in img) {
+    const url = (img as { url?: unknown }).url
+    return typeof url === "string" ? url : ""
+  }
+  return ""
+}
+
+export default function AdminProductEditClient({ product }: { product: ProductRow }) {
   const router = useRouter()
   const [images, setImages] = useState<string[]>(
     Array.isArray(product.images)
-      ? product.images.map((img: any) => (typeof img === "string" ? img : img.url)).filter(Boolean)
+      ? product.images.map(imageToUrl).filter(Boolean)
       : []
   )
   const [excerpt, setExcerpt] = useState(toHtml(product.excerpt ?? ""))
@@ -81,7 +104,13 @@ export default function AdminProductEditClient({ product }: { product: any }) {
     const fd = new FormData(e.currentTarget)
     const token = await getToken()
 
-    const imagesPayload = images.map((url, i) => ({ url, alt: "", sort_order: i }))
+    // Drop blank/whitespace-only entries so empty image fields never reach the
+    // API (z.string().url() would 400 on "" / stray values). sort_order is
+    // re-indexed after filtering so it stays contiguous from 0.
+    const imagesPayload = images
+      .map((url) => (typeof url === "string" ? url.trim() : ""))
+      .filter((url) => url.length > 0)
+      .map((url, i) => ({ url, alt: "", sort_order: i }))
 
     const body: Record<string, unknown> = {
       name: fd.get("name") as string,
@@ -144,6 +173,13 @@ export default function AdminProductEditClient({ product }: { product: any }) {
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-3xl">
+      <Link
+        href="/admin/products"
+        className="mb-4 inline-flex items-center gap-1 text-sm text-[#10305a] hover:underline"
+      >
+        <ChevronLeft className="h-4 w-4" />
+        回商品列表
+      </Link>
       <h1 className="text-2xl font-bold mb-6" style={{ color: "#10305a" }}>編輯商品</h1>
 
       <form onSubmit={handleSubmit} className="space-y-5">
