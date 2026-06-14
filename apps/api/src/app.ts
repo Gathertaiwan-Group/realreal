@@ -10,6 +10,7 @@ const ALLOWED_ORIGINS = [
   "https://www.realreal.cc",
 ]
 import healthRouter from "./routes/health"
+import { contactRouter } from "./routes/contact"
 import { categoriesRouter, categoriesAdminRouter } from "./routes/categories"
 import { productsRouter, productsAdminRouter } from "./routes/products"
 import { variantsRouter } from "./routes/variants"
@@ -78,6 +79,7 @@ app.use(
 // Cookie parser — needed for Spec I (KOL affiliate cookie `kol_ref` read in /orders POST).
 app.use(cookieParser())
 app.use("/health", healthRouter)
+app.use("/contact", contactRouter)
 app.use("/categories", categoriesRouter)
 app.use("/admin/categories", categoriesAdminRouter)
 app.use("/products/:id/variants", variantsRouter)

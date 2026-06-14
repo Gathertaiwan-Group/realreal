@@ -191,14 +191,17 @@ export default function PaymentPage() {
           note: "到店取貨時付款，由綠界代收"
         }] : []),
         // Sandbox: skip gateway, run full pipeline (invoice / email / stock /
-        // points / LINE Notify). Admin-only — the server rejects test_paid for
-        // non-admins (403), so we hide it from normal customers entirely.
-        ...(isAdmin ? [{
+        // points / LINE Notify). Visible to admins always; visible to ALL
+        // logged-in users when NEXT_PUBLIC_ALLOW_TEST_PAID==="true" (testing
+        // phase — mirrors the server's ALLOW_NON_ADMIN_TEST_PAID env on the API).
+        // ⚠️ test_paid marks an order paid WITHOUT real payment. Remove both env
+        // flags (Vercel + Railway) before go-live, or customers get free orders.
+        ...((isAdmin || process.env.NEXT_PUBLIC_ALLOW_TEST_PAID === "true") ? [{
           value: "test_paid" as PaymentMethod,
           label: "🧪 沙盒測試付款",
           icon: "🧪",
           color: "bg-amber-50 border-amber-300",
-          note: "不過金流但跑完整流程（發票/通知/庫存/點數）— 限管理員"
+          note: "不過金流但跑完整流程（發票/通知/庫存/點數）— 測試用"
         }] : []),
       ]
 
