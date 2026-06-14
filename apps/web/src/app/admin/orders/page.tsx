@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { AdminTabs } from "../_components/AdminTabs"
-import { ArchivedRowActions } from "./_row-actions"
+import { ArchivedRowActions, DeleteRowAction } from "./_row-actions"
 import {
   getOrderDisplayStatus,
   type DisplayStatus,
@@ -164,7 +164,14 @@ export default async function AdminOrdersPage({
                 )
                 return (
                   <tr key={order.id} className="hover:bg-zinc-50">
-                    <td className="px-4 py-3 font-mono text-xs">{order.order_number}</td>
+                    <td className="px-4 py-3 font-mono text-xs">
+                      <Link
+                        href={`/admin/orders/${order.id}`}
+                        className="text-[#10305a] hover:underline"
+                      >
+                        {order.order_number}
+                      </Link>
+                    </td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-xs">{displayName ?? "訪客"}</p>
                       <p className="text-zinc-400 text-xs">{order.guest_email ?? "—"}</p>
@@ -181,17 +188,11 @@ export default async function AdminOrdersPage({
                       {new Date(order.created_at).toLocaleDateString("zh-TW")}
                     </td>
                     <td className="px-4 py-3">
-                      <div className="flex items-center gap-3">
-                        <Link
-                          href={`/admin/orders/${order.id}`}
-                          className="text-[#10305a] hover:underline text-xs font-medium"
-                        >
-                          查看
-                        </Link>
-                        {order.deleted_at && (
-                          <ArchivedRowActions orderId={order.id} />
-                        )}
-                      </div>
+                      {order.deleted_at ? (
+                        <ArchivedRowActions orderId={order.id} />
+                      ) : (
+                        <DeleteRowAction orderId={order.id} />
+                      )}
                     </td>
                   </tr>
                 )
