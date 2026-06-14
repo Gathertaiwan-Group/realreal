@@ -8,7 +8,6 @@ import {
   FileText,
   RefreshCw,
   Ban,
-  ExternalLink,
   Truck,
   Copy,
   Check,
@@ -653,15 +652,12 @@ interface InvoiceCardProps {
   } | null
   /** Optional: lets the empty state explain why there's no row yet. */
   paymentStatus: string
-  /** Base URL of the API server, used to deep-link to the PDF endpoint. */
-  apiUrl: string
 }
 
 export function InvoiceCard({
   orderId,
   invoice,
   paymentStatus,
-  apiUrl,
 }: InvoiceCardProps) {
   const [isPending, startTransition] = useTransition()
   const [voidReason, setVoidReason] = useState("")
@@ -709,7 +705,6 @@ export function InvoiceCard({
   const canReissue =
     invoice.status === "pending" || invoice.status === "failed"
   const canVoid = invoice.status === "issued"
-  const canViewPdf = invoice.status === "issued" && invoice.invoice_number
 
   return (
     <div className="rounded-lg border bg-white p-4 text-sm">
@@ -783,19 +778,8 @@ export function InvoiceCard({
       </div>
 
       {/* Action row */}
-      {(canReissue || canVoid || canViewPdf) && (
+      {(canReissue || canVoid) && (
         <div className="mt-4 flex flex-wrap gap-2 border-t pt-3">
-          {canViewPdf && (
-            <a
-              href={`${apiUrl}/admin/invoices/${invoice.id}/pdf`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-50"
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-              查看 PDF
-            </a>
-          )}
           {canReissue && (
             <Button
               size="sm"

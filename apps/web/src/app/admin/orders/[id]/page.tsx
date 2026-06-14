@@ -6,7 +6,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { buildDiscountBreakdown } from "@/lib/discount-breakdown"
 import { InvoiceCard, LogisticsCard, OrderActions, OrderTimeline } from "./_client"
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
 export const metadata = { title: "訂單詳情 | Admin" }
 
@@ -358,7 +357,6 @@ export default async function AdminOrderDetailPage({
           orderId={id}
           invoice={order.invoices?.[0] ?? null}
           paymentStatus={order.payment_status}
-          apiUrl={API_URL}
         />
 
         {/* Billing Address (if different) */}
