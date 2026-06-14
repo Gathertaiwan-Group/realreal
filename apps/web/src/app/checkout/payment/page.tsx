@@ -169,6 +169,12 @@ export default function PaymentPage() {
   const isCvsShipping = checkoutData?.shippingMethod === "711" || checkoutData?.shippingMethod === "family"
   const forcedPayment = checkoutData?.forcedPaymentMethod as PaymentMethod | undefined
 
+  // 是否對非 admin 顯示「沙盒測試付款」。來自 build 時的 Vercel 環境變數
+  // NEXT_PUBLIC_ALLOW_TEST_PAID（測試階段為 "true"）。⚠️ Next 會在 build 時把此值
+  // inline 進 bundle，單純在 Vercel 改環境變數不會生效——必須重新 build 且不能命中
+  // 舊的 chunk 快取，因此調整這段邏輯時務必確認線上 bundle 已重新編譯。
+  const allowTestPaid = isAdmin || process.env.NEXT_PUBLIC_ALLOW_TEST_PAID === "true"
+
   const PAYMENT_OPTIONS: PaymentOption[] = forcedPayment === "cvs_cod"
     ? [
         {
@@ -196,7 +202,7 @@ export default function PaymentPage() {
         // phase — mirrors the server's ALLOW_NON_ADMIN_TEST_PAID env on the API).
         // ⚠️ test_paid marks an order paid WITHOUT real payment. Remove both env
         // flags (Vercel + Railway) before go-live, or customers get free orders.
-        ...((isAdmin || process.env.NEXT_PUBLIC_ALLOW_TEST_PAID === "true") ? [{
+        ...(allowTestPaid ? [{
           value: "test_paid" as PaymentMethod,
           label: "🧪 沙盒測試付款",
           icon: "🧪",
