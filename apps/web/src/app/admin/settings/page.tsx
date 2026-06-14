@@ -78,8 +78,8 @@ const FIELD_META: Record<
   "resend.from_name":     { label: "寄件人顯示名稱", placeholder: "誠真生活 RealReal" },
   // Notifications
   "notifications.admin_email": {
-    label: "管理員通知信收件 Email",
-    hint: "新訂單成立時系統會寄一封通知信到這個地址",
+    label: "管理員收件 Email（訂單通知＋聯絡表單）",
+    hint: "兩個都會寄到這裡：① 新訂單成立通知信 ② 首頁底部「聯絡我們」表單送出的訊息。改完 30 秒內全站生效，不需重新部署。",
     placeholder: "orders@realreal.cc",
   },
   "notifications.line_notify_token": {
