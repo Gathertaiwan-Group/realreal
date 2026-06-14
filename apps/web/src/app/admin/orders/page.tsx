@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { AdminTabs } from "../_components/AdminTabs"
-import { ArchivedRowActions, DeleteRowAction } from "./_row-actions"
+import { ArchivedRowActions, ArchiveRowAction } from "./_row-actions"
 import {
   getOrderDisplayStatus,
   type DisplayStatus,
@@ -191,7 +191,7 @@ export default async function AdminOrdersPage({
                       {order.deleted_at ? (
                         <ArchivedRowActions orderId={order.id} />
                       ) : (
-                        <DeleteRowAction orderId={order.id} />
+                        <ArchiveRowAction orderId={order.id} />
                       )}
                     </td>
                   </tr>

@@ -7,24 +7,23 @@ import { Button } from "@/components/ui/button"
 import { Trash2 } from "lucide-react"
 import { deleteOrderAction, restoreOrderAction } from "./[id]/actions"
 
-// 刪除 (soft-archive) for an ACTIVE order in the list. Soft-archive is the safe,
-// reversible default — the order moves to the 「顯示已封存」 view where it can be
-// 還原 (restored) or 永久刪除 (hard-purged, guarded for paid/invoiced). Inline
-// two-step confirm so a stray click can't drop an order. Mirrors the detail
-// page's 刪除訂單 default.
-export function DeleteRowAction({ orderId }: { orderId: string }) {
+// 封存 (soft-archive) for an ACTIVE order in the list. Reversible: the order
+// moves to the 「顯示已封存」 view where it can be 還原 (restored) or 永久刪除
+// (hard-purged, guarded for paid/invoiced). Inline two-step confirm so a stray
+// click can't drop an order. Mirrors the detail page's 刪除訂單 default.
+export function ArchiveRowAction({ orderId }: { orderId: string }) {
   const router = useRouter()
   const [isPending, startTransition] = useTransition()
   const [confirm, setConfirm] = useState(false)
 
-  function handleDelete() {
+  function handleArchive() {
     startTransition(async () => {
       const result = await deleteOrderAction(orderId, { hard: false })
       if (result.ok) {
-        toast.success("訂單已刪除（移至已封存，可還原）")
+        toast.success("訂單已封存（可還原）")
         router.refresh()
       } else {
-        toast.error(result.error ?? "刪除失敗")
+        toast.error(result.error ?? "封存失敗")
         setConfirm(false)
       }
     })
@@ -35,9 +34,9 @@ export function DeleteRowAction({ orderId }: { orderId: string }) {
       <button
         type="button"
         onClick={() => setConfirm(true)}
-        className="text-red-600 hover:underline text-xs font-medium"
+        className="text-amber-600 hover:underline text-xs font-medium"
       >
-        刪除
+        封存
       </button>
     )
   }
@@ -45,11 +44,11 @@ export function DeleteRowAction({ orderId }: { orderId: string }) {
     <span className="flex items-center gap-1.5">
       <button
         type="button"
-        onClick={handleDelete}
+        onClick={handleArchive}
         disabled={isPending}
-        className="rounded px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+        className="rounded px-2 py-1 text-xs font-medium text-amber-700 hover:bg-amber-50 disabled:opacity-50"
       >
-        {isPending ? "刪除中…" : "確認刪除"}
+        {isPending ? "封存中…" : "確認封存"}
       </button>
       <button
         type="button"
