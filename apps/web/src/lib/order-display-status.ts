@@ -90,19 +90,20 @@ export function getOrderDisplayStatus(
     if (logistics === null) {
       return { key: "awaiting_shipment", label: "待出貨", color: "blue" }
     }
-    if (logisticsStatus === "pending") {
-      return { key: "dispatched", label: "已派工", color: "blue" }
-    }
+    // pending, OR any other logistics status while still processing → 已派工.
+    return { key: "dispatched", label: "已派工", color: "blue" }
   }
 
   // shipped → in_transit / arrived_cvs split
   if (orderStatus === "shipped") {
-    if (logisticsStatus === "in_transit") {
-      return { key: "in_transit", label: "運送中", color: "blue" }
-    }
     if (logisticsStatus === "arrived_cvs" && logisticsType === "CVS") {
       return { key: "arrived_cvs", label: "已到店待取", color: "amber" }
     }
+    // in_transit, OR shipped with no/unrecognised logistics row (manually
+    // marked shipped, or a sandbox/test order with no ECPay shipment) — show
+    // 運送中 rather than falling through to the "failed" fallback that rendered
+    // a red ✕ "shipped" banner.
+    return { key: "in_transit", label: "運送中", color: "blue" }
   }
 
   // completed → CVS picked_up vs HOME delivered
@@ -110,9 +111,9 @@ export function getOrderDisplayStatus(
     if (logisticsStatus === "delivered" && logisticsType === "CVS") {
       return { key: "picked_up", label: "已取貨", color: "green" }
     }
-    if (logisticsStatus === "delivered" && logisticsType === "HOME") {
-      return { key: "delivered", label: "已配達", color: "green" }
-    }
+    // HOME delivered, OR completed with no/unrecognised logistics (manually
+    // completed, or a test order) → 已配達 instead of the "failed" fallback.
+    return { key: "delivered", label: "已配達", color: "green" }
   }
 
   // failed → returned_unclaimed (3022 / 326) vs generic failed
