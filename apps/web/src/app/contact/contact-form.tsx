@@ -14,9 +14,13 @@ export default function ContactForm() {
 
   async function handleSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault()
+    // 必須在 await 之前抓住 form 參考：React 在事件處理函式的同步段結束後會把
+    // e.currentTarget 設為 null，await 之後再讀就是 null。否則後面的
+    // form.reset() 會拋 TypeError，即使信件已成功寄出也會誤報「送出失敗」。
+    const form = e.currentTarget
     setSending(true)
 
-    const fd = new FormData(e.currentTarget)
+    const fd = new FormData(form)
     const body = {
       name: fd.get("name"),
       email: fd.get("email"),
@@ -32,11 +36,23 @@ export default function ContactForm() {
         body: JSON.stringify(body),
       })
 
-      if (!res.ok) throw new Error("送出失敗")
+      if (!res.ok) {
+        // 帶出後端真正的錯誤訊息，而不是一律顯示「送出失敗」
+        let detail = `HTTP ${res.status}`
+        try {
+          const data = await res.json()
+          if (data?.error) detail = String(data.error)
+        } catch {
+          // 回應不是 JSON，沿用狀態碼
+        }
+        throw new Error(detail)
+      }
+
       toast.success("訊息已送出，我們會盡快回覆您！")
-      e.currentTarget.reset()
-    } catch {
-      toast.error("送出失敗，請稍後再試")
+      form.reset()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      toast.error(`送出失敗：${msg}`)
     } finally {
       setSending(false)
     }
