@@ -18,6 +18,7 @@ import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
 import { computeShipping, getShippingRule } from "../lib/shipping"
 import { inventoryQueue } from "../lib/queue"
 import { enqueuePostPaymentJobs } from "../lib/enqueue-post-payment"
+import { saveCustomerContact } from "../lib/save-customer-contact"
 import {
   calcPointsDiscount,
   getEffectiveRedeemablePoints,
@@ -815,6 +816,18 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       supabase.from("orders").delete().eq("id", order.id),
     ])
     res.status(500).json({ error: "Failed to create order address" }); return
+  }
+
+  // Auto-save the buyer's contact + delivery address so the NEXT checkout
+  // pre-fills it (the checkout page reads user_profiles.phone + the default
+  // user_addresses entry). Logged-in users only; non-fatal — must never break
+  // order creation. Runs for every payment method (placed before the branches).
+  if (userId) {
+    try {
+      await saveCustomerContact({ userId, address })
+    } catch (err) {
+      console.warn("[orders] saveCustomerContact failed (non-fatal):", err)
+    }
   }
 
   // ---- test_paid：沙盒付款，跳過金流但跑完整 post-payment pipeline ----
