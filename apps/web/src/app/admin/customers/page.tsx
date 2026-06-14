@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
 import { createClient } from "@/lib/supabase/client"
 import { Badge } from "@/components/ui/badge"
@@ -15,11 +15,29 @@ type Customer = {
   membership_tiers: { name: string } | null
 }
 
+type SortKey = "created_at" | "display_name"
+type SortDir = "asc" | "desc"
+
+function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
+  return (
+    <span
+      className={
+        "ml-1 inline-block text-[9px] align-middle " +
+        (active ? "text-[#10305a]" : "text-gray-300")
+      }
+    >
+      {active ? (dir === "asc" ? "▲" : "▼") : "▲"}
+    </span>
+  )
+}
+
 export default function AdminCustomersPage() {
   const router = useRouter()
   const [customers, setCustomers] = useState<Customer[] | null>(null)
   const [balances, setBalances] = useState<Record<string, number>>({})
   const [loading, setLoading] = useState(true)
+  const [sortKey, setSortKey] = useState<SortKey>("created_at")
+  const [sortDir, setSortDir] = useState<SortDir>("desc")
 
   useEffect(() => {
     let cancelled = false
@@ -33,7 +51,7 @@ export default function AdminCustomersPage() {
           membership_tiers(name)
         `
         )
-        .order("total_spend", { ascending: false })
+        .order("created_at", { ascending: false })
         .limit(500)
 
       if (cancelled) return
@@ -63,6 +81,37 @@ export default function AdminCustomersPage() {
     }
   }, [])
 
+  function toggleSort(key: SortKey) {
+    if (key === sortKey) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    } else {
+      setSortKey(key)
+      // 加入日期預設新到舊；姓名預設 A→Z（依筆劃／拼音）
+      setSortDir(key === "created_at" ? "desc" : "asc")
+    }
+  }
+
+  const sorted = useMemo(() => {
+    if (!customers) return null
+    const arr = [...customers]
+    arr.sort((a, b) => {
+      if (sortKey === "display_name") {
+        const an = a.display_name?.trim() ?? ""
+        const bn = b.display_name?.trim() ?? ""
+        // 沒有姓名的一律排最後（不受升降序影響）
+        if (!an && !bn) return 0
+        if (!an) return 1
+        if (!bn) return -1
+        const cmp = an.localeCompare(bn, "zh-Hant")
+        return sortDir === "asc" ? cmp : -cmp
+      }
+      const cmp =
+        new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      return sortDir === "asc" ? cmp : -cmp
+    })
+    return arr
+  }, [customers, sortKey, sortDir])
+
   return (
     <div>
       <h1 className="text-xl font-semibold mb-6 text-[#10305a]">客戶管理</h1>
@@ -73,7 +122,16 @@ export default function AdminCustomersPage() {
         <table className="w-full text-sm">
           <thead className="bg-[#10305a]/5 text-[#10305a] text-xs">
             <tr>
-              <th className="px-4 py-3 text-left font-medium">姓名</th>
+              <th className="px-4 py-3 text-left font-medium">
+                <button
+                  type="button"
+                  onClick={() => toggleSort("display_name")}
+                  className="inline-flex items-center hover:text-[#10305a]/70"
+                >
+                  姓名
+                  <SortArrow active={sortKey === "display_name"} dir={sortDir} />
+                </button>
+              </th>
               <th className="px-4 py-3 text-left font-medium">電話</th>
               <th className="px-4 py-3 text-left font-medium">會員等級</th>
               <th className="px-4 py-3 text-left font-medium">角色</th>
@@ -89,14 +147,14 @@ export default function AdminCustomersPage() {
                   載入中…
                 </td>
               </tr>
-            ) : !customers || customers.length === 0 ? (
+            ) : !sorted || sorted.length === 0 ? (
               <tr>
                 <td colSpan={7} className="px-4 py-8 text-center text-[#687279]">
                   暫無客戶資料
                 </td>
               </tr>
             ) : (
-              customers.map((c) => {
+              sorted.map((c) => {
                 const balance = balances[c.user_id] ?? 0
                 return (
                   <tr
