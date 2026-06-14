@@ -23,7 +23,7 @@ function SortArrow({ active, dir }: { active: boolean; dir: SortDir }) {
     <span
       className={
         "ml-1 inline-block text-[9px] align-middle " +
-        (active ? "text-[#10305a]" : "text-gray-300")
+        (active ? "text-[#10305a]" : "text-gray-400")
       }
     >
       {active ? (dir === "asc" ? "▲" : "▼") : "▲"}
@@ -126,7 +126,8 @@ export default function AdminCustomersPage() {
                 <button
                   type="button"
                   onClick={() => toggleSort("display_name")}
-                  className="inline-flex items-center hover:text-[#10305a]/70"
+                  title="點擊排序"
+                  className="inline-flex items-center cursor-pointer hover:text-[#10305a]/70"
                 >
                   姓名
                   <SortArrow active={sortKey === "display_name"} dir={sortDir} />
@@ -137,7 +138,17 @@ export default function AdminCustomersPage() {
               <th className="px-4 py-3 text-left font-medium">角色</th>
               <th className="px-4 py-3 text-right font-medium">累計消費</th>
               <th className="px-4 py-3 text-right font-medium">點數餘額</th>
-              <th className="px-4 py-3 text-left font-medium">加入日期</th>
+              <th className="px-4 py-3 text-left font-medium">
+                <button
+                  type="button"
+                  onClick={() => toggleSort("created_at")}
+                  title="點擊排序"
+                  className="inline-flex items-center cursor-pointer hover:text-[#10305a]/70"
+                >
+                  加入日期
+                  <SortArrow active={sortKey === "created_at"} dir={sortDir} />
+                </button>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
