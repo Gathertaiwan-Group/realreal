@@ -133,7 +133,10 @@ export async function issueInvoice(params: IssueInvoiceParams) {
   }
 
   const payload = {
-    OrderId: params.orderId,
+    // The customer-facing order number (RR…), NOT the internal UUID order.id —
+    // this is what shows as 訂單編號 in the Amego invoice backend, so it must
+    // match the website's order number. Fall back to orderId only if missing.
+    OrderId: params.orderNumber || params.orderId,
     BuyerIdentifier: buyerId,
     BuyerName: params.companyTitle || (isB2B ? "公司" : "消費者"),
     BuyerEmailAddress: params.buyerEmail ?? "",

@@ -365,7 +365,10 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
     payment_status: string | null
     payment_method: string | null
     total: number | string | null
-    gateway_tx_id: string | null
+    payments:
+      | Array<{ gateway_tx_id: string | null }>
+      | { gateway_tx_id: string | null }
+      | null
     invoices:
       | Array<{ id: string; status: string | null; amego_id: string | null }>
       | { id: string; status: string | null; amego_id: string | null }
@@ -397,18 +400,30 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
   const { data: orderRaw, error: fetchError } = await supabase
     .from("orders")
     .select(
-      "id, user_id, status, payment_status, payment_method, total, gateway_tx_id, " +
+      // NOTE: gateway_tx_id lives on `payments`, NOT `orders` — selecting it off
+      // orders made PostgREST error, which this handler masked as "Order not
+      // found" so EVERY cancel failed. Pull it via the payments join instead.
+      "id, user_id, status, payment_status, payment_method, total, " +
+        "payments(gateway_tx_id), " +
         "invoices!invoices_order_id_fkey(id, status, amego_id), " +
         "logistics(id, status, type, ecpay_logistics_id, cvs_payment_no, cvs_validation_no, delivered_at, raw_response)",
     )
     .eq("id", orderId)
     .single()
 
+  // Distinguish a real query error from a genuinely-absent order — both used to
+  // surface as the misleading "Order not found".
+  if (fetchError) console.error("[admin/orders/cancel] order fetch failed:", fetchError)
   if (fetchError || !orderRaw) {
     res.status(404).json({ error: "Order not found" }); return
   }
 
   const order = orderRaw as unknown as OrderRow
+  // payments may embed as an array (most recent first is not guaranteed, but any
+  // gateway tx id is fine for the refund record) or a single object.
+  const paymentGatewayTxId = Array.isArray(order.payments)
+    ? order.payments[0]?.gateway_tx_id ?? null
+    : order.payments?.gateway_tx_id ?? null
 
   if (!CANCELLABLE_STATUSES.includes(order.status as (typeof CANCELLABLE_STATUSES)[number])) {
     res.status(400).json({ error: `status=${order.status} 不可取消` }); return
@@ -498,7 +513,7 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
           id: order.id,
           payment_method: order.payment_method,
           total: order.total,
-          gateway_tx_id: order.gateway_tx_id,
+          gateway_tx_id: paymentGatewayTxId,
         },
         reason,
       )
