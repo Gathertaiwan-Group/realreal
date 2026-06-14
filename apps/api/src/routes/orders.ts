@@ -844,15 +844,17 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     })
     if (payErr) console.error("[test_paid] payments insert failed (order already marked paid):", payErr)
 
-    // Fire the full post-payment pipeline INLINE (await it so any failures
-    // surface in the response — admin testing wants to know if invoice/email
-    // broke). Real webhooks do this via BullMQ to absorb timeouts; for admin
-    // sandbox we want immediate end-to-end signal.
-    try {
-      await enqueuePostPaymentJobs(order.id)
-    } catch (err) {
-      console.warn("[test_paid] enqueuePostPaymentJobs threw (non-fatal for response):", err)
-    }
+    // Run the full post-payment pipeline DETACHED, then respond immediately.
+    // It used to be awaited inline "for immediate end-to-end signal", but the
+    // pipeline makes several external calls (Resend emails ×2, Redis/BullMQ
+    // enqueue ×2, Amego invoice) and a single slow/hanging step blocked the HTTP
+    // response → the browser reported "Failed to fetch" even though the order was
+    // already created + marked paid. Real gateways run this async via webhooks;
+    // sandbox now matches that: checkout completes instantly and the pipeline
+    // (invoice/email/stock/points) runs in the background, logging its own errors.
+    void enqueuePostPaymentJobs(order.id).catch((err) =>
+      console.warn("[test_paid] post-payment pipeline failed (non-fatal):", err),
+    )
 
     res.status(201).json({
       data: {
