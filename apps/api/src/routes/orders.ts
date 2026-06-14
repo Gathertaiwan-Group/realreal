@@ -1030,6 +1030,33 @@ ordersRouter.get("/:id", requireAuth, async (req, res) => {
     )
   }
 
+  // 會員等級 + 公益回饋率：用下單者的 user_profiles.membership_tier_id 查
+  // membership_tiers 取 name 與 rebate_rate（NUMERIC(5,2)，存「百分比」值，
+  // 如 2.30 代表 2.3%；point-grant 用 rebate_rate / 100 計算，見 lib/points.ts
+  // grantPoints）。訪客訂單（無 user_id）或查無等級 → null。
+  let memberTier: { name: string; rebate_rate: number } | null = null
+  if (order.user_id) {
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("membership_tier_id")
+      .eq("user_id", order.user_id)
+      .maybeSingle()
+    const tierId = (profile as { membership_tier_id: string | null } | null)?.membership_tier_id ?? null
+    if (tierId) {
+      const { data: tier } = await supabase
+        .from("membership_tiers")
+        .select("name, rebate_rate")
+        .eq("id", tierId)
+        .maybeSingle()
+      if (tier) {
+        memberTier = {
+          name: (tier as { name: string | null }).name ?? "",
+          rebate_rate: Number((tier as { rebate_rate?: number | string | null }).rebate_rate ?? 0),
+        }
+      }
+    }
+  }
+
   // Resolve campaign names so the customer-facing breakdown can label the
   // campaign discount (mirrors the admin order page).
   let campaignNames: string[] = []
@@ -1056,6 +1083,7 @@ ordersRouter.get("/:id", requireAuth, async (req, res) => {
       campaign_discount: Number((order as Record<string, unknown>).campaign_discount ?? 0),
       points_used: Number((order as Record<string, unknown>).points_used ?? 0),
       charity_points: charityPoints,
+      member_tier: memberTier,
       metadata: (order as Record<string, unknown>).metadata ?? null,
       campaign_names: campaignNames,
       attributed_kol_slug: (order as Record<string, unknown>).attributed_kol_slug ?? null,

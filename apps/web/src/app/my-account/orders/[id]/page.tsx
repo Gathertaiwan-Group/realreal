@@ -39,6 +39,11 @@ type OrderDetail = {
    * 等於 post-payment pipeline grantPoints() 入帳的數字（含活動加倍）。
    */
   charity_points?: number
+  /**
+   * 下單會員當前的會員等級與公益回饋率。rebate_rate 為「百分比」數值
+   * （如 2.3 代表 2.3%）。訪客訂單或查無等級時為 null，前端不顯示。
+   */
+  member_tier?: { name: string; rebate_rate: number } | null
   metadata?: { coupon_code?: string | null; coupon_discount?: number | null } | null
   campaign_names?: string[]
   attributed_kol_slug?: string | null
@@ -281,6 +286,15 @@ export default async function OrderDetailPage({
                 {order.shipping_status === "delivered" ? "已送達" : order.shipping_status === "shipped" ? "出貨中" : "備貨中"}
               </Badge>
             </p>
+            {order.member_tier && (
+              <p>
+                <span className="text-zinc-500">會員等級：</span>
+                {order.member_tier.name}
+                <span className="text-emerald-700">
+                  {" "}(公益回饋 {order.member_tier.rebate_rate}%)
+                </span>
+              </p>
+            )}
           </div>
         </div>
       </div>
