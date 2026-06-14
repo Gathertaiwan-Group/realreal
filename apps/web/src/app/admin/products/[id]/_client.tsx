@@ -3,6 +3,7 @@ import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { ChevronLeft } from "lucide-react"
+import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -78,6 +79,9 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const [variantSaving, setVariantSaving] = useState<string | null>(null)
+  // Which toggle is mid-save (null = none). Used to disable the switch while
+  // its PATCH is in flight so rapid clicks can't race the persisted value.
+  const [togglingField, setTogglingField] = useState<"is_active" | "is_addon" | null>(null)
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -85,6 +89,40 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
     const supabase = createClient()
     const { data } = await supabase.auth.getSession()
     return data.session?.access_token ?? ""
+  }
+
+  // Auto-save a single toggle (上架狀態 / 加購) the moment it flips: optimistic
+  // UI update, lightweight PATCH, rollback + toast.error on failure. Guards
+  // against rapid re-clicks via togglingField so an in-flight save can't race.
+  async function autoSaveToggle(
+    field: "is_active" | "is_addon",
+    next: boolean,
+    setLocal: (v: boolean) => void,
+    successMsg: string,
+  ) {
+    if (togglingField) return // a save is already in flight — ignore the click
+    const prev = !next
+    setLocal(next) // optimistic
+    setTogglingField(field)
+    try {
+      const token = await getToken()
+      const res = await fetch(`${API_URL}/admin/products/${product.id}/toggle`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ [field]: next }),
+      })
+      if (res.ok) {
+        toast.success(successMsg)
+      } else {
+        setLocal(prev) // rollback
+        toast.error(`更新失敗 (${res.status})`)
+      }
+    } catch (err) {
+      setLocal(prev) // rollback
+      toast.error(`網路錯誤：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setTogglingField(null)
+    }
   }
 
   useEffect(() => {
@@ -190,8 +228,9 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
             type="button"
             role="switch"
             aria-checked={isActive}
-            onClick={() => setIsActive(v => !v)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+            disabled={togglingField === "is_active"}
+            onClick={() => autoSaveToggle("is_active", !isActive, setIsActive, isActive ? "已下架" : "已上架")}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-60 ${
               isActive ? "bg-[#10305a]" : "bg-zinc-300"
             }`}
           >
@@ -213,8 +252,9 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
             type="button"
             role="switch"
             aria-checked={isAddon}
-            onClick={() => setIsAddon(v => !v)}
-            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+            disabled={togglingField === "is_addon"}
+            onClick={() => autoSaveToggle("is_addon", !isAddon, setIsAddon, isAddon ? "已移出加購區" : "已加入加購區")}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-60 ${
               isAddon ? "bg-[#10305a]" : "bg-zinc-300"
             }`}
           >

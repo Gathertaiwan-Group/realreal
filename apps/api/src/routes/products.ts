@@ -400,6 +400,36 @@ productsAdminRouter.patch("/:id/feature", requireAuth, requireEditor, async (req
   res.json({ data })
 })
 
+// PATCH /admin/products/:id/toggle — flip is_active / is_addon only.
+// Lightweight partial update for the edit page's auto-save switches: the
+// payload is tiny so it never trips the images/variants validation that the
+// full PUT enforces. At least one field is required.
+const toggleSchema = z
+  .object({
+    is_active: z.boolean().optional(),
+    is_addon: z.boolean().optional(),
+  })
+  .refine(
+    (v) => v.is_active !== undefined || v.is_addon !== undefined,
+    { message: "At least one of is_active / is_addon is required" },
+  )
+
+productsAdminRouter.patch("/:id/toggle", requireAuth, requireEditor, async (req, res) => {
+  const parsed = toggleSchema.safeParse(req.body)
+  if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return }
+
+  const { data, error } = await supabase
+    .from("products")
+    .update(parsed.data)
+    .eq("id", req.params.id)
+    .select("id, is_active, is_addon")
+    .single()
+
+  if (error) { res.status(500).json({ error: error.message }); return }
+  if (!data) { res.status(404).json({ error: "Product not found" }); return }
+  res.json({ data })
+})
+
 const reorderSchema = z.object({
   items: z.array(z.object({
     id: z.string().uuid(),
