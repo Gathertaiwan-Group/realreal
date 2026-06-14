@@ -13,13 +13,23 @@ interface CreateCouponInput {
   tier_id: string | null
 }
 
-export async function createCouponAction(input: CreateCouponInput) {
+export async function createCouponAction(
+  input: CreateCouponInput,
+): Promise<{ ok: true } | { ok: false; error: string }> {
   const supabase = await createClient()
   const { data: { session } } = await supabase.auth.getSession()
-  await apiClient("/admin/coupons", {
-    method: "POST",
-    body: JSON.stringify(input),
-    token: session?.access_token,
-  })
+  // Return a structured result instead of throwing: a thrown server-action
+  // error is masked by Next.js production into the generic error.tsx page
+  // (錯誤代碼 digest), hiding the real cause. The form surfaces this string.
+  try {
+    await apiClient("/admin/coupons", {
+      method: "POST",
+      body: JSON.stringify(input),
+      token: session?.access_token,
+    })
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : "建立折扣碼失敗" }
+  }
   revalidatePath("/admin/coupons")
+  return { ok: true }
 }

@@ -17,6 +17,7 @@ export function CreateCouponForm() {
   const [open, setOpen] = useState(false)
   const [isPending, startTransition] = useTransition()
   const [tiers, setTiers] = useState<MembershipTier[]>([])
+  const [error, setError] = useState<string | null>(null)
 
   const fetchTiers = useCallback(async () => {
     try {
@@ -31,6 +32,10 @@ export function CreateCouponForm() {
   }, [])
 
   useEffect(() => {
+    // Lazy-load tiers when the form opens. fetchTiers only setState()s AFTER an
+    // await (not synchronously in the effect body), so this is a safe data-fetch
+    // effect — the rule over-flags the indirect call.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (open) fetchTiers()
   }, [open, fetchTiers])
 
@@ -38,16 +43,29 @@ export function CreateCouponForm() {
     e.preventDefault()
     const form = e.currentTarget
     const fd = new FormData(form)
+    setError(null)
+
+    // <input type="date"> yields "YYYY-MM-DD"; the API requires a full ISO
+    // datetime (z.string().datetime()). Send end-of-day in the admin's local
+    // tz so the coupon stays valid through the whole expiry day.
+    const expiresStr = (fd.get("expires_at") as string) || ""
+    const expiresAt = expiresStr
+      ? new Date(`${expiresStr}T23:59:59`).toISOString()
+      : null
 
     startTransition(async () => {
-      await createCouponAction({
+      const result = await createCouponAction({
         code: fd.get("code") as string,
         type: fd.get("type") as string,
         value: Number(fd.get("value")),
         max_uses: fd.get("max_uses") ? Number(fd.get("max_uses")) : null,
-        expires_at: (fd.get("expires_at") as string) || null,
+        expires_at: expiresAt,
         tier_id: (fd.get("tier_id") as string) || null,
       })
+      if (!result.ok) {
+        setError(result.error)
+        return
+      }
       form.reset()
       setOpen(false)
     })
@@ -84,7 +102,6 @@ export function CreateCouponForm() {
           >
             <option value="percentage">百分比折扣</option>
             <option value="fixed">固定折扣</option>
-            <option value="free_shipping">免運費</option>
           </select>
         </div>
 
@@ -117,6 +134,12 @@ export function CreateCouponForm() {
           </select>
         </div>
       </div>
+
+      {error && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+          建立失敗：{error}
+        </p>
+      )}
 
       <div className="flex gap-2">
         <Button type="submit" size="sm" disabled={isPending}>
