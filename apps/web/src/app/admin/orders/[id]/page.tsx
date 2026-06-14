@@ -55,13 +55,19 @@ export default async function AdminOrderDetailPage({
   const { data: order, error: orderErr } = await supabase
     .from("orders")
     .select(
+      // orders / order_items / order_addresses / invoices stay `*`: small rows,
+      // no heavy JSONB, and some columns (e.g. order_addresses.note) live only
+      // in the dashboard schema — listing them explicitly risks an undefined
+      // field or a PostgREST "column does not exist" that 500s the whole page.
+      // payments + logistics are pruned to the columns the UI actually reads so
+      // we stop hauling their large unused `raw_response` JSONB blobs.
       `
       *,
       order_items(*),
       order_addresses(*),
-      payments(*),
+      payments(id, gateway_tx_id, paid_at),
       invoices!invoices_order_id_fkey(*),
-      logistics(*)
+      logistics(id, provider, type, ecpay_logistics_id, tracking_number, cvs_payment_no, cvs_validation_no, status, shipped_at, delivered_at)
     `
     )
     .eq("id", id)
