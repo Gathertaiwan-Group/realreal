@@ -277,8 +277,8 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
           <Input id="name" name="name" defaultValue={product.name} required className="mt-1" />
         </div>
         <div className={fieldClass}>
-          <Label htmlFor="slug">網址代碼（英文小寫＋數字＋連字號）</Label>
-          <Input id="slug" name="slug" defaultValue={product.slug} pattern="[a-z0-9-]+" required className="mt-1" />
+          <Label htmlFor="slug">網址代碼（英文小寫＋數字＋連字號／底線）</Label>
+          <Input id="slug" name="slug" defaultValue={product.slug} pattern="[a-z0-9_-]+" required className="mt-1" />
         </div>
 
         {/* Category */}

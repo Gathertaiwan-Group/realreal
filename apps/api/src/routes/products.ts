@@ -10,7 +10,12 @@ export const productsAdminRouter = Router()
 
 const productSchema = z.object({
   name: z.string().min(1),
-  slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
+  // Allow underscores too: legacy products imported from WordPress have slugs
+  // like "peach_apple" / "canvabag_s" (and "__trashed" duplicates). The strict
+  // hyphen-only pattern 400-ed EVERY edit of those products (the form re-sends
+  // the existing slug). Underscores are URL-safe and already served live by
+  // GET /products/:slug — same legacy-data fix as the images.url refine below.
+  slug: z.string().min(1).regex(/^[a-z0-9_-]+$/),
   description: z.string().optional(),
   excerpt: z.string().optional(),
   category_id: z.string().uuid().nullable().optional(),
