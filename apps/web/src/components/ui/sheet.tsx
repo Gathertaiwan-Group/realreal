@@ -1,6 +1,7 @@
 "use client"
 
 import * as React from "react"
+import { createPortal } from "react-dom"
 import { cn } from "@/lib/utils"
 import { X } from "lucide-react"
 
@@ -84,9 +85,15 @@ function SheetContent({
     return () => window.removeEventListener("keydown", handleEsc)
   }, [open, onOpenChange])
 
-  if (!open) return null
+  if (!open || typeof document === "undefined") return null
 
-  return (
+  // Portal to <body> so the fixed overlay/panel are positioned relative to the
+  // viewport — NOT to an ancestor that establishes a containing block for
+  // position:fixed descendants. The site header is `sticky … backdrop-blur`,
+  // and backdrop-filter (like transform/filter) makes an element such a
+  // containing block. Rendered inline, this drawer was trapped inside the 72px
+  // header box, which pushed the footer CTAs off-screen on shorter viewports.
+  return createPortal(
     <div className="fixed inset-0 z-50">
       {/* backdrop — dim only, no blur (blur made the panel look hazy) */}
       <div
@@ -94,13 +101,16 @@ function SheetContent({
         onClick={() => onOpenChange(false)}
       />
       {/* panel — full width on mobile, 520px on md+ unless overridden.
-          Explicit bg-white + h-screen (not relying on bg-background var or
-          inset-y-0 alone) to guarantee fully opaque, full-viewport-tall panel.
+          Explicit bg-white + h-[100dvh] (not relying on bg-background var or
+          inset-y-0 alone) to guarantee a fully opaque panel. Uses dvh (the
+          *visible* viewport) rather than h-screen/100vh so the panel — and its
+          sticky footer CTAs — stay on-screen as mobile browser chrome shows/
+          hides and on short desktop windows.
           A previous build looked translucent because `cn()` merging interacted
           oddly with the consumer's `p-0` override. */}
       <div
         className={cn(
-          "fixed top-0 z-50 flex h-screen flex-col bg-white shadow-2xl",
+          "fixed top-0 z-50 flex h-[100dvh] flex-col bg-white shadow-2xl",
           "w-full md:max-w-[520px]",
           side === "right"
             ? "right-0 border-l animate-in slide-in-from-right"
@@ -118,7 +128,8 @@ function SheetContent({
         </button>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
 

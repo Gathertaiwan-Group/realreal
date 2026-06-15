@@ -32,7 +32,7 @@ function FreeShippingBar({
 }) {
   if (loading) {
     return (
-      <div className="px-6 py-3 border-b bg-zinc-50/50">
+      <div className="px-6 py-3 border-b bg-zinc-50/50 shrink-0">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Truck className="h-4 w-4 shrink-0" />
           <p>宅配免運門檻計算中…</p>
@@ -46,7 +46,7 @@ function FreeShippingBar({
     : getFreeShippingProgress({ subtotal, threshold })
   if (!progress?.enabled) {
     return (
-      <div className="px-6 py-3 border-b bg-zinc-50/50">
+      <div className="px-6 py-3 border-b bg-zinc-50/50 shrink-0">
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <Truck className="h-4 w-4 shrink-0" />
           <p>運費將於結帳時計算</p>
@@ -56,7 +56,7 @@ function FreeShippingBar({
   }
 
   return (
-    <div className="px-6 py-3 border-b bg-zinc-50/50">
+    <div className="px-6 py-3 border-b bg-zinc-50/50 shrink-0">
       <div className="flex items-center gap-2 text-xs">
         {progress.reached ? (
           <>
@@ -366,22 +366,27 @@ export function CartDrawer({
               loading={homePreviewLoading}
             />
 
-            {/* Items — scrollable, fills remaining space */}
-            <div className="flex-1 min-h-[180px] overflow-y-auto px-6 py-4">
-              <ul className="space-y-3">
-                {cartItems.map((item) => (
-                  <CartItemRow
-                    key={item.variantId}
-                    item={item}
-                    onUpdateQty={updateQty}
-                    onRemove={removeItem}
-                  />
-                ))}
-              </ul>
-            </div>
+            {/* Items + recommendations share ONE shrinkable scroll region so the
+                footer (繼續購物 / 前往結帳) stays pinned and on-screen at any
+                viewport height. min-h-0 lets this region shrink below its content;
+                without it the flex column overflows and pushes the footer off. */}
+            <div className="flex-1 min-h-0 overflow-y-auto">
+              <div className="px-6 py-4">
+                <ul className="space-y-3">
+                  {cartItems.map((item) => (
+                    <CartItemRow
+                      key={item.variantId}
+                      item={item}
+                      onUpdateQty={updateQty}
+                      onRemove={removeItem}
+                    />
+                  ))}
+                </ul>
+              </div>
 
-            {/* Recommendations strip (between items and footer) */}
-            <RecommendationStrip excludeVariantIds={excludeIds} />
+              {/* Recommendations now scroll together with the items */}
+              <RecommendationStrip excludeVariantIds={excludeIds} />
+            </div>
 
             {/* Footer — totals + CTAs, sticky bottom */}
             <SheetFooter className="flex-col gap-3 border-t bg-background px-6 py-4 shrink-0">
