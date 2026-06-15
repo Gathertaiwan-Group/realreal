@@ -11,6 +11,14 @@ export type CartItem = {
   /** Latest known stock for the variant — used to clamp adds/updates. */
   stockQty?: number
   imageUrl?: string
+  /**
+   * Whether this line is an add-on item (product.is_addon=true). DISPLAY ONLY —
+   * carried so the cart/drawer can show the 加購價 discount. The server
+   * (/orders/preview) ignores client prices and computes the real charge.
+   */
+  isAddon?: boolean
+  /** Per-variant add-on price (NT$). DISPLAY ONLY — see isAddon above. */
+  addonPrice?: number
 }
 
 type CartStore = {

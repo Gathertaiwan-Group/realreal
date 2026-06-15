@@ -37,12 +37,19 @@ const nestedVariantSchema = z.object({
   name: z.string().min(1),
   price: z.number().positive(),
   sale_price: z.number().positive().nullable().optional(),
+  // addon_price = 加購價 (variant-level add-on price), nullable column.
+  addon_price: z.number().positive().nullable().optional(),
   stock_qty: z.number().int().nonnegative(),
   weight: z.number().nonnegative().nullable().optional(),
   attributes: z.record(z.string(), z.string()).nullable().optional(),
 }).refine(
   (variant) => variant.sale_price == null || variant.sale_price <= variant.price,
   { message: "Sale price cannot exceed regular price", path: ["sale_price"] },
+).refine(
+  // Admin-UX guard: add-on price must not exceed the regular price.
+  // Runtime enforcement lives in orders.ts.
+  (variant) => variant.addon_price == null || variant.addon_price <= variant.price,
+  { message: "加購價不可高於原價", path: ["addon_price"] },
 )
 
 const nestedProductCreateSchema = z.object({
@@ -125,7 +132,7 @@ productsRouter.get("/", async (req, res) => {
 
   let query = supabase
     .from("products")
-    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, display_priority, created_at, product_variants(id, sku, name, price, sale_price, stock_qty)", { count: "exact" })
+    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, display_priority, created_at, product_variants(id, sku, name, price, sale_price, addon_price, stock_qty)", { count: "exact" })
     .eq("is_active", true)
     .is("deleted_at", null)
     .order("is_featured", { ascending: false })
@@ -177,7 +184,7 @@ productsRouter.get("/:slug", async (req, res) => {
     .from("products")
     .select(`
       id, name, slug, description, excerpt, category_id, images, is_active, created_at,
-      product_variants (id, sku, name, price, sale_price, stock_qty, weight, attributes)
+      product_variants (id, sku, name, price, sale_price, addon_price, stock_qty, weight, attributes)
     `)
     .eq("slug", req.params.slug)
     .is("deleted_at", null)

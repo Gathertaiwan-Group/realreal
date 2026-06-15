@@ -9,15 +9,29 @@ export const variantsRouter = Router({ mergeParams: true })
 type ProductParams = { id: string }
 type VariantParams = { id: string; variantId: string }
 
-const variantSchema = z.object({
+// addon_price = 加購價 (variant-level add-on price). Nullable column on
+// product_variants. The refine is an admin-UX guard so an admin can't save an
+// add-on price above the regular price; runtime enforcement lives in orders.ts.
+// NOTE: the refine must be applied to a value that still exposes .partial()
+// for the PUT handler, so .partial() is taken on the base object BEFORE the
+// refine is chained (a refined schema is a ZodEffects and has no .partial()).
+const variantBaseSchema = z.object({
   sku: z.string().optional(),
   name: z.string().min(1),
   price: z.number().positive(),
   sale_price: z.number().positive().nullable().optional(),
+  addon_price: z.number().positive().nullable().optional(),
   stock_qty: z.number().int().nonnegative().optional(),
   weight: z.number().nonnegative().nullable().optional(),
   attributes: z.record(z.string(), z.string()).nullable().optional(),
 })
+
+const addonPriceRefine = (v: { addon_price?: number | null; price?: number | null }) =>
+  v.addon_price == null || v.price == null || v.addon_price <= v.price
+const addonPriceRefineOpts = { message: "加購價不可高於原價", path: ["addon_price"] }
+
+const variantSchema = variantBaseSchema.refine(addonPriceRefine, addonPriceRefineOpts)
+const variantUpdateSchema = variantBaseSchema.partial().refine(addonPriceRefine, addonPriceRefineOpts)
 
 // GET /products/:id/variants — public
 variantsRouter.get("/", async (req: Request<ProductParams>, res: Response) => {
@@ -47,7 +61,7 @@ variantsRouter.post("/", requireAuth, requireAdmin, async (req: Request<ProductP
 
 // PUT /products/:id/variants/:variantId — admin only
 variantsRouter.put("/:variantId", requireAuth, requireAdmin, async (req: Request<VariantParams>, res: Response) => {
-  const parsed = variantSchema.partial().safeParse(req.body)
+  const parsed = variantUpdateSchema.safeParse(req.body)
   if (!parsed.success) { res.status(400).json({ error: parsed.error.flatten() }); return }
 
   const { data, error } = await supabase

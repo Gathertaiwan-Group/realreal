@@ -25,6 +25,11 @@ import {
   loadPointsSettings,
   type CartForPoints,
 } from "../lib/points"
+import {
+  computeAddonPricing,
+  mergeItemsByVariant,
+  type VariantPricingRow,
+} from "../lib/addon-pricing"
 
 export const ordersRouter = Router()
 
@@ -130,26 +135,38 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
   const variantIds = items.map((i) => i.variantId)
   const { data: variantRows } = await supabase
     .from("product_variants")
-    .select("id, sku, name, price, sale_price, product_id, products(category_id, name)")
+    .select("id, sku, name, price, sale_price, addon_price, product_id, products(category_id, name, is_addon)")
     .in("id", variantIds)
-  type VariantRow = {
-    id: string
-    sku: string | null
-    name: string
-    price: number | string | null
-    sale_price: number | string | null
-    product_id: string
-    products: { category_id: string | null; name: string | null } | null
-  }
-  const variantMap = new Map<string, VariantRow>()
-  for (const row of (variantRows ?? []) as unknown as VariantRow[]) variantMap.set(row.id, row)
-  function unitPriceCents(item: { variantId: string; unitPrice: number }): number {
-    const v = variantMap.get(item.variantId)
-    if (!v) return item.unitPrice
-    return Math.round(Number(v.sale_price ?? v.price ?? 0) * 100)
-  }
+  const variantMap = new Map<string, VariantPricingRow>()
+  for (const row of (variantRows ?? []) as unknown as VariantPricingRow[]) variantMap.set(row.id, row)
 
-  const subtotalCents = items.reduce((sum, i) => sum + unitPriceCents(i) * i.qty, 0)
+  // 加購價 (add-on price) is cart-aware + per-variant qty-capped, so coalesce
+  // duplicate lines first, then run the shared helper over the variants we know.
+  // Preview is display-only, so an UNKNOWN variant (not in the catalog fetch)
+  // gracefully falls back to the client-sent unitPrice instead of being rejected
+  // (POST /orders is the strict authority that rejects unknown variants).
+  const mergedItems = mergeItemsByVariant(items.map((i) => ({ ...i })))
+  const knownMerged = mergedItems.filter((i) => variantMap.has(i.variantId))
+  const unknownMerged = mergedItems.filter((i) => !variantMap.has(i.variantId))
+  const { expandedItems, subtotalCents: knownSubtotalCents } = computeAddonPricing(
+    knownMerged.map((i) => ({ variantId: i.variantId, qty: i.qty })),
+    variantMap,
+  )
+  const unknownSubtotalCents = unknownMerged.reduce(
+    (sum, i) => sum + Math.round(i.unitPrice) * i.qty,
+    0,
+  )
+  const subtotalCents = knownSubtotalCents + unknownSubtotalCents
+
+  // Per-variant blended line totals (from the expanded add-on/normal legs) so the
+  // campaign evaluator's unit_price × qty === the line total it's actually charged.
+  const lineTotalCentsByVariant = new Map<string, number>()
+  for (const e of expandedItems) {
+    lineTotalCentsByVariant.set(
+      e.variantId,
+      (lineTotalCentsByVariant.get(e.variantId) ?? 0) + e.unitPriceCents * e.qty,
+    )
+  }
   const shippingRule = await getShippingRule(shippingMethod, paymentMethodHint)
   const feeDollars =
     shippingRule.free_threshold > 0 && subtotalCents / 100 >= shippingRule.free_threshold
@@ -174,19 +191,34 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
     }
   }
 
-  // Build variant lookup for category_id (campaign scope matching)
-  const cartItems: CartItem[] = items.map((item) => {
-    const v = variantMap.get(item.variantId)
-    return {
-      product_id: v?.product_id ?? "",
+  // Build variant lookup for category_id (campaign scope matching). Known
+  // variants use the blended per-unit price (so 加購價 lines feed the evaluator
+  // a unit_price where unit_price × qty === line total); unknown variants fall
+  // back to the client-sent unitPrice (graceful preview path).
+  const cartItems: CartItem[] = [
+    ...knownMerged.map((item) => {
+      const v = variantMap.get(item.variantId)
+      const blendedUnitPrice = (lineTotalCentsByVariant.get(item.variantId)! / item.qty) / 100
+      return {
+        product_id: v?.product_id ?? "",
+        variant_id: item.variantId,
+        category_id: v?.products?.category_id ?? null,
+        sku: v?.sku ?? null,
+        name: item.productName ?? v?.products?.name ?? v?.name ?? "",
+        unit_price: blendedUnitPrice,
+        qty: item.qty,
+      }
+    }),
+    ...unknownMerged.map((item) => ({
+      product_id: "",
       variant_id: item.variantId,
-      category_id: v?.products?.category_id ?? null,
-      sku: v?.sku ?? null,
-      name: item.productName ?? v?.products?.name ?? v?.name ?? "",
-      unit_price: unitPriceCents(item) / 100,
+      category_id: null,
+      sku: null,
+      name: item.productName ?? "",
+      unit_price: item.unitPrice,
       qty: item.qty,
-    }
-  })
+    })),
+  ]
 
   const evaluatorCtx: EvaluatorContext = {
     user: {
@@ -383,33 +415,37 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   const variantIds = items.map((i) => i.variantId)
   const { data: variantRows, error: variantErr } = await supabase
     .from("product_variants")
-    .select("id, sku, name, price, sale_price, product_id, products(category_id, name)")
+    .select("id, sku, name, price, sale_price, addon_price, product_id, products(category_id, name, is_addon)")
     .in("id", variantIds)
   if (variantErr) {
     console.error("[orders] variant price fetch failed:", variantErr)
     res.status(500).json({ error: "讀取商品資料失敗" }); return
   }
-  type VariantRow = {
-    id: string
-    sku: string | null
-    name: string
-    price: number | string | null
-    sale_price: number | string | null
-    product_id: string
-    products: { category_id: string | null; name: string | null } | null
-  }
-  const variantMap = new Map<string, VariantRow>()
-  for (const row of (variantRows ?? []) as unknown as VariantRow[]) variantMap.set(row.id, row)
+  const variantMap = new Map<string, VariantPricingRow>()
+  for (const row of (variantRows ?? []) as unknown as VariantPricingRow[]) variantMap.set(row.id, row)
   const missingVariants = variantIds.filter((id) => !variantMap.has(id))
   if (missingVariants.length > 0) {
     res.status(400).json({ error: "商品不存在或已下架", variantIds: missingVariants }); return
   }
-  function unitPriceCents(variantId: string): number {
-    const v = variantMap.get(variantId)!
-    return Math.round(Number(v.sale_price ?? v.price ?? 0) * 100)
-  }
 
-  const subtotalCents = items.reduce((sum, i) => sum + unitPriceCents(i.variantId) * i.qty, 0)
+  // 加購價 (add-on price): coalesce duplicate lines first so the per-variant
+  // qty-1 cap can't be bypassed, then compute cart-aware effective pricing via
+  // the shared helper. mergedItems is the authoritative cart for pricing,
+  // order_items, the campaign evaluator and stock deduction below.
+  const mergedItems = mergeItemsByVariant(items.map((i) => ({ ...i })))
+  const { expandedItems, subtotalCents } = computeAddonPricing(
+    mergedItems.map((i) => ({ variantId: i.variantId, qty: i.qty })),
+    variantMap,
+  )
+  // Per-variant blended line totals (from the expanded add-on/normal legs) so the
+  // campaign evaluator's unit_price × qty === the line total it's actually charged.
+  const lineTotalCentsByVariant = new Map<string, number>()
+  for (const e of expandedItems) {
+    lineTotalCentsByVariant.set(
+      e.variantId,
+      (lineTotalCentsByVariant.get(e.variantId) ?? 0) + e.unitPriceCents * e.qty,
+    )
+  }
   const feeDollars = await computeShipping(shippingMethod, subtotalCents / 100, paymentMethod)
   let shippingFeeCents = Math.round(feeDollars * 100)
 
@@ -483,16 +519,19 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   }
 
   // Cart items for the campaign evaluator — reuse variantMap (built above for
-  // authoritative pricing). unit_price is authoritative dollars, not client-supplied.
-  const cartItems: CartItem[] = items.map((item) => {
+  // authoritative pricing) and the merged cart. unit_price is the blended
+  // per-unit price (加購價 leg + normal leg) so unit_price × qty === the line
+  // total actually charged; authoritative dollars, never client-supplied.
+  const cartItems: CartItem[] = mergedItems.map((item) => {
     const v = variantMap.get(item.variantId)
+    const blendedUnitPrice = (lineTotalCentsByVariant.get(item.variantId)! / item.qty) / 100
     return {
       product_id: v?.product_id ?? "",
       variant_id: item.variantId,
       category_id: v?.products?.category_id ?? null,
       sku: v?.sku ?? null,
       name: item.productName ?? v?.products?.name ?? v?.name ?? "",
-      unit_price: unitPriceCents(item.variantId) / 100,
+      unit_price: blendedUnitPrice,
       qty: item.qty,
     }
   })
@@ -658,7 +697,10 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   // Atomically deduct stock BEFORE creating the order — single RPC that
   // locks all variants and either succeeds or rejects with insufficient_stock.
   // This prevents the per-item race where two checkouts each see "enough left".
-  const variantsPayload = items.map((i) => ({ id: i.variantId, qty: i.qty }))
+  // Use mergedItems so a variant sent as two lines deducts its TOTAL qty once
+  // (expandedItems must NOT be used here — its add-on/normal split would
+  // double-count the variant in stock math).
+  const variantsPayload = mergedItems.map((i) => ({ id: i.variantId, qty: i.qty }))
   const stockResp = await supabase.rpc("atomic_deduct_stock", { p_variants: variantsPayload })
   if (stockResp.error) {
     console.error("[orders] atomic_deduct_stock failed:", stockResp.error)
@@ -755,21 +797,28 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     }
   }
 
-  // Insert order items
+  // Insert order items — iterate expandedItems, not the merged cart 1:1. An
+  // eligible 加購價 line with qty>1 splits into TWO rows (qty1@addon_price +
+  // qty(n-1)@normal); every other line stays a single row. Labels come from the
+  // original merged item; unit_price from the per-leg expanded cents.
+  const mergedByVariant = new Map(mergedItems.map((i) => [i.variantId, i]))
   const { error: itemsError } = await supabase
     .from("order_items")
     .insert(
-      items.map((item) => ({
-        order_id: order.id,
-        variant_id: item.variantId,
-        qty: item.qty,
-        unit_price: centsToTwd(unitPriceCents(item.variantId)),
-        product_snapshot: {
-          name: item.productName ?? variantMap.get(item.variantId)?.products?.name ?? "",
-          variant_name: item.variantName ?? variantMap.get(item.variantId)?.name ?? "",
-          unit_price: centsToTwd(unitPriceCents(item.variantId)),
-        },
-      }))
+      expandedItems.map((e) => {
+        const orig = mergedByVariant.get(e.variantId)
+        return {
+          order_id: order.id,
+          variant_id: e.variantId,
+          qty: e.qty,
+          unit_price: centsToTwd(e.unitPriceCents),
+          product_snapshot: {
+            name: orig?.productName ?? variantMap.get(e.variantId)?.products?.name ?? "",
+            variant_name: orig?.variantName ?? variantMap.get(e.variantId)?.name ?? "",
+            unit_price: centsToTwd(e.unitPriceCents),
+          },
+        }
+      })
     )
 
   if (itemsError) {

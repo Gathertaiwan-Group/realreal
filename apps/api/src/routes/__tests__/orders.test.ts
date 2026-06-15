@@ -86,8 +86,8 @@ describe("POST /orders", () => {
             resolve({
               data: [{
                 id: "a1b2c3d4-e5f6-4789-b012-c3d4e5f60001",
-                sku: "SKU1", name: "測試", price: 500, sale_price: null,
-                product_id: "p1", products: { category_id: null, name: "測試商品" },
+                sku: "SKU1", name: "測試", price: 500, sale_price: null, addon_price: null,
+                product_id: "p1", products: { category_id: null, name: "測試商品", is_addon: false },
               }],
               error: null,
             }),
@@ -118,6 +118,85 @@ describe("POST /orders", () => {
     expect(res.status).toBe(201)
     expect(res.body).toHaveProperty("data")
     expect(res.body.data).toHaveProperty("orderId", "order-uuid-123")
+  })
+
+  it("applies 加購價: splits the add-on line and discounts subtotal", async () => {
+    // Cart: 1 normal item (is_addon:false, price 100) + 1 add-on variant
+    // (is_addon:true, price 100, addon_price 80). The add-on's first unit is
+    // charged 80; subtotal = 100 + 80 = 180. order_items must receive a single
+    // addon row (qty1@80) plus the normal row.
+    const orderRow = { id: "order-uuid-addon", order_number: "RR-ADDON" }
+    const NORMAL_ID = "a1b2c3d4-e5f6-4789-b012-c3d4e5f60001"
+    const ADDON_ID = "a1b2c3d4-e5f6-4789-b012-c3d4e5f60002"
+
+    const orderItemsInsert = vi.fn().mockResolvedValue({ error: null })
+    const ordersInsert = vi.fn().mockReturnThis()
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "product_variants") {
+        return makeMockChain({
+          then: (resolve: (v: { data: unknown[]; error: null }) => void) =>
+            resolve({
+              data: [
+                {
+                  id: NORMAL_ID,
+                  sku: "SKU-N", name: "一般", price: 100, sale_price: null, addon_price: null,
+                  product_id: "pn", products: { category_id: null, name: "一般商品", is_addon: false },
+                },
+                {
+                  id: ADDON_ID,
+                  sku: "SKU-A", name: "加購", price: 100, sale_price: null, addon_price: 80,
+                  product_id: "pa", products: { category_id: null, name: "加購商品", is_addon: true },
+                },
+              ],
+              error: null,
+            }),
+        }) as any
+      }
+      if (table === "orders") {
+        return {
+          insert: (...args: unknown[]) => { ordersInsert(...args); return {
+            select: vi.fn().mockReturnThis(),
+            single: vi.fn().mockResolvedValue({ data: orderRow, error: null }),
+          } },
+        } as any
+      }
+      if (table === "order_items") {
+        return { insert: orderItemsInsert } as any
+      }
+      if (table === "order_addresses") {
+        return { insert: vi.fn().mockResolvedValue({ error: null }) } as any
+      }
+      return makeMockChain() as any
+    })
+
+    const body = {
+      ...validBody,
+      items: [
+        { variantId: NORMAL_ID, qty: 1, unitPrice: 100 },
+        { variantId: ADDON_ID, qty: 1, unitPrice: 100 },
+      ],
+    }
+    const res = await request(app).post("/orders").send(body)
+    if (res.status !== 201) console.error("[orders addon test] unexpected:", res.status, JSON.stringify(res.body))
+    expect(res.status).toBe(201)
+
+    // orders.subtotal reflects the add-on discount: 100 + 80 = 180.
+    const ordersArg = ordersInsert.mock.calls[0][0] as { subtotal: number }
+    expect(ordersArg.subtotal).toBe(180)
+
+    // order_items receives the (split) expanded rows: normal qty1@100, addon qty1@80.
+    const itemsArg = orderItemsInsert.mock.calls[0][0] as Array<{
+      variant_id: string; qty: number; unit_price: number
+    }>
+    const addonRows = itemsArg.filter((r) => r.variant_id === ADDON_ID)
+    expect(addonRows).toEqual([
+      expect.objectContaining({ variant_id: ADDON_ID, qty: 1, unit_price: 80 }),
+    ])
+    const normalRows = itemsArg.filter((r) => r.variant_id === NORMAL_ID)
+    expect(normalRows).toEqual([
+      expect.objectContaining({ variant_id: NORMAL_ID, qty: 1, unit_price: 100 }),
+    ])
   })
 
   it("returns 400 for empty items", async () => {

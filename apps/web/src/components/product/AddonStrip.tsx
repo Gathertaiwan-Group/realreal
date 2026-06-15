@@ -12,8 +12,18 @@ interface AddonProduct {
   variantId: string
   variantName: string
   price: number
+  /** Add-on price (加購價) when set on the variant; otherwise null. */
+  addonPrice: number | null
   stockQty: number
   imageUrl?: string
+}
+
+type ApiVariant = {
+  id: string
+  name: string
+  price: number | string
+  stock_qty: number | string
+  addon_price?: number | string | null
 }
 
 interface ApiProduct {
@@ -21,8 +31,8 @@ interface ApiProduct {
   name: string
   slug: string
   images?: string[] | null
-  default_variant?: { id: string; name: string; price: number | string; stock_qty: number | string } | null
-  variants?: Array<{ id: string; name: string; price: number | string; stock_qty: number | string }>
+  default_variant?: ApiVariant | null
+  variants?: Array<ApiVariant>
 }
 
 async function fetchAddons(
@@ -48,6 +58,9 @@ async function fetchAddons(
         const price = Number(v.price)
         const stock = Number(v.stock_qty)
         if (!Number.isFinite(price) || stock <= 0) continue
+        // 加購價：只有當 API 回傳有效且低於原價時才採用，否則視為無加購價。
+        const rawAddon = v.addon_price == null ? NaN : Number(v.addon_price)
+        const addonPrice = Number.isFinite(rawAddon) && rawAddon < price ? rawAddon : null
         out.push({
           id: p.id,
           name: p.name,
@@ -55,6 +68,7 @@ async function fetchAddons(
           variantId: v.id,
           variantName: v.name,
           price,
+          addonPrice,
           stockQty: stock,
           imageUrl: p.images?.[0],
         })
@@ -116,12 +130,23 @@ export function AddonStrip({
               <p className="text-xs font-medium leading-snug line-clamp-2 text-[#10305a]">{p.name}</p>
             </Link>
             <div className="flex items-center justify-between gap-1 mt-auto">
-              <span className="text-xs font-semibold text-[#10305a]">
-                NT$ {p.price.toLocaleString()}
-              </span>
+              {p.addonPrice != null ? (
+                <span className="flex min-w-0 flex-col leading-tight">
+                  <span className="text-xs font-semibold text-[#10305a]">
+                    加購價 NT$ {p.addonPrice.toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-zinc-400 line-through">
+                    NT$ {p.price.toLocaleString()}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-xs font-semibold text-[#10305a]">
+                  NT$ {p.price.toLocaleString()}
+                </span>
+              )}
               <button
                 type="button"
-                className="flex h-7 items-center gap-0.5 rounded-lg border border-[#10305a] px-2 text-xs font-medium text-[#10305a] hover:bg-[#10305a] hover:text-white transition-colors"
+                className="flex h-7 shrink-0 items-center gap-0.5 rounded-lg border border-[#10305a] px-2 text-xs font-medium text-[#10305a] hover:bg-[#10305a] hover:text-white transition-colors"
                 onClick={() =>
                   addItem({
                     variantId: p.variantId,
@@ -131,6 +156,8 @@ export function AddonStrip({
                     qty: 1,
                     stockQty: p.stockQty,
                     imageUrl: p.imageUrl,
+                    isAddon: true,
+                    ...(p.addonPrice != null ? { addonPrice: p.addonPrice } : {}),
                   })
                 }
                 aria-label={`加入 ${p.name}`}

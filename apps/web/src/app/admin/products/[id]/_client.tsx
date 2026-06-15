@@ -17,6 +17,8 @@ type Variant = {
   name: string
   price: number
   sale_price: number | null
+  /** 加購價：此規格的加購價（null = 無加購價）。僅在 is_addon 開啟時生效。 */
+  addon_price: number | null
   stock_qty: number
   sku: string | null
   weight: number | null
@@ -189,6 +191,7 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
         name: variant.name,
         price: variant.price,
         sale_price: variant.sale_price || null,
+        addon_price: variant.addon_price ?? null,
         stock_qty: variant.stock_qty,
         sku: variant.sku || undefined,
         weight: variant.weight,
@@ -266,6 +269,7 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
             {isAddon ? "✓ 顯示於加購區" : "不顯示於加購區"}
           </span>
         </div>
+        <p className="-mt-3 text-xs text-gray-400">加購價只在「加入加購區」開啟時生效。</p>
 
         {/* Name & Slug */}
         <div className={fieldClass}>
@@ -347,7 +351,7 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
                     <Input className="mt-1" value={v.sku ?? ""} onChange={e => updateVariant(v.id, "sku", e.target.value)} />
                   </div>
                 </div>
-                <div className="grid grid-cols-4 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <div>
                     <Label className="text-xs">原價 NT$</Label>
                     <Input type="number" min="0" step="1" className="mt-1" value={v.price}
@@ -359,6 +363,14 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
                       onChange={e => updateVariant(v.id, "sale_price", e.target.value ? Number(e.target.value) : null)}
                       placeholder="無特價" />
                   </div>
+                  <div>
+                    <Label className="text-xs">加購價 NT$（留空=無加購價）</Label>
+                    <Input type="number" min="0" step="1" className="mt-1" value={v.addon_price ?? ""}
+                      onChange={e => updateVariant(v.id, "addon_price", e.target.value ? Number(e.target.value) : null)}
+                      placeholder="無加購價" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
                   <div>
                     <Label className="text-xs">庫存數量</Label>
                     <Input type="number" min="0" step="1" className="mt-1" value={v.stock_qty}

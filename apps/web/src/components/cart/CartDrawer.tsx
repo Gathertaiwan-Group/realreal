@@ -7,6 +7,7 @@ import { Minus, Plus, Trash2, ShoppingBag, Truck, Check } from "lucide-react"
 import { useCart } from "@/lib/cart"
 import { fetchRecommendations, type RecommendedProduct } from "@/lib/cart-recommendations"
 import { API_URL } from "@/lib/api-url"
+import { applyAddonDisplay, cartDisplaySubtotal, type AddonDisplayLine } from "@/lib/addon-display"
 import {
   buildOrderPreviewItems,
   getFreeShippingProgress,
@@ -129,16 +130,22 @@ function SafeProductImage({
 
 function CartItemRow({
   item,
+  addonLine,
   onUpdateQty,
   onRemove,
 }: {
   item: ReturnType<typeof useCart.getState>["items"][number]
+  // DISPLAY-only add-on pricing for this line (server is authoritative).
+  addonLine: AddonDisplayLine
   onUpdateQty: (variantId: string, qty: number) => void
   onRemove: (variantId: string) => void
 }) {
   const name = item.productName || "商品"
   const variant = item.variantName && item.variantName !== "預設" ? item.variantName : ""
   const atStockCap = item.stockQty != null && item.qty >= item.stockQty
+  // Original (non-discounted) line total, shown struck-through when the
+  // 加購價 discount applies to the first unit.
+  const originalLineTotal = item.price * item.qty
   return (
     <li className="flex gap-4 rounded-[10px] border p-3 bg-background">
       <SafeProductImage src={item.imageUrl} alt={name} size={96} />
@@ -174,9 +181,25 @@ function CartItemRow({
             </button>
           </div>
           <div className="flex items-center gap-2">
-            <span className="text-sm font-semibold text-[#10305a]">
-              NT$ {(item.price * item.qty).toLocaleString()}
-            </span>
+            {addonLine.addonApplied ? (
+              <span className="flex flex-col items-end leading-tight">
+                <span className="flex items-center gap-1">
+                  <span className="rounded bg-[#10305a]/10 px-1 py-0.5 text-[10px] font-medium text-[#10305a]">
+                    加購價
+                  </span>
+                  <span className="text-sm font-semibold text-[#10305a]">
+                    NT$ {addonLine.lineSubtotal.toLocaleString()}
+                  </span>
+                </span>
+                <span className="text-[11px] text-zinc-400 line-through">
+                  NT$ {originalLineTotal.toLocaleString()}
+                </span>
+              </span>
+            ) : (
+              <span className="text-sm font-semibold text-[#10305a]">
+                NT$ {originalLineTotal.toLocaleString()}
+              </span>
+            )}
             <button
               type="button"
               className="flex h-7 w-7 items-center justify-center rounded-[10px] text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
@@ -280,8 +303,14 @@ export function CartDrawer({
   }, [])
 
   const cartItems = useMemo(() => hydrated ? items : [], [hydrated, items])
-  const subtotal = hydrated ? total() : 0
+  // DISPLAY-only add-on pricing: apply the 加購價 rule per line so the drawer
+  // shows the discounted first unit. The server (/orders/preview) remains the
+  // authoritative price; total() from the store is the plain (pre-add-on) sum.
+  const addonLines = useMemo(() => applyAddonDisplay(cartItems), [cartItems])
+  const subtotal = hydrated ? cartDisplaySubtotal(cartItems) : 0
   const itemCount = cartItems.reduce((sum, i) => sum + i.qty, 0)
+  // Plain pre-discount sum — only surfaced (struck-through) when it differs.
+  const plainSubtotal = hydrated ? total() : 0
 
   const excludeIds = useMemo(() => cartItems.map((i) => i.variantId), [cartItems])
   const itemsKey = useMemo(
@@ -373,10 +402,11 @@ export function CartDrawer({
             <div className="flex-1 min-h-0 overflow-y-auto">
               <div className="px-6 py-4">
                 <ul className="space-y-3">
-                  {cartItems.map((item) => (
+                  {cartItems.map((item, i) => (
                     <CartItemRow
                       key={item.variantId}
                       item={item}
+                      addonLine={addonLines[i]}
                       onUpdateQty={updateQty}
                       onRemove={removeItem}
                     />
@@ -394,11 +424,20 @@ export function CartDrawer({
                 <span className="font-medium">
                   小計 <span className="text-xs text-muted-foreground">（{itemCount} 件）</span>
                 </span>
-                <span className="text-lg font-semibold text-[#10305a]">
-                  NT$ {subtotal.toLocaleString()}
+                <span className="flex items-baseline gap-2">
+                  {subtotal < plainSubtotal && (
+                    <span className="text-sm text-zinc-400 line-through">
+                      NT$ {plainSubtotal.toLocaleString()}
+                    </span>
+                  )}
+                  <span className="text-lg font-semibold text-[#10305a]">
+                    NT$ {subtotal.toLocaleString()}
+                  </span>
                 </span>
               </div>
-              <p className="-mt-2 w-full text-xs text-muted-foreground">運費將於結帳時計算</p>
+              <p className="-mt-2 w-full text-xs text-muted-foreground">
+                {subtotal < plainSubtotal ? "已含加購價優惠，運費將於結帳時計算" : "運費將於結帳時計算"}
+              </p>
 
               <div className="grid w-full grid-cols-1 gap-2 md:grid-cols-2">
                 <Button
