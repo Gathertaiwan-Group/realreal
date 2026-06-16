@@ -1,11 +1,10 @@
 "use client"
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { Star, Sparkles, X } from "lucide-react"
+import { Pin, Sparkles, X } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { createClient } from "@/lib/supabase/client"
 
 type Row = {
@@ -138,13 +137,6 @@ export default function AdminProductsClient({
     } finally {
       setPendingId(null)
     }
-  }
-
-  function clampPriority(n: number): number {
-    if (!Number.isFinite(n)) return 0
-    if (n < 0) return 0
-    if (n > 9999) return 9999
-    return Math.floor(n)
   }
 
   function removeRow(id: string) {
@@ -287,8 +279,8 @@ export default function AdminProductsClient({
                   <>
                     <button
                       type="button"
-                      title={isFeatured ? "取消精選" : "設為精選"}
-                      aria-label={isFeatured ? "取消精選" : "設為精選"}
+                      title={isFeatured ? "取消置頂" : "置頂（首頁與商店最前面）"}
+                      aria-label={isFeatured ? "取消置頂" : "置頂"}
                       aria-pressed={isFeatured}
                       disabled={isPending}
                       onClick={() => patchFeature(p.id, { is_featured: !isFeatured })}
@@ -298,7 +290,7 @@ export default function AdminProductsClient({
                           : "border-zinc-200 text-zinc-400 hover:text-amber-500 hover:border-amber-300"
                       } disabled:opacity-50`}
                     >
-                      <Star className="h-4 w-4" fill={isFeatured ? "currentColor" : "none"} strokeWidth={2} />
+                      <Pin className="h-4 w-4" fill={isFeatured ? "currentColor" : "none"} strokeWidth={2} />
                     </button>
                     <button
                       type="button"
@@ -343,26 +335,6 @@ export default function AdminProductsClient({
                     >
                       加購
                     </button>
-                    <div className="flex items-center gap-1">
-                      <label htmlFor={`priority-${p.id}`} className="text-xs text-zinc-500">排序</label>
-                      <Input
-                        id={`priority-${p.id}`}
-                        type="number"
-                        min={0}
-                        max={9999}
-                        step={1}
-                        disabled={isPending}
-                        defaultValue={p.display_priority ?? 0}
-                        onBlur={e => {
-                          const next = clampPriority(Number(e.currentTarget.value))
-                          if (next === (p.display_priority ?? 0)) return
-                          // reflect clamped value back to the input
-                          e.currentTarget.value = String(next)
-                          patchFeature(p.id, { display_priority: next })
-                        }}
-                        className="h-8 w-20 text-sm"
-                      />
-                    </div>
                   </>
                 )}
                 {archived && (

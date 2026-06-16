@@ -83,7 +83,7 @@ export default async function ShopPage({
   // products; treat it as "no filter" so users always see everything.
   const category = rawCategory && rawCategory !== "all" ? rawCategory : undefined
   const currentPage = page ? Number(page) : 1
-  const sortOption = (sort as SortOption) || "price_desc"
+  const sortOption = (sort as SortOption) || "featured"
 
   const [categories, { data: products, total }] = await Promise.all([
     getCategories(),

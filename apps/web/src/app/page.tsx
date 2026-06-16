@@ -26,19 +26,14 @@ export const metadata: Metadata = {
 
 /* ---------- data fetching ---------- */
 
-// Ordered list of slugs to show in 暢銷排行 — update this list as needed
-const BESTSELLER_SLUGS = [
-  "60-day-vegan-protein",
-  "protein-10pack-sampler",
-  "fruit-set2",
-  "protein-30pack-mix",
-]
-
-async function getBestSellers(): Promise<Product[]> {
+async function getPinnedProducts(): Promise<Product[]> {
   try {
-    const { data } = await getProducts({ limit: 50 })
-    const bySlug = new Map(data.map((p) => [p.slug, p]))
-    return BESTSELLER_SLUGS.map((s) => bySlug.get(s)).filter(Boolean) as Product[]
+    // 置頂 (is_featured) products first; fall back to the default listing so the
+    // homepage spotlight is never empty when nothing is pinned yet.
+    const { data } = await getProducts({ featured: true, limit: 8 })
+    if (data.length > 0) return data
+    const { data: fallback } = await getProducts({ limit: 8 })
+    return fallback
   } catch {
     return []
   }
@@ -512,9 +507,9 @@ function RetailSection() {
 export default async function HomePage() {
   // Resolve category slugs for the two product sections
   // Fetch products, content and blog posts in parallel
-  const [bestSellers, heroContent, allPostsResult, testimonialResult] =
+  const [pinnedProducts, heroContent, allPostsResult, testimonialResult] =
     await Promise.all([
-      getBestSellers(),
+      getPinnedProducts(),
       getSiteContent<HeroContent>("homepage_hero"),
       getPosts({ limit: 20 }),
       getPosts({ category: "真實見證", limit: 10 }),
@@ -530,11 +525,11 @@ export default async function HomePage() {
       {/* 1. Hero */}
       <HeroSection content={heroContent} />
 
-      {/* 1a. Bestsellers */}
+      {/* 1a. 精選商品 (置頂) */}
       <ProductSection
-        title="暢銷排行"
-        subtitle="最多人回購的日常營養補給。"
-        products={bestSellers}
+        title="精選商品"
+        subtitle="店長為你精選推薦。"
+        products={pinnedProducts}
         moreLabel="查看全部商品 →"
         moreHref="/shop"
       />

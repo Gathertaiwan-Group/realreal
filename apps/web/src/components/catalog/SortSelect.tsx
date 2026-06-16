@@ -3,6 +3,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import type { SortOption } from "@/lib/catalog"
 
 const SORT_OPTIONS: { value: SortOption; label: string }[] = [
+  { value: "featured", label: "置頂優先" },
   { value: "newest", label: "最新上架" },
   { value: "price_asc", label: "價格低到高" },
   { value: "price_desc", label: "價格高到低" },
@@ -12,11 +13,11 @@ const SORT_OPTIONS: { value: SortOption; label: string }[] = [
 export function SortSelect() {
   const router = useRouter()
   const sp = useSearchParams()
-  const current = sp.get("sort") ?? "price_desc"
+  const current = sp.get("sort") ?? "featured"
 
   function onChange(value: string) {
     const params = new URLSearchParams(sp.toString())
-    if (value === "price_desc") {
+    if (value === "featured") {
       params.delete("sort")
     } else {
       params.set("sort", value)
