@@ -6,6 +6,8 @@ import { getPosts } from "@/lib/content"
 import type { Post } from "@/lib/content"
 import type { Metadata } from "next"
 
+export const dynamic = "force-dynamic"
+
 export const metadata: Metadata = {
   title: "聰明生活 | 誠真生活 RealReal",
   description:
@@ -97,16 +99,21 @@ export default async function BlogPage({
   const currentPage = Number(params.page) || 1
   const currentCategory = params.category || undefined
 
-  const { data: posts, total } = await getPosts({
+  const { data: rawPosts, total: rawTotal } = await getPosts({
     page: currentPage,
     limit: POSTS_PER_PAGE,
     category: currentCategory,
     excludeCategory: "真實見證",
   })
 
+  // Belt-and-suspenders: always strip 真實見證 posts on the frontend too,
+  // in case the API hasn't deployed the exclude_category change yet.
+  const posts = rawPosts.filter((p) => p.category !== "真實見證")
+  const total = rawTotal - (rawPosts.length - posts.length)
+
   const totalPages = Math.ceil(total / POSTS_PER_PAGE)
 
-  // Collect unique categories from posts for filter tabs
+  // Collect unique categories from posts for filter tabs (excludes 真實見證 automatically)
   const categories = Array.from(
     new Set(posts.map((p) => p.category).filter(Boolean))
   ) as string[]
