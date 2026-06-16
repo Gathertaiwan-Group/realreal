@@ -35,12 +35,13 @@ export async function getSiteContent<T = unknown>(key: string): Promise<T | null
 /* ---------- posts ---------- */
 
 export async function getPosts(
-  params?: { page?: number; limit?: number; category?: string }
+  params?: { page?: number; limit?: number; category?: string; excludeCategory?: string }
 ): Promise<{ data: Post[]; total: number }> {
   const sp = new URLSearchParams()
   if (params?.page) sp.set("page", String(params.page))
   if (params?.limit) sp.set("limit", String(params.limit))
   if (params?.category) sp.set("category", params.category)
+  if (params?.excludeCategory) sp.set("exclude_category", params.excludeCategory)
   const res = await fetch(`${API_URL}/posts?${sp}`, {
     next: { revalidate: 60 },
   })

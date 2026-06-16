@@ -101,6 +101,7 @@ export default async function BlogPage({
     page: currentPage,
     limit: POSTS_PER_PAGE,
     category: currentCategory,
+    excludeCategory: "真實見證",
   })
 
   const totalPages = Math.ceil(total / POSTS_PER_PAGE)

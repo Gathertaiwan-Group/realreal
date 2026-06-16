@@ -114,6 +114,19 @@ postsPublicRouter.get("/", async (req, res) => {
     }
   }
 
+  if (req.query.exclude_category) {
+    const excludeParam = req.query.exclude_category as string
+    const { data: catByName } = await supabase
+      .from("post_categories")
+      .select("id")
+      .eq("name", excludeParam)
+      .maybeSingle()
+    const catExclude = catByName
+    if (catExclude) {
+      query = query.neq("category_id", catExclude.id)
+    }
+  }
+
   if (req.query.tag) {
     // Filter by tag slug — look up post IDs via post_tag_links
     const { data: tag } = await supabase
