@@ -30,7 +30,7 @@ export default async function AdminProductsPage({
 
   let query = supabase
     .from("products")
-    .select("id, name, slug, is_active, is_featured, is_addon, display_priority, created_at, deleted_at")
+    .select("id, name, slug, is_active, is_featured, is_addon, is_recommended, display_priority, created_at, deleted_at")
     .order("created_at", { ascending: false })
     .limit(100)
 

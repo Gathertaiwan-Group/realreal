@@ -1,7 +1,7 @@
 "use client"
 import { useMemo, useState } from "react"
 import Link from "next/link"
-import { Star, X } from "lucide-react"
+import { Star, Sparkles, X } from "lucide-react"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -15,6 +15,7 @@ type Row = {
   is_active: boolean
   is_featured?: boolean
   is_addon?: boolean
+  is_recommended?: boolean
   display_priority?: number
   created_at: string
   deleted_at?: string | null
@@ -51,6 +52,7 @@ export default function AdminProductsClient({
     initialProducts.map(p => ({
       ...p,
       is_featured: p.is_featured ?? false,
+      is_recommended: p.is_recommended ?? false,
       display_priority: p.display_priority ?? 0,
     })),
   )
@@ -97,6 +99,33 @@ export default function AdminProductsClient({
               : r,
           ),
         )
+      }
+    } catch (err) {
+      setError(`網路錯誤：${err instanceof Error ? err.message : String(err)}`)
+      setRows(prev)
+    } finally {
+      setPendingId(null)
+    }
+  }
+
+  // One-click 推薦 toggle (drives the cart「你也可能喜歡」strip). Reuses the
+  // shared /toggle endpoint (is_active / is_addon / is_recommended).
+  async function toggleRecommended(id: string, next: boolean) {
+    const prev = rows
+    setRows(rs => rs.map(r => (r.id === id ? { ...r, is_recommended: next } : r))) // optimistic
+    setPendingId(id)
+    setError(null)
+    try {
+      const token = await getToken()
+      const res = await fetch(`${API_URL}/admin/products/${id}/toggle`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ is_recommended: next }),
+      })
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}))
+        setError(`更新失敗 (${res.status})：${JSON.stringify(errData)}`)
+        setRows(prev) // rollback
       }
     } catch (err) {
       setError(`網路錯誤：${err instanceof Error ? err.message : String(err)}`)
@@ -240,6 +269,7 @@ export default function AdminProductsClient({
         )}
         {sorted.map(p => {
           const isFeatured = !!p.is_featured
+          const isRecommended = !!p.is_recommended
           const isPending = pendingId === p.id
           return (
             <div key={p.id} className="flex items-center justify-between gap-4 p-4">
@@ -264,6 +294,21 @@ export default function AdminProductsClient({
                       } disabled:opacity-50`}
                     >
                       <Star className="h-4 w-4" fill={isFeatured ? "currentColor" : "none"} strokeWidth={2} />
+                    </button>
+                    <button
+                      type="button"
+                      title={isRecommended ? "取消推薦" : "設為推薦（你也可能喜歡）"}
+                      aria-label={isRecommended ? "取消推薦" : "設為推薦"}
+                      aria-pressed={isRecommended}
+                      disabled={isPending}
+                      onClick={() => toggleRecommended(p.id, !isRecommended)}
+                      className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
+                        isRecommended
+                          ? "border-[#10305a]/30 bg-[#10305a]/10 text-[#10305a] hover:bg-[#10305a]/20"
+                          : "border-zinc-200 text-zinc-400 hover:text-[#10305a] hover:border-[#10305a]/30"
+                      } disabled:opacity-50`}
+                    >
+                      <Sparkles className="h-4 w-4" fill={isRecommended ? "currentColor" : "none"} strokeWidth={2} />
                     </button>
                     <div className="flex items-center gap-1">
                       <label htmlFor={`priority-${p.id}`} className="text-xs text-zinc-500">排序</label>
@@ -291,6 +336,7 @@ export default function AdminProductsClient({
                   {p.is_active ? "上架" : "下架"}
                 </Badge>
                 {p.is_addon && <Badge variant="outline">加購</Badge>}
+                {p.is_recommended && <Badge variant="outline">推薦</Badge>}
                 {archived && <Badge variant="outline">已封存</Badge>}
                 {!archived && (
                   <Link href={`/admin/products/${p.id}`}>
