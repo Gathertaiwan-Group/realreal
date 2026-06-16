@@ -34,6 +34,7 @@ const productSchema = z.object({
   is_active: z.boolean().optional(),
   is_featured: z.boolean().optional(),
   is_addon: z.boolean().optional(),
+  is_recommended: z.boolean().optional(),
   display_priority: z.number().int().min(0).max(99999).optional(),
 })
 
@@ -137,7 +138,7 @@ productsRouter.get("/", async (req, res) => {
 
   let query = supabase
     .from("products")
-    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, display_priority, created_at, product_variants(id, sku, name, price, sale_price, addon_price, stock_qty)", { count: "exact" })
+    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, is_recommended, display_priority, created_at, product_variants(id, sku, name, price, sale_price, addon_price, stock_qty)", { count: "exact" })
     .eq("is_active", true)
     .is("deleted_at", null)
     .order("is_featured", { ascending: false })
@@ -147,6 +148,7 @@ productsRouter.get("/", async (req, res) => {
   if (categoryId) query = query.eq("category_id", categoryId)
   if (req.query.featured_only === "true") query = query.eq("is_featured", true)
   if (req.query.is_addon === "true") query = query.eq("is_addon", true)
+  if (req.query.is_recommended === "true") query = query.eq("is_recommended", true)
   if (req.query.q) {
     query = query.textSearch("search_vector", req.query.q as string, { type: "plain", config: "simple" })
   }
@@ -412,7 +414,7 @@ productsAdminRouter.patch("/:id/feature", requireAuth, requireEditor, async (req
   res.json({ data })
 })
 
-// PATCH /admin/products/:id/toggle — flip is_active / is_addon only.
+// PATCH /admin/products/:id/toggle — flip is_active / is_addon / is_recommended.
 // Lightweight partial update for the edit page's auto-save switches: the
 // payload is tiny so it never trips the images/variants validation that the
 // full PUT enforces. At least one field is required.
@@ -420,10 +422,14 @@ const toggleSchema = z
   .object({
     is_active: z.boolean().optional(),
     is_addon: z.boolean().optional(),
+    is_recommended: z.boolean().optional(),
   })
   .refine(
-    (v) => v.is_active !== undefined || v.is_addon !== undefined,
-    { message: "At least one of is_active / is_addon is required" },
+    (v) =>
+      v.is_active !== undefined ||
+      v.is_addon !== undefined ||
+      v.is_recommended !== undefined,
+    { message: "At least one of is_active / is_addon / is_recommended is required" },
   )
 
 productsAdminRouter.patch("/:id/toggle", requireAuth, requireEditor, async (req, res) => {
@@ -434,7 +440,7 @@ productsAdminRouter.patch("/:id/toggle", requireAuth, requireEditor, async (req,
     .from("products")
     .update(parsed.data)
     .eq("id", req.params.id)
-    .select("id, is_active, is_addon")
+    .select("id, is_active, is_addon, is_recommended")
     .single()
 
   if (error) { res.status(500).json({ error: error.message }); return }

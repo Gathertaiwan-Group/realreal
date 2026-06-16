@@ -52,6 +52,7 @@ type ProductRow = {
   category_id?: string | null
   is_active?: boolean | null
   is_addon?: boolean | null
+  is_recommended?: boolean | null
   images?: unknown
 }
 
@@ -75,6 +76,7 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
   const [description, setDescription] = useState(toHtml(product.description ?? ""))
   const [isActive, setIsActive] = useState<boolean>(product.is_active ?? true)
   const [isAddon, setIsAddon] = useState<boolean>(product.is_addon ?? false)
+  const [isRecommended, setIsRecommended] = useState<boolean>(product.is_recommended ?? false)
   const [categoryId, setCategoryId] = useState<string>(product.category_id ?? "")
   const [categories, setCategories] = useState<Category[]>([])
   const [variants, setVariants] = useState<Variant[]>([])
@@ -83,7 +85,7 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
   const [variantSaving, setVariantSaving] = useState<string | null>(null)
   // Which toggle is mid-save (null = none). Used to disable the switch while
   // its PATCH is in flight so rapid clicks can't race the persisted value.
-  const [togglingField, setTogglingField] = useState<"is_active" | "is_addon" | null>(null)
+  const [togglingField, setTogglingField] = useState<"is_active" | "is_addon" | "is_recommended" | null>(null)
 
   const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -97,7 +99,7 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
   // UI update, lightweight PATCH, rollback + toast.error on failure. Guards
   // against rapid re-clicks via togglingField so an in-flight save can't race.
   async function autoSaveToggle(
-    field: "is_active" | "is_addon",
+    field: "is_active" | "is_addon" | "is_recommended",
     next: boolean,
     setLocal: (v: boolean) => void,
     successMsg: string,
@@ -159,6 +161,7 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
       excerpt,
       is_active: isActive,
       is_addon: isAddon,
+      is_recommended: isRecommended,
       category_id: categoryId || null,
       images: imagesPayload,
     }
@@ -270,6 +273,29 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
           </span>
         </div>
         <p className="-mt-3 text-xs text-gray-400">加購價只在「加入加購區」開啟時生效。</p>
+
+        {/* Recommended flag — drives the cart「你也可能喜歡」strip */}
+        <div className="flex items-center gap-3">
+          <Label>推薦商品</Label>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isRecommended}
+            disabled={togglingField === "is_recommended"}
+            onClick={() => autoSaveToggle("is_recommended", !isRecommended, setIsRecommended, isRecommended ? "已移出推薦區" : "已加入推薦區")}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-60 ${
+              isRecommended ? "bg-[#10305a]" : "bg-zinc-300"
+            }`}
+          >
+            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+              isRecommended ? "translate-x-5" : "translate-x-0.5"
+            }`} />
+          </button>
+          <span className={isRecommended ? "text-[#10305a] text-sm" : "text-gray-400 text-sm"}>
+            {isRecommended ? "✓ 顯示於「你也可能喜歡」" : "不顯示於推薦區"}
+          </span>
+        </div>
+        <p className="-mt-3 text-xs text-gray-400">控制購物車「你也可能喜歡」是否顯示此商品；都沒勾時自動補暢銷商品。</p>
 
         {/* Name & Slug */}
         <div className={fieldClass}>

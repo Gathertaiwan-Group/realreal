@@ -1,12 +1,15 @@
 /**
  * Cart drawer "你也可能喜歡" recommendations.
  *
- * Strategy: best-selling products that aren't already in the cart. Cheap,
- * predictable, and doesn't need a recommendation engine.
+ * Priority: products the shop explicitly flagged is_recommended (an admin
+ * toggle, like is_addon) come first; when there aren't enough, fall back to
+ * best-selling, then any active product — so the strip is never empty. Every
+ * tier excludes items already in the cart / out of stock. Cheap, predictable,
+ * no recommendation engine.
  *
- * The /products endpoint already supports sort=best_selling and returns
- * each product's default variant id + price + stock, which is exactly
- * what we need for the one-click "+ 加" CTA.
+ * The /products endpoint supports ?is_recommended=true and sort=best_selling
+ * and returns each product's default variant id + price + stock, which is
+ * exactly what we need for the one-click "+ 加" CTA.
  */
 
 export interface RecommendedProduct {
@@ -59,7 +62,7 @@ export async function fetchRecommendations(
   const total = limit + excludeVariantIds.length
 
   const queries = [
-    `is_addon=true&limit=${total}`,
+    `is_recommended=true&limit=${total}`,
     `sort=best_selling&limit=${total}`,
     `limit=${total}`,
   ]

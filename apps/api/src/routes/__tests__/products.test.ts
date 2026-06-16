@@ -111,6 +111,88 @@ describe("GET /products", () => {
       stock_qty: 12,
     })
   })
+
+  it("filters by is_recommended when ?is_recommended=true", async () => {
+    const eq = vi.fn().mockReturnThis()
+    const mockProductsQuery = {
+      select: vi.fn().mockReturnThis(),
+      eq,
+      is: vi.fn().mockReturnThis(),
+      ilike: vi.fn().mockReturnThis(),
+      textSearch: vi.fn().mockReturnThis(),
+      range: vi.fn().mockResolvedValue({ data: [], error: null, count: 0 }),
+      order: vi.fn().mockReturnThis(),
+    }
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "product_variants") {
+        return { select: vi.fn().mockReturnThis(), in: vi.fn().mockResolvedValue({ data: [], error: null }) } as any
+      }
+      return mockProductsQuery as any
+    })
+
+    const res = await request(app).get("/products?is_recommended=true")
+    expect(res.status).toBe(200)
+    expect(eq).toHaveBeenCalledWith("is_recommended", true)
+  })
+})
+
+describe("PATCH /admin/products/:id/toggle", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAdminAuth()
+  })
+
+  it("accepts is_recommended and returns the updated flag", async () => {
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "user_profiles") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: { role: "admin" }, error: null }),
+        } as never
+      }
+      if (table === "products") {
+        return {
+          update: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          select: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({
+            data: { id: "prod-1", is_active: true, is_addon: false, is_recommended: true },
+            error: null,
+          }),
+        } as never
+      }
+      throw new Error(`Unexpected table ${table}`)
+    })
+
+    const res = await request(app)
+      .patch("/admin/products/prod-1/toggle")
+      .set("Authorization", "Bearer test-token")
+      .send({ is_recommended: true })
+
+    expect(res.status).toBe(200)
+    expect(res.body.data.is_recommended).toBe(true)
+  })
+
+  it("rejects an empty toggle payload", async () => {
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "user_profiles") {
+        return {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockReturnThis(),
+          single: vi.fn().mockResolvedValue({ data: { role: "admin" }, error: null }),
+        } as never
+      }
+      throw new Error(`Unexpected table ${table}`)
+    })
+
+    const res = await request(app)
+      .patch("/admin/products/prod-1/toggle")
+      .set("Authorization", "Bearer test-token")
+      .send({})
+
+    expect(res.status).toBe(400)
+  })
 })
 
 describe("GET /products/:slug", () => {
