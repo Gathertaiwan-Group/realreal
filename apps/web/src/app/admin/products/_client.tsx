@@ -108,11 +108,16 @@ export default function AdminProductsClient({
     }
   }
 
-  // One-click 推薦 toggle (drives the cart「你也可能喜歡」strip). Reuses the
-  // shared /toggle endpoint (is_active / is_addon / is_recommended).
-  async function toggleRecommended(id: string, next: boolean) {
+  // One-click flag toggles for the list page (上下架 / 加購 / 推薦) — all share
+  // the same PATCH /toggle endpoint, optimistic update with rollback. 精選 keeps
+  // its own /feature endpoint (it also carries display_priority).
+  async function toggleFlag(
+    id: string,
+    field: "is_active" | "is_addon" | "is_recommended",
+    next: boolean,
+  ) {
     const prev = rows
-    setRows(rs => rs.map(r => (r.id === id ? { ...r, is_recommended: next } : r))) // optimistic
+    setRows(rs => rs.map(r => (r.id === id ? { ...r, [field]: next } : r))) // optimistic
     setPendingId(id)
     setError(null)
     try {
@@ -120,7 +125,7 @@ export default function AdminProductsClient({
       const res = await fetch(`${API_URL}/admin/products/${id}/toggle`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ is_recommended: next }),
+        body: JSON.stringify({ [field]: next }),
       })
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}))
@@ -301,7 +306,7 @@ export default function AdminProductsClient({
                       aria-label={isRecommended ? "取消推薦" : "設為推薦"}
                       aria-pressed={isRecommended}
                       disabled={isPending}
-                      onClick={() => toggleRecommended(p.id, !isRecommended)}
+                      onClick={() => toggleFlag(p.id, "is_recommended", !isRecommended)}
                       className={`inline-flex h-8 w-8 items-center justify-center rounded-md border transition-colors ${
                         isRecommended
                           ? "border-[#10305a]/30 bg-[#10305a]/10 text-[#10305a] hover:bg-[#10305a]/20"
@@ -309,6 +314,34 @@ export default function AdminProductsClient({
                       } disabled:opacity-50`}
                     >
                       <Sparkles className="h-4 w-4" fill={isRecommended ? "currentColor" : "none"} strokeWidth={2} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => toggleFlag(p.id, "is_active", !p.is_active)}
+                      title={p.is_active ? "點擊下架" : "點擊上架"}
+                      aria-pressed={!!p.is_active}
+                      className={`inline-flex h-8 items-center rounded-md border px-2 text-xs font-medium transition-colors disabled:opacity-50 ${
+                        p.is_active
+                          ? "border-green-300 bg-green-50 text-green-700 hover:bg-green-100"
+                          : "border-zinc-200 bg-zinc-50 text-zinc-400 hover:bg-zinc-100"
+                      }`}
+                    >
+                      {p.is_active ? "上架中" : "已下架"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isPending}
+                      onClick={() => toggleFlag(p.id, "is_addon", !p.is_addon)}
+                      title={p.is_addon ? "點擊移出加購區" : "點擊加入加購區"}
+                      aria-pressed={!!p.is_addon}
+                      className={`inline-flex h-8 items-center rounded-md border px-2 text-xs font-medium transition-colors disabled:opacity-50 ${
+                        p.is_addon
+                          ? "border-[#10305a]/30 bg-[#10305a]/10 text-[#10305a] hover:bg-[#10305a]/20"
+                          : "border-zinc-200 text-zinc-400 hover:bg-zinc-100"
+                      }`}
+                    >
+                      加購
                     </button>
                     <div className="flex items-center gap-1">
                       <label htmlFor={`priority-${p.id}`} className="text-xs text-zinc-500">排序</label>
@@ -332,12 +365,16 @@ export default function AdminProductsClient({
                     </div>
                   </>
                 )}
-                <Badge variant={p.is_active ? "default" : "secondary"}>
-                  {p.is_active ? "上架" : "下架"}
-                </Badge>
-                {p.is_addon && <Badge variant="outline">加購</Badge>}
-                {p.is_recommended && <Badge variant="outline">推薦</Badge>}
-                {archived && <Badge variant="outline">已封存</Badge>}
+                {archived && (
+                  <>
+                    <Badge variant={p.is_active ? "default" : "secondary"}>
+                      {p.is_active ? "上架" : "下架"}
+                    </Badge>
+                    {p.is_addon && <Badge variant="outline">加購</Badge>}
+                    {p.is_recommended && <Badge variant="outline">推薦</Badge>}
+                    <Badge variant="outline">已封存</Badge>
+                  </>
+                )}
                 {!archived && (
                   <Link href={`/admin/products/${p.id}`}>
                     <Button variant="outline" size="sm">編輯</Button>
