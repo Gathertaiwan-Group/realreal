@@ -42,6 +42,7 @@ const nestedProductBody = {
       price: 1680,
       sale_price: 1499,
       addon_price: 1200,
+      addon_limit: 3,
       stock_qty: 20,
       weight: 900,
       attributes: { 包數: "30" },
@@ -100,7 +101,7 @@ describe("GET /products", () => {
     expect(res.body).toHaveProperty("data")
     expect(res.body).toHaveProperty("total")
     expect(select).toHaveBeenCalledWith(
-      expect.stringContaining("product_variants(id, sku, name, price, sale_price, addon_price, stock_qty)"),
+      expect.stringContaining("product_variants(id, sku, name, price, sale_price, addon_price, addon_limit, stock_qty)"),
       { count: "exact" },
     )
     expect(res.body.data[0].variants[0]).toMatchObject({
@@ -265,6 +266,8 @@ describe("POST /admin/products", () => {
     expect(res.body.data.variants).toHaveLength(1)
     // addon_price (加購價) is accepted on a nested variant and flows through
     expect(res.body.data.variants[0].addon_price).toBe(1200)
+    // addon_limit (加購數量上限) is accepted too
+    expect(res.body.data.variants[0].addon_limit).toBe(3)
   })
 
   it("rejects a nested variant whose addon_price exceeds price", async () => {

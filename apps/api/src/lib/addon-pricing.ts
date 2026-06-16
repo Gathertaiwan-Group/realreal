@@ -5,6 +5,7 @@ export type VariantPricingRow = {
   price: number | string | null
   sale_price: number | string | null
   addon_price: number | string | null
+  addon_limit: number | string | null
   product_id: string
   products: { category_id: string | null; name: string | null; is_addon: boolean | null } | null
 }
@@ -12,7 +13,7 @@ export type VariantPricingRow = {
 export type AddonLinePricing = {
   variantId: string
   qty: number
-  addonQty: number        // 0 or 1
+  addonQty: number        // units charged at the add-on price (0..addon_limit)
   addonUnitCents: number
   normalUnitCents: number
 }
@@ -67,12 +68,16 @@ export function computeAddonPricing(
     const addonRaw = v?.addon_price != null ? Math.round(Number(v.addon_price) * 100) : null
     const isAddonProduct = v?.products?.is_addon === true
     const eligible = hasNormalItem && isAddonProduct && addonRaw != null && addonRaw < normal
+    // Per-variant cap: the first `limit` units get the add-on price, the rest
+    // fall back to the normal price. Defaults to 1 (legacy behaviour).
+    const limit = Math.max(1, Math.floor(Number(v?.addon_limit ?? 1)))
 
     if (eligible && item.qty >= 1) {
-      lines.push({ variantId: item.variantId, qty: item.qty, addonQty: 1, addonUnitCents: addonRaw!, normalUnitCents: normal })
-      expandedItems.push({ variantId: item.variantId, qty: 1, unitPriceCents: addonRaw! })
-      subtotalCents += addonRaw!
-      const rest = item.qty - 1
+      const addonQty = Math.min(item.qty, limit)
+      lines.push({ variantId: item.variantId, qty: item.qty, addonQty, addonUnitCents: addonRaw!, normalUnitCents: normal })
+      expandedItems.push({ variantId: item.variantId, qty: addonQty, unitPriceCents: addonRaw! })
+      subtotalCents += addonRaw! * addonQty
+      const rest = item.qty - addonQty
       if (rest > 0) {
         expandedItems.push({ variantId: item.variantId, qty: rest, unitPriceCents: normal })
         subtotalCents += normal * rest

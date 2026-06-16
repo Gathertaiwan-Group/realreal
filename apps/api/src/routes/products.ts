@@ -45,6 +45,8 @@ const nestedVariantSchema = z.object({
   sale_price: z.number().positive().nullable().optional(),
   // addon_price = 加購價 (variant-level add-on price), nullable column.
   addon_price: z.number().positive().nullable().optional(),
+  // addon_limit = 加購數量上限 (first N units at add-on price). Default 1.
+  addon_limit: z.number().int().positive().optional(),
   stock_qty: z.number().int().nonnegative(),
   weight: z.number().nonnegative().nullable().optional(),
   attributes: z.record(z.string(), z.string()).nullable().optional(),
@@ -138,7 +140,7 @@ productsRouter.get("/", async (req, res) => {
 
   let query = supabase
     .from("products")
-    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, is_recommended, display_priority, created_at, product_variants(id, sku, name, price, sale_price, addon_price, stock_qty)", { count: "exact" })
+    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, is_recommended, display_priority, created_at, product_variants(id, sku, name, price, sale_price, addon_price, addon_limit, stock_qty)", { count: "exact" })
     .eq("is_active", true)
     .is("deleted_at", null)
     .order("is_featured", { ascending: false })
@@ -191,7 +193,7 @@ productsRouter.get("/:slug", async (req, res) => {
     .from("products")
     .select(`
       id, name, slug, description, excerpt, category_id, images, is_active, created_at,
-      product_variants (id, sku, name, price, sale_price, addon_price, stock_qty, weight, attributes)
+      product_variants (id, sku, name, price, sale_price, addon_price, addon_limit, stock_qty, weight, attributes)
     `)
     .eq("slug", req.params.slug)
     .is("deleted_at", null)

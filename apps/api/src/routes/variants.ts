@@ -21,6 +21,7 @@ const variantBaseSchema = z.object({
   price: z.number().positive(),
   sale_price: z.number().positive().nullable().optional(),
   addon_price: z.number().positive().nullable().optional(),
+  addon_limit: z.number().int().positive().optional(),
   stock_qty: z.number().int().nonnegative().optional(),
   weight: z.number().nonnegative().nullable().optional(),
   attributes: z.record(z.string(), z.string()).nullable().optional(),

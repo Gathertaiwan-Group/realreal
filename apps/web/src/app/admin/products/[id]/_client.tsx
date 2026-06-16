@@ -19,6 +19,8 @@ type Variant = {
   sale_price: number | null
   /** 加購價：此規格的加購價（null = 無加購價）。僅在 is_addon 開啟時生效。 */
   addon_price: number | null
+  /** 加購數量上限：前 N 件享加購價（預設 1，之後回原價）。 */
+  addon_limit: number | null
   stock_qty: number
   sku: string | null
   weight: number | null
@@ -195,6 +197,7 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
         price: variant.price,
         sale_price: variant.sale_price || null,
         addon_price: variant.addon_price ?? null,
+        addon_limit: variant.addon_limit ?? 1,
         stock_qty: variant.stock_qty,
         sku: variant.sku || undefined,
         weight: variant.weight,
@@ -394,6 +397,12 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
                     <Input type="number" min="0" step="1" className="mt-1" value={v.addon_price ?? ""}
                       onChange={e => updateVariant(v.id, "addon_price", e.target.value ? Number(e.target.value) : null)}
                       placeholder="無加購價" />
+                  </div>
+                  <div>
+                    <Label className="text-xs">加購數量上限</Label>
+                    <Input type="number" min="1" step="1" className="mt-1" value={v.addon_limit ?? 1}
+                      onChange={e => updateVariant(v.id, "addon_limit", e.target.value ? Number(e.target.value) : 1)}
+                      placeholder="1" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-3">

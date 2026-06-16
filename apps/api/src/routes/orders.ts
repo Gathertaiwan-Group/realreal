@@ -135,7 +135,7 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
   const variantIds = items.map((i) => i.variantId)
   const { data: variantRows } = await supabase
     .from("product_variants")
-    .select("id, sku, name, price, sale_price, addon_price, product_id, products(category_id, name, is_addon)")
+    .select("id, sku, name, price, sale_price, addon_price, addon_limit, product_id, products(category_id, name, is_addon)")
     .in("id", variantIds)
   const variantMap = new Map<string, VariantPricingRow>()
   for (const row of (variantRows ?? []) as unknown as VariantPricingRow[]) variantMap.set(row.id, row)
@@ -415,7 +415,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   const variantIds = items.map((i) => i.variantId)
   const { data: variantRows, error: variantErr } = await supabase
     .from("product_variants")
-    .select("id, sku, name, price, sale_price, addon_price, product_id, products(category_id, name, is_addon)")
+    .select("id, sku, name, price, sale_price, addon_price, addon_limit, product_id, products(category_id, name, is_addon)")
     .in("id", variantIds)
   if (variantErr) {
     console.error("[orders] variant price fetch failed:", variantErr)

@@ -12,6 +12,7 @@ function variant(
     price?: number | string | null
     sale_price?: number | string | null
     addon_price?: number | string | null
+    addon_limit?: number | string | null
     is_addon?: boolean | null
   } = {},
 ): VariantPricingRow {
@@ -22,6 +23,7 @@ function variant(
     price: opts.price ?? null,
     sale_price: opts.sale_price ?? null,
     addon_price: opts.addon_price ?? null,
+    addon_limit: opts.addon_limit ?? null,
     product_id: `prod-${id}`,
     products: {
       category_id: null,
@@ -220,6 +222,56 @@ describe("computeAddonPricing", () => {
     expect(expandedItems.filter((e) => e.variantId === "addon")).toEqual([
       { variantId: "addon", qty: 1, unitPriceCents: 8000 },
       { variantId: "addon", qty: 1, unitPriceCents: 10000 },
+    ])
+  })
+
+  it("(10) addon_limit=3 + qty 5 → first 3 @addon, remaining 2 @normal", () => {
+    const map = mapOf(
+      variant("normal", { price: 200, is_addon: false }),
+      variant("addon", { price: 100, addon_price: 80, addon_limit: 3, is_addon: true }),
+    )
+    const items = [
+      { variantId: "normal", qty: 1 },
+      { variantId: "addon", qty: 5 },
+    ]
+    const { lines, expandedItems, subtotalCents } = computeAddonPricing(items, map)
+    const addonLine = lines.find((l) => l.variantId === "addon")!
+    expect(addonLine.addonQty).toBe(3)
+    // addon: 3@8000 + 2@10000 = 44000 ; normal: 20000
+    expect(subtotalCents).toBe(20000 + 24000 + 20000)
+    expect(expandedItems.filter((e) => e.variantId === "addon")).toEqual([
+      { variantId: "addon", qty: 3, unitPriceCents: 8000 },
+      { variantId: "addon", qty: 2, unitPriceCents: 10000 },
+    ])
+  })
+
+  it("(11) addon_limit unset → defaults to 1 (legacy behaviour)", () => {
+    const map = mapOf(
+      variant("normal", { price: 200, is_addon: false }),
+      variant("addon", { price: 100, addon_price: 80, is_addon: true }), // no addon_limit
+    )
+    const items = [
+      { variantId: "normal", qty: 1 },
+      { variantId: "addon", qty: 4 },
+    ]
+    const { lines } = computeAddonPricing(items, map)
+    expect(lines.find((l) => l.variantId === "addon")!.addonQty).toBe(1)
+  })
+
+  it("(12) addon_limit >= qty → all units @addon, no remainder", () => {
+    const map = mapOf(
+      variant("normal", { price: 200, is_addon: false }),
+      variant("addon", { price: 100, addon_price: 80, addon_limit: 5, is_addon: true }),
+    )
+    const items = [
+      { variantId: "normal", qty: 1 },
+      { variantId: "addon", qty: 2 },
+    ]
+    const { lines, expandedItems, subtotalCents } = computeAddonPricing(items, map)
+    expect(lines.find((l) => l.variantId === "addon")!.addonQty).toBe(2)
+    expect(subtotalCents).toBe(20000 + 16000) // 2@8000
+    expect(expandedItems.filter((e) => e.variantId === "addon")).toEqual([
+      { variantId: "addon", qty: 2, unitPriceCents: 8000 },
     ])
   })
 })

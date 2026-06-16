@@ -105,7 +105,7 @@ describe("addon_price write validation", () => {
     const res = await request(app)
       .post("/products/prod-1/variants")
       .set("Authorization", "Bearer test-token")
-      .send({ name: "加購規格", price: 100, addon_price: 80, stock_qty: 5 })
+      .send({ name: "加購規格", price: 100, addon_price: 80, addon_limit: 3, stock_qty: 5 })
     expect(res.status).toBe(201)
   })
 
