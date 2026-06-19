@@ -1,5 +1,5 @@
 import { supabase } from "./supabase"
-import { sendEmail } from "./email"
+import { sendEmail, parseRecipients } from "./email"
 import { getSettingOrEnv } from "./settings"
 
 /**
@@ -49,11 +49,10 @@ export async function refundPayment(
   //    Non-fatal — if the email blows up we still return ok=true because
   //    the DB flag is set; admin will see it in the orders list.
   try {
-    const adminEmail = await getSettingOrEnv(
-      "notifications.admin_email",
-      "ADMIN_EMAIL",
+    const adminEmails = parseRecipients(
+      await getSettingOrEnv("notifications.admin_email", "ADMIN_EMAIL"),
     )
-    if (adminEmail) {
+    if (adminEmails.length > 0) {
       const subject = `[退款待處理] 訂單 ${order.id} 已取消`
       const html = `
         <div style="font-family: -apple-system, sans-serif; max-width:600px;">
@@ -67,7 +66,7 @@ export async function refundPayment(
           </table>
         </div>
       `
-      await sendEmail({ to: adminEmail, subject, html })
+      await sendEmail({ to: adminEmails, subject, html })
     } else {
       console.warn(
         `[refund-payment] no admin email configured, skipping notification for order ${order.id}`,

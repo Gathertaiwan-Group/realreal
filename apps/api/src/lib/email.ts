@@ -23,7 +23,7 @@ async function getEmailCreds() {
   return { apiKey, from }
 }
 
-export async function sendEmail({ to, subject, html }: { to: string; subject: string; html: string }) {
+export async function sendEmail({ to, subject, html }: { to: string | string[]; subject: string; html: string }) {
   const { apiKey, from } = await getEmailCreds()
   if (!apiKey) {
     console.warn(`[email] Skipping send (no Resend config): to=${to} subject="${subject}"`)
@@ -48,4 +48,22 @@ export async function sendEmail({ to, subject, html }: { to: string; subject: st
     console.error(`[email] Failed to send: to=${to} subject="${subject}" — ${detail}`)
     throw err
   }
+}
+
+/**
+ * Parse an admin-entered recipient string into a clean list of addresses.
+ * Supports multiple recipients separated by comma / semicolon / whitespace /
+ * newline; trims each, drops anything without "@", and dedupes. Returns [] for
+ * empty/blank input — lets the 「管理員收件 Email」 setting hold several people.
+ */
+export function parseRecipients(raw: string | null | undefined): string[] {
+  if (!raw) return []
+  return [
+    ...new Set(
+      raw
+        .split(/[,;\s]+/)
+        .map((s) => s.trim())
+        .filter((s) => s.includes("@")),
+    ),
+  ]
 }

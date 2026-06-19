@@ -1,6 +1,6 @@
 import { supabase } from "./supabase"
 import { renderAndSendEmail } from "../workers/email-sender"
-import { sendEmail } from "./email"
+import { sendEmail, parseRecipients } from "./email"
 import { incrementSpendAndUpgrade } from "./tier"
 import { inventoryQueue } from "./queue"
 import { invoiceQueue } from "../workers/invoice-issuer"
@@ -110,8 +110,8 @@ export async function enqueuePostPaymentJobs(orderId: string) {
 
   // 1b) Admin "new order" notification — configurable address.
   try {
-    const adminEmail = await getSetting("notifications.admin_email")
-    if (adminEmail) {
+    const adminEmails = parseRecipients(await getSetting("notifications.admin_email"))
+    if (adminEmails.length > 0) {
       // Pull shipping address + items for a richer admin email.
       const [{ data: shippingRow }, { data: items }] = await Promise.all([
         supabase
@@ -164,7 +164,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
           <p style="margin:24px 0 0;font-size:13px;color:#687279">進管理後台處理 → <a href="https://realreal-store.vercel.app/admin/orders" style="color:#10305a">/admin/orders</a></p>
         </div>
       `
-      await sendEmail({ to: adminEmail, subject, html })
+      await sendEmail({ to: adminEmails, subject, html })
     }
   } catch (err) {
     console.warn("[post-payment] admin notification failed (non-fatal):", err)

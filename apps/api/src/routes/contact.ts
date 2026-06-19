@@ -1,6 +1,6 @@
 import { Router } from "express"
 import { z } from "zod"
-import { sendEmail } from "../lib/email"
+import { sendEmail, parseRecipients } from "../lib/email"
 import { getSetting } from "../lib/settings"
 
 export const contactRouter = Router()
@@ -27,8 +27,8 @@ contactRouter.post("/", async (req, res) => {
   }
   const { name, email, phone, subject, message } = parsed.data
 
-  const adminEmail = await getSetting("notifications.admin_email")
-  if (!adminEmail) {
+  const adminEmails = parseRecipients(await getSetting("notifications.admin_email"))
+  if (adminEmails.length === 0) {
     console.warn("[contact] notifications.admin_email 未設定，無法寄出聯絡訊息")
     res.status(500).json({ error: "聯絡信箱未設定，請稍後再試" })
     return
@@ -49,7 +49,7 @@ contactRouter.post("/", async (req, res) => {
 
   try {
     await sendEmail({
-      to: adminEmail,
+      to: adminEmails,
       subject: `【誠真生活｜聯絡表單】${subject}`,
       html,
     })
