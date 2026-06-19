@@ -371,11 +371,11 @@ export function evalFreeShipping(
   return { ...applied(c), zero_shipping: true }
 }
 
-// 5. bundle — whole-cart "buy N, get M free" (cheapest/most expensive units)
-export function evalBundle(
+// 5. bundle — scope-bound "buy N, get M free" 任選 (cheapest/most expensive units)
+export async function evalBundle(
   c: CampaignRow,
   ctx: EvaluatorContext,
-): EvaluatorResult {
+): Promise<EvaluatorResult> {
   const cfg = getConfig(c)
   const buyQty = asNumber(cfg.buy_quantity)
   // The admin form reuses the buy_x_get_y branch and saves the free count as
@@ -383,6 +383,10 @@ export function evalBundle(
   // so a bundle created/edited via the form actually applies.
   const freeQty = asNumber(cfg.free_quantity) ?? asNumber(cfg.get_quantity)
   const rule = asString(cfg.free_item_rule)
+  // 適用範圍/指定分類：預設 "all"，讓未設定 scope 的舊 bundle 列維持整車行為
+  // （resolveScopeItems("all", …) 會回傳全部商品）。
+  const scope = asString(cfg.scope) || "all"
+  const categorySlug = asString(cfg.category_slug)
 
   if (buyQty === undefined || buyQty <= 0) {
     return notApplied(c, "config.buy_quantity 缺失或非法")
@@ -394,12 +398,16 @@ export function evalBundle(
     return notApplied(c, "config.free_item_rule 必須為 lowest_price 或 highest_price")
   }
 
-  const totalQty = ctx.cart.items.reduce((s, i) => s + i.qty, 0)
+  // bundle 為混搭任選：只計算 scope 內的商品，且只能免 scope 內的件數。
+  const items = await resolveScopeItems(scope, categorySlug, ctx.cart.items)
+  const totalQty = items.reduce((s, i) => s + i.qty, 0)
   if (totalQty < buyQty + freeQty) {
     return notApplied(c, `總件數 ${totalQty} < ${buyQty + freeQty}（需 ${buyQty} 件購買 + ${freeQty} 件贈送）`)
   }
 
-  const units = explodeUnits(ctx.cart.items)
+  // bundle 維持「一次性」語意：只免最便宜/最貴的 freeQty 件一次（不像 buy_x_get_y
+  // 會依 max_uses 重複）。
+  const units = explodeUnits(items)
   const sorted =
     rule === "highest_price"
       ? units.sort((a, b) => b.unit_price - a.unit_price)

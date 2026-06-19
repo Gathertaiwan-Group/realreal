@@ -257,6 +257,32 @@ function ConfigFields({
     )
   }
 
+  if (type === "birthday_bonus") {
+    return (
+      <>
+        <div className="space-y-1.5">
+          <Label className="text-xs">折扣方式</Label>
+          <select name={`${prefix}_discount_method`} defaultValue={(config.discount_method as string) ?? "percent"} className={selectClass}>
+            <option value="percent">百分比折扣</option>
+            <option value="fixed">固定金額</option>
+          </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">折扣值</Label>
+          <Input name={`${prefix}_discount_value`} type="number" min={0} defaultValue={(config.discount_value as number) ?? ""} placeholder="10" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">生日前後天數</Label>
+          <Input name={`${prefix}_birthday_window_days`} type="number" min={1} defaultValue={(config.birthday_window_days as number) ?? ""} placeholder="7" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">點數倍率（選填）</Label>
+          <Input name={`${prefix}_rebate_multiplier`} type="number" min={1} step={0.1} defaultValue={(config.rebate_multiplier as number) ?? ""} placeholder="例如 2 = 雙倍點數" />
+        </div>
+      </>
+    )
+  }
+
   if (type === "bundle" || type === "buy_x_get_y") {
     return (
       <>
@@ -279,13 +305,15 @@ function ConfigFields({
           <Label className="text-xs">指定分類</Label>
           <CategoryPicker name={`${prefix}_category_slug`} defaultValue={(config.category_slug as string) ?? ""} />
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">限同品項</Label>
-          <select name={`${prefix}_same_item_only`} defaultValue={config.same_item_only ? "true" : "false"} className={selectClass}>
-            <option value="true">是 — 同商品才送</option>
-            <option value="false">否 — 可跨商品</option>
-          </select>
-        </div>
+        {type === "buy_x_get_y" && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">限同品項</Label>
+            <select name={`${prefix}_same_item_only`} defaultValue={config.same_item_only ? "true" : "false"} className={selectClass}>
+              <option value="true">是 — 同商品才送</option>
+              <option value="false">否 — 可跨商品</option>
+            </select>
+          </div>
+        )}
         <div className="space-y-1.5">
           <Label className="text-xs">贈品取價規則</Label>
           <select name={`${prefix}_free_item_rule`} defaultValue={(config.free_item_rule as string) ?? "lowest_price"} className={selectClass}>
@@ -294,10 +322,12 @@ function ConfigFields({
             <option value="same_item">同品項</option>
           </select>
         </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">每筆訂單最多套用組數</Label>
-          <Input name={`${prefix}_max_uses_per_order`} type="number" min={1} defaultValue={(config.max_uses_per_order as number) ?? ""} placeholder="不限" />
-        </div>
+        {type === "buy_x_get_y" && (
+          <div className="space-y-1.5">
+            <Label className="text-xs">每筆訂單最多套用組數</Label>
+            <Input name={`${prefix}_max_uses_per_order`} type="number" min={1} defaultValue={(config.max_uses_per_order as number) ?? ""} placeholder="不限" />
+          </div>
+        )}
       </>
     )
   }
@@ -482,6 +512,15 @@ function extractConfig(fd: FormData, prefix: string, type: string): Record<strin
       discount_value: Number(fd.get(`${prefix}_discount_value`)) || 0,
       scope: fd.get(`${prefix}_scope`) as string,
       category_slug: (fd.get(`${prefix}_category_slug`) as string) || undefined,
+    }
+  }
+  if (type === "birthday_bonus") {
+    const rebate = fd.get(`${prefix}_rebate_multiplier`) as string
+    return {
+      discount_method: fd.get(`${prefix}_discount_method`) as string,
+      discount_value: Number(fd.get(`${prefix}_discount_value`)) || 0,
+      birthday_window_days: Number(fd.get(`${prefix}_birthday_window_days`)) || 0,
+      rebate_multiplier: rebate ? Number(rebate) : undefined,
     }
   }
   if (type === "bundle" || type === "buy_x_get_y") {
