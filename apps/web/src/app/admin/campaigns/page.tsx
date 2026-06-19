@@ -249,6 +249,10 @@ function ConfigFields({
             <option value="specific_categories">指定分類</option>
           </select>
         </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">指定分類</Label>
+          <CategoryPicker name={`${prefix}_category_slug`} defaultValue={(config.category_slug as string) ?? ""} />
+        </div>
       </>
     )
   }
@@ -289,6 +293,10 @@ function ConfigFields({
             <option value="highest_price">取最高價品</option>
             <option value="same_item">同品項</option>
           </select>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">每筆訂單最多套用組數</Label>
+          <Input name={`${prefix}_max_uses_per_order`} type="number" min={1} defaultValue={(config.max_uses_per_order as number) ?? ""} placeholder="不限" />
         </div>
       </>
     )
@@ -331,13 +339,6 @@ function ConfigFields({
         <div className="space-y-1.5">
           <Label className="text-xs">折扣金額 (NT$)</Label>
           <Input name={`${prefix}_discount_amount`} type="number" min={0} defaultValue={(config.discount_amount as number) ?? ""} placeholder="100" />
-        </div>
-        <div className="space-y-1.5">
-          <Label className="text-xs">可與會員折扣疊加</Label>
-          <select name={`${prefix}_stackable`} defaultValue={config.stackable ? "true" : "false"} className={selectClass}>
-            <option value="false">否</option>
-            <option value="true">是</option>
-          </select>
         </div>
       </>
     )
@@ -417,6 +418,10 @@ function ConfigFields({
             <option value="specific_categories">指定分類</option>
           </select>
         </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">指定分類</Label>
+          <CategoryPicker name={`${prefix}_category_slug`} defaultValue={(config.category_slug as string) ?? ""} />
+        </div>
       </>
     )
   }
@@ -476,9 +481,11 @@ function extractConfig(fd: FormData, prefix: string, type: string): Record<strin
       discount_method: fd.get(`${prefix}_discount_method`) as string,
       discount_value: Number(fd.get(`${prefix}_discount_value`)) || 0,
       scope: fd.get(`${prefix}_scope`) as string,
+      category_slug: (fd.get(`${prefix}_category_slug`) as string) || undefined,
     }
   }
   if (type === "bundle" || type === "buy_x_get_y") {
+    const maxUses = Number(fd.get(`${prefix}_max_uses_per_order`))
     return {
       buy_quantity: Number(fd.get(`${prefix}_buy_quantity`)) || 1,
       get_quantity: Number(fd.get(`${prefix}_get_quantity`)) || 1,
@@ -486,6 +493,7 @@ function extractConfig(fd: FormData, prefix: string, type: string): Record<strin
       category_slug: (fd.get(`${prefix}_category_slug`) as string) || undefined,
       same_item_only: fd.get(`${prefix}_same_item_only`) === "true",
       free_item_rule: fd.get(`${prefix}_free_item_rule`) as string,
+      max_uses_per_order: maxUses > 0 ? Math.floor(maxUses) : undefined,
     }
   }
   if (type === "second_half_price") {
@@ -500,7 +508,6 @@ function extractConfig(fd: FormData, prefix: string, type: string): Record<strin
     return {
       min_amount: Number(fd.get(`${prefix}_min_amount`)) || 0,
       discount_amount: Number(fd.get(`${prefix}_discount_amount`)) || 0,
-      stackable: fd.get(`${prefix}_stackable`) === "true",
     }
   }
   if (type === "combo_discount") {

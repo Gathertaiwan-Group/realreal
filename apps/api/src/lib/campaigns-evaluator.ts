@@ -378,7 +378,10 @@ export function evalBundle(
 ): EvaluatorResult {
   const cfg = getConfig(c)
   const buyQty = asNumber(cfg.buy_quantity)
-  const freeQty = asNumber(cfg.free_quantity)
+  // The admin form reuses the buy_x_get_y branch and saves the free count as
+  // `get_quantity`; only legacy seeded rows use `free_quantity`. Accept either
+  // so a bundle created/edited via the form actually applies.
+  const freeQty = asNumber(cfg.free_quantity) ?? asNumber(cfg.get_quantity)
   const rule = asString(cfg.free_item_rule)
 
   if (buyQty === undefined || buyQty <= 0) {

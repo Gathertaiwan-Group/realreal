@@ -188,6 +188,33 @@ export async function decrementSpendOnRefund(
   }
 }
 
+/**
+ * Does a tier_upgrade_bonus campaign config target the tier the user just
+ * upgraded INTO? The admin form (TierPicker) saves the target tier as
+ * `config.tier_slug` (a slug string, e.g. "gold"/"diamond"), so the primary
+ * match is slug-to-slug. A legacy fallback matches `config.tier_id` against the
+ * upgraded tier's id for any old rows that stored the UUID. Comparisons are
+ * trimmed string compares so a stray space / casing-on-the-id can't silently
+ * drop the match.
+ *
+ * Pure (no I/O) so it can be unit-tested without mocking Supabase.
+ */
+export function tierBonusMatches(
+  config: { tier_slug?: string | null; tier_id?: string | null } | null | undefined,
+  upgradedTierSlug: string | null | undefined,
+  upgradedTierId: string | null | undefined,
+): boolean {
+  if (!config) return false
+  const cfgSlug = typeof config.tier_slug === "string" ? config.tier_slug.trim() : ""
+  const slug = typeof upgradedTierSlug === "string" ? upgradedTierSlug.trim() : ""
+  if (cfgSlug && slug && cfgSlug === slug) return true
+  // Legacy fallback: rows that keyed on the tier UUID instead of the slug.
+  const cfgId = typeof config.tier_id === "string" ? config.tier_id.trim() : ""
+  const id = typeof upgradedTierId === "string" ? upgradedTierId.trim() : ""
+  if (cfgId && id && cfgId === id) return true
+  return false
+}
+
 export async function incrementSpendAndUpgrade(userId: string, amount: number) {
   const { data, error } = await supabase.rpc("increment_user_tier_spend", {
     p_user_id: userId,
@@ -197,6 +224,17 @@ export async function incrementSpendAndUpgrade(userId: string, amount: number) {
 
   const row = Array.isArray(data) ? data[0] : data
   if (!row?.tier_changed || !row.membership_tier_id) return
+
+  // Resolve the upgraded tier's slug — the RPC only returns the tier id (UUID),
+  // but campaign configs key on the slug (config.tier_slug). Without this the
+  // slug match below can never fire and bonus points are never granted.
+  const upgradedTierId = row.membership_tier_id as string
+  const { data: upgradedTier } = await supabase
+    .from("membership_tiers")
+    .select("slug")
+    .eq("id", upgradedTierId)
+    .maybeSingle()
+  const upgradedTierSlug = (upgradedTier as { slug?: string | null } | null)?.slug ?? null
 
   const now = new Date().toISOString()
   const { data: bonusCampaigns } = await supabase
@@ -210,9 +248,9 @@ export async function incrementSpendAndUpgrade(userId: string, amount: number) {
   for (const c of (bonusCampaigns ?? []) as Array<{
     id: string
     name: string
-    config: { tier_id?: string; bonus_points?: number | string } | null
+    config: { tier_slug?: string; tier_id?: string; bonus_points?: number | string } | null
   }>) {
-    if (c.config?.tier_id !== row.membership_tier_id) continue
+    if (!tierBonusMatches(c.config, upgradedTierSlug, upgradedTierId)) continue
     const bonus = Number(c.config?.bonus_points ?? 0)
     if (!Number.isFinite(bonus) || bonus <= 0) continue
     try {
