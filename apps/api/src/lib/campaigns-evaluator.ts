@@ -438,20 +438,58 @@ export async function evalBuyXGetY(
     return notApplied(c, "config.free_item_rule 必須為 lowest_price 或 highest_price")
   }
 
+  const sameItemOnly = cfg.same_item_only === true || cfg.same_item_only === "true"
   const items = await resolveScopeItems(scope, categorySlug, ctx.cart.items)
-  const scopeQty = items.reduce((s, i) => s + i.qty, 0)
-  const possibleUses = Math.floor(scopeQty / (buyQty + getQty))
-  const uses = Math.min(possibleUses, maxUses ?? 999)
-  if (uses === 0) {
-    return notApplied(c, `scope 件數 ${scopeQty} 不足 1 組`)
+
+  // How many "buy X + get Y" groups the cart qualifies for, and which units are
+  // eligible to be given free. When same_item_only (限同品項) is set, 買 X 與 送 Y
+  // 必須來自同一個商品 (product_id): each product qualifies on its OWN quantity and
+  // only that product's units can be freed — so 1×A + 1×B never combine into a
+  // group. When it is NOT set, quantities aggregate across the whole scope.
+  let totalUses: number
+  let freeablePool: CartItem[]
+  if (sameItemOnly) {
+    const byProduct = new Map<string, CartItem[]>()
+    for (const i of items) {
+      const arr = byProduct.get(i.product_id) ?? []
+      arr.push(i)
+      byProduct.set(i.product_id, arr)
+    }
+    let usesSum = 0
+    freeablePool = []
+    for (const group of byProduct.values()) {
+      const groupQty = group.reduce((s, i) => s + i.qty, 0)
+      const groupUses = Math.floor(groupQty / (buyQty + getQty))
+      if (groupUses === 0) continue
+      usesSum += groupUses
+      // Only this product's own units (its cheapest/dearest groupUses*getQty) are
+      // freeable — never another product's.
+      const groupUnits = explodeUnits(group)
+      const groupSorted =
+        rule === "highest_price"
+          ? groupUnits.sort((a, b) => b.unit_price - a.unit_price)
+          : groupUnits.sort((a, b) => a.unit_price - b.unit_price)
+      freeablePool.push(...groupSorted.slice(0, groupUses * getQty))
+    }
+    totalUses = Math.min(usesSum, maxUses ?? 999)
+  } else {
+    const scopeQty = items.reduce((s, i) => s + i.qty, 0)
+    totalUses = Math.min(Math.floor(scopeQty / (buyQty + getQty)), maxUses ?? 999)
+    freeablePool = explodeUnits(items)
   }
 
-  const totalFreeUnits = uses * getQty
-  const units = explodeUnits(items)
+  if (totalUses === 0) {
+    return notApplied(
+      c,
+      sameItemOnly ? "無單一商品湊足 1 組（限同品項）" : "scope 件數不足 1 組",
+    )
+  }
+
+  const totalFreeUnits = totalUses * getQty
   const sorted =
     rule === "highest_price"
-      ? units.sort((a, b) => b.unit_price - a.unit_price)
-      : units.sort((a, b) => a.unit_price - b.unit_price)
+      ? freeablePool.sort((a, b) => b.unit_price - a.unit_price)
+      : freeablePool.sort((a, b) => a.unit_price - b.unit_price)
   const freed = sorted.slice(0, totalFreeUnits)
   const discount = freed.reduce((s, u) => s + u.unit_price, 0)
 
