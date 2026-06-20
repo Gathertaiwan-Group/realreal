@@ -299,11 +299,15 @@ adminOrdersRouter.post("/:id/retry-shipment", async (req, res) => {
 
   const { data: order } = await supabase
     .from("orders")
-    .select("id, payment_status")
+    .select("id, payment_status, payment_method")
     .eq("id", orderId)
     .single()
   if (!order) { res.status(404).json({ error: "Order not found" }); return }
-  if (order.payment_status !== "paid") {
+  // 超商取貨付款 (cvs_cod) collects cash at pickup, so its payment_status stays
+  // "pending" until then — don't gate its retry on "paid". Prepaid methods only
+  // ship once the payment has settled.
+  const isCod = order.payment_method === "cvs_cod"
+  if (!isCod && order.payment_status !== "paid") {
     res.status(400).json({ error: `payment_status is "${order.payment_status}", must be "paid"` })
     return
   }
@@ -319,7 +323,7 @@ adminOrdersRouter.post("/:id/retry-shipment", async (req, res) => {
 
   try {
     await inventoryQueue.add(
-      "create-shipment",
+      isCod ? "create-shipment-cod" : "create-shipment",
       { orderId },
       { attempts: 3, backoff: { type: "exponential", delay: 30000 } },
     )

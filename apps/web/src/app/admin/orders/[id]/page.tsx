@@ -66,7 +66,7 @@ export default async function AdminOrderDetailPage({
       order_addresses(*),
       payments(id, gateway_tx_id, paid_at),
       invoices!invoices_order_id_fkey(*),
-      logistics(id, provider, type, ecpay_logistics_id, tracking_number, cvs_payment_no, cvs_validation_no, status, shipped_at, delivered_at)
+      logistics(id, provider, type, ecpay_logistics_id, tracking_number, cvs_payment_no, cvs_validation_no, status, shipped_at, delivered_at, raw_response)
     `
     )
     .eq("id", id)

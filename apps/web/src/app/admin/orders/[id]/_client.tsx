@@ -991,10 +991,35 @@ export function LogisticsCard({
           <Truck className="h-4 w-4" />
           <span className="font-medium">物流資訊</span>
         </div>
-        <Badge variant={LOGISTICS_STATUS_VARIANT[logistics.status] ?? "outline"}>
-          {LOGISTICS_STATUS_LABEL[logistics.status] ?? logistics.status}
-        </Badge>
+        <div className="flex items-center gap-2">
+          {logistics.status === "failed" && (
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              disabled={isPending}
+              onClick={handleRetry}
+            >
+              <RefreshCw className="mr-1 h-3.5 w-3.5" />
+              {isPending ? "重派中…" : "重派物流"}
+            </Button>
+          )}
+          <Badge variant={LOGISTICS_STATUS_VARIANT[logistics.status] ?? "outline"}>
+            {LOGISTICS_STATUS_LABEL[logistics.status] ?? logistics.status}
+          </Badge>
+        </div>
       </div>
+
+      {logistics.status === "failed" && (
+        <div className="mb-3 rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+          <p className="mb-1 font-medium">綠界物流建立失敗</p>
+          <p className="break-all font-mono">
+            {(logistics.raw_response as { error?: string } | null)?.error ??
+              "未知錯誤（請查伺服器日誌）"}
+          </p>
+          <p className="mt-1.5 text-red-500">修正綠界設定後，按右上「重派物流」重試。</p>
+        </div>
+      )}
 
       <div className="space-y-1.5">
         <Row label="物流商" value={logistics.provider === "ecpay" ? "綠界 (ECPay)" : logistics.provider ?? "—"} />

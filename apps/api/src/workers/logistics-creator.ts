@@ -132,11 +132,14 @@ export async function processCreateShipmentCod(orderId: string) {
     return
   }
 
-  // Idempotency: skip if logistics row already exists
+  // Idempotency: a SUCCESSFUL logistics row (has ecpay_logistics_id) means done.
+  // A prior `failed` row (no ecpay id) must NOT block a retry, so key on the
+  // ecpay id rather than mere existence.
   const { data: existing } = await supabase
     .from("logistics")
     .select("id")
     .eq("order_id", orderId)
+    .not("ecpay_logistics_id", "is", null)
     .limit(1)
     .maybeSingle()
 
@@ -155,19 +158,39 @@ export async function processCreateShipmentCod(orderId: string) {
   if (!address) throw new Error(`Shipping address not found for order ${orderId}`)
 
   const collectionAmountTwd = Math.round(Number(order.total))
-
   const cvsType = order.shipping_method === "cvs_711" ? "UNIMARTC2C" : "FAMIC2C"
-  const result = await createCvsLogistics(
-    orderId,
-    cvsType as "UNIMARTC2C" | "FAMIC2C",
-    address.name,
-    address.phone,
-    address.email ?? "",
-    address.cvs_store_id ?? "",
-    collectionAmountTwd, // GoodsAmount = 代收金額 = 訂單總額
-    true,                // isCollection = Y
-  )
 
+  let result: Awaited<ReturnType<typeof createCvsLogistics>>
+  try {
+    result = await createCvsLogistics(
+      orderId,
+      cvsType as "UNIMARTC2C" | "FAMIC2C",
+      address.name,
+      address.phone,
+      address.email ?? "",
+      address.cvs_store_id ?? "",
+      collectionAmountTwd, // GoodsAmount = 代收金額 = 訂單總額
+      true,                // isCollection = Y
+    )
+  } catch (err) {
+    // Persist the failure so the admin order page can show WHY. The logistics
+    // table has no error_message column, so stash the ECPay RtnMsg in
+    // raw_response. Replace any prior failed row; re-throw so BullMQ still retries.
+    const message = err instanceof Error ? err.message : String(err)
+    await supabase.from("logistics").delete().eq("order_id", orderId).is("ecpay_logistics_id", null)
+    await supabase.from("logistics").insert({
+      order_id: orderId,
+      provider: "ecpay",
+      type: "CVS",
+      status: "failed",
+      raw_response: { error: message, failed_at: new Date().toISOString() },
+    })
+    console.error(`[logistics-creator] CVS COD createCvsLogistics failed for order ${orderId}: ${message}`)
+    throw err
+  }
+
+  // Success — drop any earlier failed row, then insert the real one.
+  await supabase.from("logistics").delete().eq("order_id", orderId).is("ecpay_logistics_id", null)
   const { error } = await supabase.from("logistics").insert({
     order_id: orderId,
     provider: "ecpay",
