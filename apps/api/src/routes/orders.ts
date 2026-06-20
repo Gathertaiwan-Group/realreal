@@ -19,6 +19,7 @@ import { computeShipping, getShippingRule } from "../lib/shipping"
 import { inventoryQueue } from "../lib/queue"
 import { enqueuePostPaymentJobs } from "../lib/enqueue-post-payment"
 import { saveCustomerContact } from "../lib/save-customer-contact"
+import { validateCvsReceiverName } from "../lib/ecpay-name"
 import {
   calcPointsDiscount,
   getEffectiveRedeemablePoints,
@@ -385,6 +386,16 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
 
   const { items, address, shippingMethod, paymentMethod, guestEmail, invoice } = parsed.data
   let { couponCode } = parsed.data
+
+  // 超商取貨收件人姓名必須符合綠界規則，否則訂單成立後 createCvsLogistics 會建單
+  // 失敗（error 10500036）。前端結帳已擋一次，這裡是 server 端安全網：直接拒絕、
+  // 不建立會卡住的訂單。鏡像 apps/web shipping-preview.ts 的同名驗證。
+  if (shippingMethod === "cvs_711" || shippingMethod === "cvs_family") {
+    const cvsNameErr = validateCvsReceiverName(address.name)
+    if (cvsNameErr) {
+      res.status(400).json({ error: cvsNameErr, field: "name" }); return
+    }
+  }
   const requestedPointsUsed = parsed.data.points_used ?? 0
   const userId: string | undefined = res.locals.userId
 

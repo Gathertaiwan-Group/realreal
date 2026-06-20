@@ -13,6 +13,7 @@ import {
   buildOrderPreviewItems,
   formatShippingPreviewLabel,
   toApiShippingMethod,
+  validateCvsReceiverName,
 } from "@/lib/shipping-preview"
 import {
   PromoWidget,
@@ -611,6 +612,11 @@ export default function CheckoutPage() {
       if (!addressLine.trim()) errs.address = "請輸入詳細地址"
     } else if (addressType === "cvs" || addressType === "cvs_cod") {
       if (!cvsStoreName) errs.cvsStore = "請選擇取貨門市"
+      // 超商取貨收件人姓名須符合綠界規則，否則訂單成立後會建單失敗
+      if (name.trim() && !errs.name) {
+        const cvsNameErr = validateCvsReceiverName(name)
+        if (cvsNameErr) errs.name = cvsNameErr
+      }
     } else {
       // overseas
       if (!country.trim()) errs.country = "請輸入國家"

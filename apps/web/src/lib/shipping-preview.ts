@@ -20,6 +20,27 @@ export function toApiShippingMethod(method: CheckoutShippingMethod): ApiShipping
   return method
 }
 
+/**
+ * ECPay 超商取貨 (UNIMARTC2C / FAMIC2C) rejects the ReceiverName unless it is
+ * either 2~5 Chinese characters OR 4~10 Latin letters — no digits, spaces or
+ * symbols (error 10500036). Mirror that rule at checkout so the customer fixes
+ * the name BEFORE the order is placed, instead of the order silently failing
+ * logistics creation. Returns an error message, or undefined when valid.
+ *
+ * 間隔號（·）is allowed for indigenous names. Kept identical to the server-side
+ * guard in apps/api/src/lib/ecpay-name.ts — change both together.
+ */
+export function validateCvsReceiverName(raw: string): string | undefined {
+  const n = raw.trim()
+  if (!n) return "請輸入收件人姓名"
+  const pureChinese = /^[一-龥·‧]{2,5}$/.test(n)
+  const pureEnglish = /^[A-Za-z]{4,10}$/.test(n)
+  if (!pureChinese && !pureEnglish) {
+    return "超商取貨姓名須為中文 2~5 字，或英文 4~10 字（不可含數字、空白或符號）"
+  }
+  return undefined
+}
+
 export function buildOrderPreviewItems(items: CartItem[]) {
   return items.map((item) => ({
     variantId: item.variantId,
