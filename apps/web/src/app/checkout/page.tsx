@@ -148,6 +148,49 @@ type FieldErrors = {
   country?: string
 }
 
+// 驗證失敗時要捲到第一個有錯的欄位 —— 順序須照畫面由上而下。各 addressType 的
+// 錯誤鍵互斥（home: city/address；cvs: cvsStore；overseas: country/address），
+// 共用的 address 永遠排在 city/country 之後，所以單一順序即可正確涵蓋三種模式。
+const CHECKOUT_ERROR_FIELD_ORDER: Array<keyof FieldErrors> = [
+  "name",
+  "phone",
+  "email",
+  "cvsStore",
+  "city",
+  "country",
+  "address",
+]
+// 錯誤鍵 → DOM 元素 id（address 對應的 input id 是 addressLine；cvsStore 是門市
+// 選擇器外層的錨點 div）。
+const CHECKOUT_ERROR_ELEMENT_ID: Record<string, string> = {
+  name: "name",
+  phone: "phone",
+  email: "email",
+  city: "city",
+  address: "addressLine",
+  cvsStore: "cvs-store-section",
+  country: "country",
+}
+
+function scrollToFirstError(errs: FieldErrors) {
+  for (const key of CHECKOUT_ERROR_FIELD_ORDER) {
+    if (!errs[key]) continue
+    const el = document.getElementById(CHECKOUT_ERROR_ELEMENT_ID[key])
+    if (!el) return
+    el.scrollIntoView({ behavior: "smooth", block: "center" })
+    // 聚焦欄位讓使用者能直接輸入；preventScroll 避免瀏覽器的瞬間跳動蓋掉平滑捲動。
+    // 門市選擇器是 div（不可聚焦），就只捲動不聚焦。
+    if (
+      el instanceof HTMLInputElement ||
+      el instanceof HTMLSelectElement ||
+      el instanceof HTMLTextAreaElement
+    ) {
+      el.focus({ preventScroll: true })
+    }
+    return
+  }
+}
+
 export default function CheckoutPage() {
   const router = useRouter()
   const items = useCart(s => s.items)
@@ -634,7 +677,11 @@ export default function CheckoutPage() {
     setErrors(errs)
     // Mark all as touched to show errors
     setTouched({ name: true, phone: true, email: true, city: true, address: true, cvsStore: true, country: true })
-    if (Object.keys(errs).length > 0) return
+    if (Object.keys(errs).length > 0) {
+      // 捲動 + 聚焦到第一個有錯的欄位，使用者不用自己找哪裡紅字
+      scrollToFirstError(errs)
+      return
+    }
 
     // Build the persisted address by addressType so residual fields from a
     // previously-selected mode never leak into the order (T-P2). Switching
@@ -956,7 +1003,7 @@ export default function CheckoutPage() {
                     </div>
 
                     {/* CVS Store Selector */}
-                    <div className="rounded-lg border-2 border-dashed border-zinc-300 bg-zinc-50 p-4">
+                    <div id="cvs-store-section" className="rounded-lg border-2 border-dashed border-zinc-300 bg-zinc-50 p-4">
                       {cvsStoreName ? (
                         <div className="flex items-center justify-between">
                           <div>
@@ -1033,7 +1080,7 @@ export default function CheckoutPage() {
                     </div>
 
                     {/* CVS Store Selector */}
-                    <div className="rounded-lg border-2 border-dashed border-zinc-300 bg-zinc-50 p-4">
+                    <div id="cvs-store-section" className="rounded-lg border-2 border-dashed border-zinc-300 bg-zinc-50 p-4">
                       {cvsStoreName ? (
                         <div className="flex items-center justify-between">
                           <div>
