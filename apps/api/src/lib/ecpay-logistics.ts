@@ -70,6 +70,33 @@ export interface CvsLogisticsResult {
   cvsValidationNo?: string
 }
 
+/**
+ * Parse an ECPay `Express/Create` response. ECPay replies in TWO shapes:
+ *   1) key=value:  `RtnCode=1&AllPayLogisticsID=...&...`
+ *   2) pipe form:  `1|<urlencoded data>` on success, `10500036|錯誤訊息` on failure
+ * `URLSearchParams` only handles form (1), leaving RtnCode/RtnMsg undefined for
+ * form (2) — which is why failures used to surface as `RtnCode=? RtnMsg=?`.
+ * Detect the pipe form and normalise both into one flat object.
+ */
+export function parseEcpayLogisticsResponse(text: string): Record<string, string> {
+  const result = Object.fromEntries(new URLSearchParams(text))
+  // Only treat as pipe form when the key=value parse didn't find a RtnCode,
+  // so a genuine key=value success is never re-interpreted.
+  const pipe = text.match(/^\s*(\d+)\|([\s\S]*)$/)
+  if (pipe && result.RtnCode === undefined) {
+    const [, code, rest] = pipe
+    result.RtnCode = code
+    if (rest.includes("=")) {
+      // success: the tail is urlencoded key=value data (AllPayLogisticsID, …)
+      for (const [k, v] of new URLSearchParams(rest)) result[k] = v
+    } else {
+      // failure: the tail is a human-readable message
+      result.RtnMsg = rest.trim()
+    }
+  }
+  return result
+}
+
 export async function createCvsLogistics(
   _orderId: string,
   cvsType: "UNIMARTC2C" | "FAMIC2C",
@@ -128,7 +155,7 @@ export async function createCvsLogistics(
     body: new URLSearchParams(fields).toString(),
   })
   const text = await response.text()
-  const result = Object.fromEntries(new URLSearchParams(text))
+  const result = parseEcpayLogisticsResponse(text)
 
   if (result.RtnCode !== "1") {
     // Surface the raw response so we don't lose what ECPay actually said
@@ -196,10 +223,12 @@ export async function createHomeDelivery(
     body: new URLSearchParams(fields).toString(),
   })
   const text = await response.text()
-  const result = Object.fromEntries(new URLSearchParams(text))
+  const result = parseEcpayLogisticsResponse(text)
 
   if (result.RtnCode !== "1") {
-    throw new Error(`ECPay Logistics home delivery error: ${result.RtnCode} ${result.RtnMsg}`)
+    throw new Error(
+      `ECPay Logistics home delivery error: RtnCode=${result.RtnCode ?? "?"} RtnMsg=${result.RtnMsg ?? "?"} raw=${text.slice(0, 500)}`,
+    )
   }
 
   return {
