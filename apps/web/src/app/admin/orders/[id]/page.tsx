@@ -349,6 +349,7 @@ export default async function AdminOrderDetailPage({
               : null
           }
           paymentStatus={order.payment_status}
+          paymentMethod={order.payment_method ?? null}
           shippingMethod={order.shipping_method ?? null}
         />
 

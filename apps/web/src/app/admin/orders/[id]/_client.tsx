@@ -902,6 +902,7 @@ interface LogisticsCardProps {
   logistics: LogisticsRow | null
   shipping: ShippingInfo | null
   paymentStatus: string
+  paymentMethod: string | null
   shippingMethod: string | null
 }
 
@@ -910,6 +911,7 @@ export function LogisticsCard({
   logistics,
   shipping,
   paymentStatus,
+  paymentMethod,
   shippingMethod,
 }: LogisticsCardProps) {
   const [isPending, startTransition] = useTransition()
@@ -953,8 +955,14 @@ export function LogisticsCard({
     }
   }
 
-  // Empty state — explain why + offer retry if payment is settled.
+  // Empty state — explain why + offer retry.
+  // 超商取貨付款 (cvs_cod) builds logistics at order time, NOT after payment, so
+  // its payment_status stays "pending" until pickup. For COD we must still offer
+  // retry and must NOT show the misleading "需付款完成" copy. No row here means
+  // the ECPay 建單 failed — retrying surfaces the real reason in the 失敗 box.
   if (!logistics) {
+    const isCod = paymentMethod === "cvs_cod"
+    const canRetry = paymentStatus === "paid" || isCod
     return (
       <div className="rounded-lg border bg-white p-4 text-sm">
         <div className="mb-3 flex items-center justify-between">
@@ -962,7 +970,7 @@ export function LogisticsCard({
             <Truck className="h-4 w-4" />
             <span className="font-medium">物流資訊</span>
           </div>
-          {paymentStatus === "paid" && (
+          {canRetry && (
             <Button
               type="button"
               size="sm"
@@ -976,9 +984,11 @@ export function LogisticsCard({
           )}
         </div>
         <p className="text-zinc-400">
-          {paymentStatus === "paid"
-            ? "尚未建立物流（系統應已自動派工；若超過 1 分鐘仍無資料請按右上「重派物流」）"
-            : "尚未建立物流（需付款完成）"}
+          {isCod
+            ? "尚未建立物流。超商取貨付款於下單時即自動建立綠界物流，無需等待付款；此處無資料代表建單失敗，請按右上「重派物流」重試（失敗原因會顯示在這裡）。"
+            : paymentStatus === "paid"
+              ? "尚未建立物流（系統應已自動派工；若超過 1 分鐘仍無資料請按右上「重派物流」）"
+              : "尚未建立物流（需付款完成）"}
         </p>
       </div>
     )
