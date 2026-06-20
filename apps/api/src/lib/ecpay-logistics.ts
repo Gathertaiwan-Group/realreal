@@ -79,22 +79,24 @@ export interface CvsLogisticsResult {
  * Detect the pipe form and normalise both into one flat object.
  */
 export function parseEcpayLogisticsResponse(text: string): Record<string, string> {
-  const result = Object.fromEntries(new URLSearchParams(text))
-  // Only treat as pipe form when the key=value parse didn't find a RtnCode,
-  // so a genuine key=value success is never re-interpreted.
+  // Pipe form: a leading "<digits>|" then either urlencoded data (success) or a
+  // plain message (failure). We MUST parse ONLY the tail as the data — parsing
+  // the whole string would mangle the first key into "1|AllPayLogisticsID" and
+  // lose the logistics id. The C2C success body embeds its own RtnCode=300
+  // (訂單處理中), which is authoritative, so the leading sync digit is only a
+  // fallback when the data carries no RtnCode of its own.
   const pipe = text.match(/^\s*(\d+)\|([\s\S]*)$/)
-  if (pipe && result.RtnCode === undefined) {
-    const [, code, rest] = pipe
-    result.RtnCode = code
+  if (pipe) {
+    const [, syncCode, rest] = pipe
     if (rest.includes("=")) {
-      // success: the tail is urlencoded key=value data (AllPayLogisticsID, …)
-      for (const [k, v] of new URLSearchParams(rest)) result[k] = v
-    } else {
-      // failure: the tail is a human-readable message
-      result.RtnMsg = rest.trim()
+      const result = Object.fromEntries(new URLSearchParams(rest))
+      if (result.RtnCode === undefined) result.RtnCode = syncCode
+      return result
     }
+    return { RtnCode: syncCode, RtnMsg: rest.trim() }
   }
-  return result
+  // key=value form (B2C: RtnCode=1&AllPayLogisticsID=...)
+  return Object.fromEntries(new URLSearchParams(text))
 }
 
 export async function createCvsLogistics(
@@ -157,7 +159,13 @@ export async function createCvsLogistics(
   const text = await response.text()
   const result = parseEcpayLogisticsResponse(text)
 
-  if (result.RtnCode !== "1") {
+  // ECPay 超商 C2C (UNIMART/FAMI) 建單「成功」的 RtnCode 是 300「訂單處理中（綠界
+  // 已收到訂單資料）」，不是 1（那是 B2C）。兩者只要拿到 AllPayLogisticsID 就代表
+  // 建單成功、可印單出貨；其餘（如 10500036 收件人姓名）才是真失敗。
+  const created =
+    !!result.AllPayLogisticsID &&
+    (result.RtnCode === "1" || result.RtnCode === "300")
+  if (!created) {
     // Surface the raw response so we don't lose what ECPay actually said
     // when the body isn't the expected key=value form.
     throw new Error(

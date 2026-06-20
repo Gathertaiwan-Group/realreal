@@ -30,6 +30,19 @@ describe("parseEcpayLogisticsResponse", () => {
     expect(r.CVSPaymentNo).toBe("ABC123")
   })
 
+  it("parses the real C2C create-success body (1|…&RtnCode=300 訂單處理中)", () => {
+    // The actual sandbox response that was being mis-read as a failure: the
+    // leading 1| must be stripped so AllPayLogisticsID is recovered, and the
+    // embedded RtnCode=300 (C2C 訂單處理中 = success) must win over the sync digit.
+    const r = parseEcpayLogisticsResponse(
+      "1|AllPayLogisticsID=3550863&BookingNote=&CVSPaymentNo=D8816800&CVSValidationNo=8931&GoodsAmount=450&LogisticsSubType=UNIMARTC2C&LogisticsType=CVS&MerchantID=2000933&ReceiverName=阿門測試&RtnCode=300&RtnMsg=訂單處理中（綠界已收到訂單資料）",
+    )
+    expect(r.AllPayLogisticsID).toBe("3550863")
+    expect(r.CVSPaymentNo).toBe("D8816800")
+    expect(r.CVSValidationNo).toBe("8931")
+    expect(r.RtnCode).toBe("300")
+  })
+
   it("does not reinterpret a genuine key=value body that starts with a number", () => {
     // RtnCode present in key=value form → pipe heuristic must not clobber it.
     const r = parseEcpayLogisticsResponse("RtnCode=1&RtnMsg=1|fake")
