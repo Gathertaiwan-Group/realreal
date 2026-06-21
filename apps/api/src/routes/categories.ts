@@ -58,7 +58,31 @@ categoriesRouter.get("/", async (_req, res) => {
     .order("sort_order", { ascending: true })
 
   if (error) { res.status(500).json({ error: error.message }); return }
-  res.json({ data: buildTree(data ?? []) })
+
+  const rows = data ?? []
+
+  // product_count per category — counts only ACTIVE (上架) products, matching
+  // the storefront's own visibility filter (/products uses is_active=true). The
+  // Header hides categories with 0 products; before this field every
+  // product_count was undefined, so `(product_count ?? 0) > 0` filtered out
+  // EVERY category and the 商品選購 dropdown rendered empty.
+  const counts = new Map<string, number>()
+  const ids = rows.map((r) => r.id)
+  if (ids.length > 0) {
+    const { data: products, error: prodErr } = await supabase
+      .from("products")
+      .select("category_id")
+      .eq("is_active", true)
+      .in("category_id", ids)
+    if (prodErr) { res.status(500).json({ error: prodErr.message }); return }
+    for (const p of products ?? []) {
+      if (!p.category_id) continue
+      counts.set(p.category_id, (counts.get(p.category_id) ?? 0) + 1)
+    }
+  }
+
+  const enriched = rows.map((r) => ({ ...r, product_count: counts.get(r.id) ?? 0 }))
+  res.json({ data: buildTree(enriched) })
 })
 
 // GET /categories/:slug — public, full landing data (banner + tagline + features + related posts)
