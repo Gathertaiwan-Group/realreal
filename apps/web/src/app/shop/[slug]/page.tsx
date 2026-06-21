@@ -208,7 +208,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         {/* Product info images — protein only */}
         {isProtein && (
           <div className="mt-14 max-w-[960px] mx-auto">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((n) => (
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15].map((n) => (
               <img
                 key={n}
                 src={`/product-info/protein/${n}.jpg`}
