@@ -99,7 +99,9 @@ export default async function BlogPostPage({ params }: Props) {
               prose-img:rounded-[10px]
               prose-li:text-[#687279]
               prose-blockquote:border-[#10305a]/30 prose-blockquote:text-[#687279]
-              prose-strong:text-[#10305a]"
+              prose-strong:text-[#10305a]
+              [&_p:empty]:min-h-[1.5em] [&_p:empty]:block
+              [&_p:has(>br:only-child)]:min-h-[1.5em]"
             dangerouslySetInnerHTML={{ __html: post.content_html }}
           />
         ) : (
