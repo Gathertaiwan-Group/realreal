@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server"
 import { apiClient } from "@/lib/api-client"
 import { Badge } from "@/components/ui/badge"
 import { buildDiscountBreakdown } from "@/lib/discount-breakdown"
+import { CancelOrderButton } from "./CancelOrderButton"
 import {
   ORDER_STATUS_LABELS as STATUS_LABELS,
   ORDER_STATUS_VARIANTS as STATUS_VARIANTS,
@@ -174,6 +175,17 @@ export default async function OrderDetailPage({
           })}
         </span>
       </div>
+
+      {/* Member self-cancel — only renders before shipping (pending/processing) */}
+      {(status === "pending" || status === "processing") && (
+        <div className="mb-6 -mt-2">
+          <CancelOrderButton
+            orderId={order.id}
+            status={status}
+            paymentStatus={order.payment_status}
+          />
+        </div>
+      )}
 
       {/* Items Table */}
       <div className="mb-8">

@@ -20,6 +20,7 @@ import { inventoryQueue } from "../lib/queue"
 import { enqueuePostPaymentJobs } from "../lib/enqueue-post-payment"
 import { saveCustomerContact } from "../lib/save-customer-contact"
 import { validateCvsReceiverName } from "../lib/ecpay-name"
+import { cancelOrderById } from "../lib/cancel-order"
 import {
   calcPointsDiscount,
   getEffectiveRedeemablePoints,
@@ -1182,6 +1183,45 @@ ordersRouter.get("/:id", requireAuth, async (req, res) => {
       })),
     },
   })
+})
+
+// POST /orders/:id/cancel — member self-cancel (auth required).
+// Policy: a member may cancel their OWN order only BEFORE shipping
+// (pending / processing). Once shipped → contact support. The reversal
+// choreography (stock / coupon / points / spend / payment-refund / logistics /
+// invoice) is the SAME one the admin endpoint runs — see lib/cancel-order.ts.
+// Paid orders are allowed: refundPayment marks refund_requested + emails admin
+// (no gateway has an auto-refund API), and `refunded` tells the client to show
+// the "退款處理中" copy.
+const memberCancelSchema = z.object({
+  reason: z.string().trim().max(200).optional(),
+})
+const MEMBER_CANCELLABLE = ["pending", "processing"] as const
+
+ordersRouter.post("/:id/cancel", requireAuth, async (req, res) => {
+  const parsed = memberCancelSchema.safeParse(req.body ?? {})
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid request", details: parsed.error.flatten() }); return
+  }
+  const userId = res.locals.userId as string
+  const orderId = String(req.params.id)
+
+  // Ownership gate — a member may only cancel an order they own.
+  const { data: own, error: ownErr } = await supabase
+    .from("orders")
+    .select("user_id")
+    .eq("id", orderId)
+    .single()
+  if (ownErr || !own) { res.status(404).json({ error: "Order not found" }); return }
+  if (own.user_id !== userId) { res.status(403).json({ error: "Forbidden" }); return }
+
+  const reason = parsed.data.reason?.trim() || "會員自行取消"
+  const out = await cancelOrderById(orderId, reason, { allowedStatuses: MEMBER_CANCELLABLE })
+  if (out.result === "not_found") { res.status(404).json({ error: "Order not found" }); return }
+  if (out.result === "not_cancellable") {
+    res.status(400).json({ error: "此訂單目前無法取消（僅出貨前可取消，已出貨請聯繫客服）" }); return
+  }
+  res.json({ ok: true, actions: out.actions, refunded: out.wasPaid })
 })
 
 // GET /orders — list user's orders, paginated (auth required)

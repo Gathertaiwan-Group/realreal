@@ -5,11 +5,9 @@ import { requireAuth } from "../middleware/auth"
 import { requireAdmin } from "../middleware/admin"
 import { enqueuePostPaymentJobs } from "../lib/enqueue-post-payment"
 import { inventoryQueue } from "../lib/queue"
-import { voidInvoice } from "../lib/amego"
-import { cancelEcpayLogistics } from "../lib/ecpay-logistics"
-import { refundPayment } from "../lib/refund-payment"
 import { refundOrderPoints } from "../lib/points"
 import { decrementSpendOnRefund } from "../lib/tier"
+import { restoreOrderStock, refundCouponUsage, cancelOrderById } from "../lib/cancel-order"
 
 export const adminOrdersRouter = Router()
 
@@ -26,71 +24,8 @@ const updateStatusSchema = z.object({
   status: z.enum(VALID_STATUSES),
 })
 
-/**
- * Return the stock that order creation deducted (atomic_deduct_stock). Call
- * ONLY when an order transitions INTO cancelled from a non-cancelled state —
- * the caller's prior-status check is the idempotency guard (avoids double
- * restore on a repeated cancel). Non-fatal: logs and continues on failure.
- */
-async function restoreOrderStock(orderId: string): Promise<void> {
-  const { data: items } = await supabase
-    .from("order_items")
-    .select("variant_id, qty")
-    .eq("order_id", orderId)
-  const variants = (items ?? [])
-    .filter((i) => i.variant_id && Number(i.qty) > 0)
-    .map((i) => ({ id: i.variant_id, qty: Number(i.qty) }))
-  if (variants.length === 0) return
-  const { error } = await supabase.rpc("atomic_restore_stock", { p_variants: variants })
-  if (error) console.warn(`[admin/orders] restore stock failed for ${orderId} (non-fatal):`, error.message)
-}
-
-/**
- * Return the coupon usage an order consumed at checkout. For every coupon_uses
- * row tied to this order we decrement the coupon's used_count (RPC floors at 0)
- * then delete the coupon_uses rows, so the customer's use no longer counts
- * against max_uses. Mirrors restoreOrderStock: call ONLY when an order
- * transitions into cancelled/refunded; non-fatal (logs and continues).
- *
- * Idempotent: step 3's delete removes the rows, so a second run finds nothing
- * to decrement — a double-cancel can't over-decrement used_count. This is the
- * SAME rollback the hard-delete path performs inline; the two never run for the
- * same order because the delete leaves no rows for the other to act on (and a
- * cancelled order's rows are already gone before any later hard-delete).
- */
-async function refundCouponUsage(orderId: string): Promise<void> {
-  const { data: uses, error: fetchError } = await supabase
-    .from("coupon_uses")
-    .select("id, coupon_id")
-    .eq("order_id", orderId)
-  if (fetchError) {
-    console.warn(`[admin/orders] refundCouponUsage fetch failed for ${orderId} (non-fatal):`, fetchError.message)
-    return
-  }
-  const rows = (uses ?? []) as { id: string; coupon_id: string | null }[]
-  if (rows.length === 0) return
-
-  for (const use of rows) {
-    if (!use.coupon_id) continue
-    const { error: rpcError } = await supabase.rpc("atomic_decrement_coupon_usage", {
-      p_coupon_id: use.coupon_id,
-    })
-    if (rpcError) {
-      console.warn(
-        `[admin/orders] atomic_decrement_coupon_usage failed for coupon ${use.coupon_id} (order ${orderId}, non-fatal):`,
-        rpcError.message,
-      )
-    }
-  }
-
-  const { error: deleteError } = await supabase
-    .from("coupon_uses")
-    .delete()
-    .eq("order_id", orderId)
-  if (deleteError) {
-    console.warn(`[admin/orders] refundCouponUsage delete failed for ${orderId} (non-fatal):`, deleteError.message)
-  }
-}
+// restoreOrderStock + refundCouponUsage now live in lib/cancel-order.ts (shared
+// with the member self-cancel endpoint); imported above.
 
 // PATCH /admin/orders/:id/status — update order status (admin only)
 adminOrdersRouter.patch("/:id/status", async (req, res) => {
@@ -359,244 +294,19 @@ adminOrdersRouter.post("/:id/cancel", async (req, res) => {
   const reason = parsed.data.reason
   const orderId = req.params.id
 
-  // One round-trip: order + invoices + logistics. The `invoices` table has
-  // two FKs to orders (order_id + a refund_for_order_id in older schemas),
-  // so we disambiguate per CLAUDE memory.
-  type OrderRow = {
-    id: string
-    user_id: string | null
-    status: string
-    payment_status: string | null
-    payment_method: string | null
-    total: number | string | null
-    payments:
-      | Array<{ gateway_tx_id: string | null }>
-      | { gateway_tx_id: string | null }
-      | null
-    invoices:
-      | Array<{ id: string; status: string | null; amego_id: string | null }>
-      | { id: string; status: string | null; amego_id: string | null }
-      | null
-    logistics:
-      | Array<{
-          id: string
-          status: string | null
-          type: string | null
-          ecpay_logistics_id: string | null
-          cvs_payment_no: string | null
-          cvs_validation_no: string | null
-          delivered_at: string | null
-          raw_response: Record<string, unknown> | null
-        }>
-      | {
-          id: string
-          status: string | null
-          type: string | null
-          ecpay_logistics_id: string | null
-          cvs_payment_no: string | null
-          cvs_validation_no: string | null
-          delivered_at: string | null
-          raw_response: Record<string, unknown> | null
-        }
-      | null
-  }
-
-  const { data: orderRaw, error: fetchError } = await supabase
-    .from("orders")
-    .select(
-      // NOTE: gateway_tx_id lives on `payments`, NOT `orders` — selecting it off
-      // orders made PostgREST error, which this handler masked as "Order not
-      // found" so EVERY cancel failed. Pull it via the payments join instead.
-      "id, user_id, status, payment_status, payment_method, total, " +
-        "payments(gateway_tx_id), " +
-        "invoices!invoices_order_id_fkey(id, status, amego_id), " +
-        "logistics(id, status, type, ecpay_logistics_id, cvs_payment_no, cvs_validation_no, delivered_at, raw_response)",
-    )
-    .eq("id", orderId)
-    .single()
-
-  // Distinguish a real query error from a genuinely-absent order — both used to
-  // surface as the misleading "Order not found".
-  if (fetchError) console.error("[admin/orders/cancel] order fetch failed:", fetchError)
-  if (fetchError || !orderRaw) {
+  // Full cancellation choreography lives in lib/cancel-order.ts (shared with the
+  // member self-cancel endpoint). Admin policy: cancel from pending/processing/
+  // shipped.
+  const out = await cancelOrderById(orderId, reason, {
+    allowedStatuses: CANCELLABLE_STATUSES,
+  })
+  if (out.result === "not_found") {
     res.status(404).json({ error: "Order not found" }); return
   }
-
-  const order = orderRaw as unknown as OrderRow
-  // payments may embed as an array (most recent first is not guaranteed, but any
-  // gateway tx id is fine for the refund record) or a single object.
-  const paymentGatewayTxId = Array.isArray(order.payments)
-    ? order.payments[0]?.gateway_tx_id ?? null
-    : order.payments?.gateway_tx_id ?? null
-
-  if (!CANCELLABLE_STATUSES.includes(order.status as (typeof CANCELLABLE_STATUSES)[number])) {
-    res.status(400).json({ error: `status=${order.status} 不可取消` }); return
+  if (out.result === "not_cancellable") {
+    res.status(400).json({ error: `status=${out.orderStatus} 不可取消` }); return
   }
-
-  const actions: Record<string, { ok: boolean; message: string }> = {
-    invoice_void: { ok: false, message: "" },
-    logistics_cancel: { ok: false, message: "" },
-    payment_refund: { ok: false, message: "" },
-    points_refund: { ok: false, message: "" },
-    status_update: { ok: false, message: "" },
-  }
-
-  // Step 1 — 作廢發票
-  const invoice = Array.isArray(order.invoices)
-    ? order.invoices[0]
-    : order.invoices
-  if (invoice && invoice.status === "issued" && invoice.amego_id) {
-    try {
-      await voidInvoice(invoice.amego_id, reason)
-      const { error: invUpdateError } = await supabase
-        .from("invoices")
-        .update({
-          status: "voided",
-          voided_at: new Date().toISOString(),
-          error_message: null,
-        })
-        .eq("id", invoice.id)
-      if (invUpdateError) throw new Error(invUpdateError.message)
-      actions.invoice_void = { ok: true, message: "已作廢 Amego 發票" }
-    } catch (err) {
-      actions.invoice_void = {
-        ok: false,
-        message: err instanceof Error ? err.message : String(err),
-      }
-    }
-  } else {
-    actions.invoice_void = { ok: true, message: "無發票需作廢" }
-  }
-
-  // Step 2 — 取消綠界物流
-  const logistics = Array.isArray(order.logistics)
-    ? order.logistics[0]
-    : order.logistics
-  if (
-    logistics &&
-    !logistics.delivered_at &&
-    logistics.ecpay_logistics_id
-  ) {
-    try {
-      const r = await cancelEcpayLogistics({
-        ecpay_logistics_id: logistics.ecpay_logistics_id,
-        type: logistics.type ?? "",
-        cvs_payment_no: logistics.cvs_payment_no,
-        cvs_validation_no: logistics.cvs_validation_no,
-        raw_response: logistics.raw_response,
-      })
-      const existingRaw = (logistics.raw_response ?? {}) as Record<string, unknown>
-      await supabase
-        .from("logistics")
-        .update({
-          status: "cancelled",
-          raw_response: { ...existingRaw, cancel_response: r.raw },
-        })
-        .eq("id", logistics.id)
-      actions.logistics_cancel = r.ok
-        ? { ok: true, message: "綠界物流已取消" }
-        : {
-            ok: false,
-            message: `綠界拒絕：${r.message}（多半因物流商已收件，需客服處理）`,
-          }
-    } catch (err) {
-      actions.logistics_cancel = {
-        ok: false,
-        message: err instanceof Error ? err.message : String(err),
-      }
-    }
-  } else {
-    actions.logistics_cancel = { ok: true, message: "無物流需取消" }
-  }
-
-  // Step 3 — 退款（v1 = mark refund_requested + email admin）
-  if (order.payment_status === "paid") {
-    try {
-      actions.payment_refund = await refundPayment(
-        {
-          id: order.id,
-          payment_method: order.payment_method,
-          total: order.total,
-          gateway_tx_id: paymentGatewayTxId,
-        },
-        reason,
-      )
-    } catch (err) {
-      actions.payment_refund = {
-        ok: false,
-        message: err instanceof Error ? err.message : String(err),
-      }
-    }
-  } else {
-    actions.payment_refund = { ok: true, message: "未付款，無需退款" }
-  }
-
-  // Step 4.5 — refund points (earned reverted + redeemed returned) AND
-  // decrement spend mirrors. Audit round 1 flagged the missing points
-  // refund; round 2 caught the spend mirrors (total_spend / tier_period_spend
-  // / charity_savings) never being reversed → tier wash-trade vector. Both
-  // helpers are idempotent. Spend reversal stays even when payment_status
-  // wasn't paid (e.g. canceling a manually-marked-paid order during testing)
-  // because the increment side runs the same way.
-  if (order.user_id) {
-    try {
-      const r = await refundOrderPoints(orderId, order.user_id)
-      actions.points_refund = {
-        ok: true,
-        message: `返還 ${r.redeemed_returned} 點、扣除 ${r.earned_reverted} 點回饋`,
-      }
-    } catch (err) {
-      actions.points_refund = {
-        ok: false,
-        message: err instanceof Error ? err.message : String(err),
-      }
-    }
-    try {
-      const totalTwd = Number(order.total ?? 0)
-      const d = await decrementSpendOnRefund(orderId, order.user_id, totalTwd)
-      if (d.decremented) {
-        console.log(
-          `[admin/orders] spend reversed for ${orderId}: total -${d.total_spend_delta}, period -${d.period_spend_delta}, charity -${d.charity_delta}`,
-        )
-      }
-    } catch (err) {
-      console.warn("[admin/orders] decrementSpendOnRefund failed (non-fatal):", err)
-    }
-  } else {
-    actions.points_refund = { ok: true, message: "無會員，無點數需返還" }
-  }
-
-  // Step 4 — 翻 status（always runs, even if every previous step failed,
-  // so admin at least sees the cancel mark).
-  try {
-    const update: Record<string, unknown> = {
-      status: "cancelled",
-      cancelled_at: new Date().toISOString(),
-      cancel_reason: reason,
-      updated_at: new Date().toISOString(),
-    }
-    if (order.payment_status === "paid") {
-      update.payment_status = "refunded"
-    }
-    const { error: statusError } = await supabase
-      .from("orders")
-      .update(update)
-      .eq("id", orderId)
-    if (statusError) throw new Error(statusError.message)
-    actions.status_update = { ok: true, message: "訂單狀態已標記取消" }
-    // order.status was guaranteed non-cancelled (CANCELLABLE_STATUSES gate
-    // above), so restoring stock + returning coupon usage here each run exactly
-    // once per cancel (refundCouponUsage is additionally self-idempotent).
-    await restoreOrderStock(orderId)
-    await refundCouponUsage(orderId)
-  } catch (err) {
-    actions.status_update = {
-      ok: false,
-      message: err instanceof Error ? err.message : String(err),
-    }
-  }
-
-  res.json({ ok: true, actions })
+  res.json({ ok: true, actions: out.actions })
 })
 
 // DELETE /admin/orders/:id — archive (soft) or permanently remove (hard) an order.
