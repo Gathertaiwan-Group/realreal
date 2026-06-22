@@ -214,8 +214,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 key={n}
                 src={`/product-info/protein/${n}.jpg`}
                 alt={`商品說明 ${n}`}
-                width={1000}
-                height={1500}
+                width={1800}
+                height={2700}
                 sizes="(max-width: 960px) 100vw, 960px"
                 style={{ width: "100%", height: "auto" }}
                 className="block"
