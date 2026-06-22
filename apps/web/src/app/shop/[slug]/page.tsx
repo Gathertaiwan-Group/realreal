@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 import Link from "next/link"
+import Image from "next/image"
 import { ChevronRight } from "lucide-react"
 import { getProductBySlug, getCategories } from "@/lib/catalog"
 import { AddToCartSection } from "@/components/product/AddToCartSection"
@@ -209,12 +210,15 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         {isProtein && (
           <div className="mt-14 max-w-[960px] mx-auto">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((n) => (
-              <img
+              <Image
                 key={n}
                 src={`/product-info/protein/${n}.jpg`}
                 alt={`商品說明 ${n}`}
-                loading="lazy"
-                className="w-full block"
+                width={1000}
+                height={1500}
+                sizes="(max-width: 960px) 100vw, 960px"
+                style={{ width: "100%", height: "auto" }}
+                className="block"
               />
             ))}
             <div className="flex justify-center py-12">
