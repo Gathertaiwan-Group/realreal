@@ -63,10 +63,10 @@ function HeroSection({ content }: { content?: HeroContent | null }) {
 }
 
 const HOME_BLOCKS = [
-  { img: "/home/block1.jpg", alt: "三種植物蛋白", href: "/blog/why-three-plant-proteins" },
-  { img: "/home/block2.jpg", alt: "真實果粒口感", href: "/blog/story-of-rr-vegan-portein-powder" },
-  { img: "/home/block3.jpg", alt: "公益存款計畫", href: "/idea" },
-  { img: "/home/block4.jpg", alt: "會員專屬回饋", href: "/membership" },
+  { img: "/home/block1.png", alt: "三種植物蛋白", href: "/blog/why-three-plant-proteins" },
+  { img: "/home/block2.png", alt: "真實果粒口感", href: "/blog/story-of-rr-vegan-portein-powder" },
+  { img: "/home/block3.png", alt: "公益存款計畫", href: "/idea" },
+  { img: "/home/block4.png", alt: "會員專屬回饋", href: "/membership" },
 ]
 
 function HomeSquareImages() {
