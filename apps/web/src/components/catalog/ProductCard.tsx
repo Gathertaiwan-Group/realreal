@@ -13,6 +13,8 @@ export function ProductCard({
   const isSoldOut = product.total_stock === 0
   const minPrice = product.min_price
   const maxPrice = product.max_price
+  const minSalePrice = product.min_sale_price
+  const hasDiscount = minSalePrice != null && minPrice != null && minSalePrice < minPrice
   const hasRange = minPrice != null && maxPrice != null && minPrice !== maxPrice
   const isVariable = hasRange
 
@@ -39,7 +41,7 @@ export function ProductCard({
           )}
 
           {/* Sale badge */}
-          {hasRange && minPrice != null && maxPrice != null && minPrice < maxPrice && (
+          {hasDiscount && (
             <div
               className="absolute top-2 left-2 px-2 py-0.5 text-xs font-bold text-white"
               style={{ backgroundColor: "#b91c1c" }}
@@ -81,7 +83,16 @@ export function ProductCard({
         {/* Price */}
         {minPrice != null && minPrice > 0 && (
           <div className="flex items-baseline gap-1.5 flex-wrap">
-            {hasRange ? (
+            {hasDiscount ? (
+              <>
+                <span className="text-xs line-through" style={{ color: "#687279" }}>
+                  NT${minPrice.toLocaleString()}
+                </span>
+                <span className="text-sm font-bold" style={{ color: "#b91c1c" }}>
+                  NT${minSalePrice!.toLocaleString()}
+                </span>
+              </>
+            ) : hasRange ? (
               <>
                 <span className="text-sm font-bold" style={{ color: "#10305a" }}>
                   NT${minPrice.toLocaleString()}

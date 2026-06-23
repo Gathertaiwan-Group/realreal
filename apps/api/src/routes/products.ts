@@ -72,19 +72,22 @@ async function enrichProducts(products: any[]) {
   const productIds = products.map((p) => p.id)
   const { data: variants } = await supabase
     .from("product_variants")
-    .select("product_id, price, stock_qty")
+    .select("product_id, price, sale_price, stock_qty")
     .in("product_id", productIds)
 
-  const statsMap = new Map<string, { min_price: number | null; max_price: number | null; total_stock: number }>()
+  const statsMap = new Map<string, { min_price: number | null; max_price: number | null; min_sale_price: number | null; total_stock: number }>()
   for (const v of variants ?? []) {
     const entry = statsMap.get(v.product_id)
     const price = Number(v.price)
+    const salePrice = v.sale_price != null ? Number(v.sale_price) : null
+    const effectivePrice = salePrice != null && salePrice < price ? salePrice : price
     const stock = Number(v.stock_qty) || 0
     if (!entry) {
-      statsMap.set(v.product_id, { min_price: price, max_price: price, total_stock: stock })
+      statsMap.set(v.product_id, { min_price: price, max_price: price, min_sale_price: effectivePrice, total_stock: stock })
     } else {
       if (entry.min_price === null || price < entry.min_price) entry.min_price = price
       if (entry.max_price === null || price > entry.max_price) entry.max_price = price
+      if (entry.min_sale_price === null || effectivePrice < entry.min_sale_price) entry.min_sale_price = effectivePrice
       entry.total_stock += stock
     }
   }
@@ -108,6 +111,7 @@ async function enrichProducts(products: any[]) {
       images,
       min_price: stats?.min_price ?? null,
       max_price: stats?.max_price ?? null,
+      min_sale_price: stats?.min_sale_price ?? null,
       total_stock: stats?.total_stock ?? 0,
       variants: product_variants ?? [],
     }
