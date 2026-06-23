@@ -44,9 +44,9 @@ export function ProductCard({
           {hasDiscount && (
             <div
               className="absolute top-2 left-2 px-2 py-0.5 text-xs font-bold text-white"
-              style={{ backgroundColor: "#b91c1c" }}
+              style={{ backgroundColor: "#f59e0b" }}
             >
-              特價
+              優惠
             </div>
           )}
 
@@ -88,7 +88,7 @@ export function ProductCard({
                 <span className="text-xs line-through" style={{ color: "#687279" }}>
                   NT${minPrice.toLocaleString()}
                 </span>
-                <span className="text-sm font-bold" style={{ color: "#b91c1c" }}>
+                <span className="text-sm font-bold" style={{ color: "#10305a" }}>
                   NT${minSalePrice!.toLocaleString()}
                 </span>
               </>
