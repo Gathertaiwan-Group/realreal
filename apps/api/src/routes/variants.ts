@@ -6,6 +6,26 @@ import { z } from "zod"
 
 export const variantsRouter = Router({ mergeParams: true })
 
+// Standalone router — mounted at /variants (no product_id needed)
+export const variantPricesRouter = Router()
+
+// GET /variants/prices?ids=id1,id2,... — public
+// Returns { id, price, sale_price } for display (strikethrough in checkout).
+variantPricesRouter.get("/prices", async (req: Request, res: Response) => {
+  const raw = typeof req.query.ids === "string" ? req.query.ids : ""
+  const ids = raw.split(",").map(s => s.trim()).filter(Boolean)
+  if (ids.length === 0) { res.json({ data: [] }); return }
+  if (ids.length > 50) { res.status(400).json({ error: "Too many ids" }); return }
+
+  const { data, error } = await supabase
+    .from("product_variants")
+    .select("id, price, sale_price")
+    .in("id", ids)
+
+  if (error) { res.status(500).json({ error: error.message }); return }
+  res.json({ data: data ?? [] })
+})
+
 type ProductParams = { id: string }
 type VariantParams = { id: string; variantId: string }
 

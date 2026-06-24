@@ -245,7 +245,34 @@ export default function PaymentPage() {
       return
     }
     try {
-      setCheckoutData(JSON.parse(raw) as CheckoutData)
+      const parsed = JSON.parse(raw) as CheckoutData
+      setCheckoutData(parsed)
+      // Backfill originalPrice from the API for stale cart items that don't have it.
+      const ids = parsed.items.map(i => i.variantId).join(",")
+      if (ids) {
+        fetch(`${API_URL}/variants/prices?ids=${ids}`)
+          .then(r => r.ok ? r.json() : null)
+          .then((json: { data?: { id: string; price: string; sale_price: string | null }[] } | null) => {
+            if (!json?.data) return
+            setCheckoutData(prev => {
+              if (!prev) return prev
+              const priceMap = new Map(json.data!.map(v => [v.id, v]))
+              return {
+                ...prev,
+                items: prev.items.map(item => {
+                  const v = priceMap.get(item.variantId)
+                  if (!v) return item
+                  return {
+                    ...item,
+                    price: Number(v.sale_price ?? v.price),
+                    originalPrice: Number(v.price),
+                  }
+                }),
+              }
+            })
+          })
+          .catch(() => {/* ignore */})
+      }
     } catch {
       router.replace("/checkout")
     }

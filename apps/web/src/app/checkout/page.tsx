@@ -195,6 +195,7 @@ export default function CheckoutPage() {
   const router = useRouter()
   const items = useCart(s => s.items)
   const total = useCart(s => s.total)
+  const updatePrice = useCart(s => s.updatePrice)
   const [hydrated, setHydrated] = useState(false)
 
   const [name, setName] = useState("")
@@ -283,6 +284,25 @@ export default function CheckoutPage() {
     useCart.persist.rehydrate()
     setHydrated(true)
   }, [])
+
+  // 2a. Sync sale_price / originalPrice from the API so checkout always shows
+  //     correct strikethrough prices even for stale localStorage cart items.
+  useEffect(() => {
+    if (!hydrated || items.length === 0) return
+    const ids = items.map(i => i.variantId).join(",")
+    fetch(`${API_URL}/variants/prices?ids=${ids}`)
+      .then(r => r.ok ? r.json() : null)
+      .then((json: { data?: { id: string; price: string; sale_price: string | null }[] } | null) => {
+        if (!json?.data) return
+        for (const v of json.data) {
+          const ep = Number(v.sale_price ?? v.price)
+          const op = Number(v.price)
+          updatePrice(v.id, ep, op)
+        }
+      })
+      .catch(() => {/* ignore */})
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydrated])
 
   // 2b. Pre-fill email + name + phone + tax_id from the logged-in account
   //     (spec R). Required fields + auto-fill = no re-typing for return
