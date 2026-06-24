@@ -48,7 +48,7 @@ function PlainTextContent({ text }: { text: string }) {
     <div>
       {paragraphs.map((para, i) => (
         <p key={i} style={{
-          color: "#687279", fontSize: "15px", lineHeight: "1.85",
+          color: "#687279", fontSize: "15px", lineHeight: "1.85", textAlign: "center",
           marginBottom: i < paragraphs.length - 1 ? "0.75rem" : 0,
         }}>
           {para.split("\n").map((line, j, arr) => (
@@ -107,17 +107,16 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   return (
     <div className="min-h-screen bg-white">
       <style>{`
-        .rich-content { font-size: 15px; line-height: 1.85; color: #687279; }
+        .rich-content { font-size: 15px; line-height: 1.85; color: #687279; text-align: center; }
         .rich-content p { margin-bottom: 1rem; }
         .rich-content h2 { font-size: 1.25rem; font-weight: 600; color: #10305a; margin-top: 2rem; margin-bottom: 0.75rem; }
         .rich-content h3 { font-size: 1.1rem; font-weight: 600; color: #10305a; margin-top: 1.75rem; margin-bottom: 0.6rem; }
         .rich-content h4 { font-size: 1rem; font-weight: 600; color: #10305a; margin-top: 1.5rem; margin-bottom: 0.5rem; }
         .rich-content h5 { font-size: 0.95rem; font-weight: 600; color: #10305a; margin-top: 1.25rem; margin-bottom: 0.4rem; }
-        .rich-content ul { padding-left: 1.25rem; margin: 0.75rem 0; list-style-type: disc; }
-        .rich-content ol { padding-left: 1.25rem; margin: 0.75rem 0; list-style-type: decimal; }
+        .rich-content ul { padding-left: 0; margin: 0.75rem 0; list-style: none; }
+        .rich-content ol { padding-left: 0; margin: 0.75rem 0; list-style: none; }
         .rich-content li { margin-bottom: 0.45rem; line-height: 1.75; }
         .rich-content strong, .rich-content b { font-weight: 600; color: #10305a; }
-        /* ✔ bullet items: <strong>✔ title</strong> as direct children become block-level */
         .rich-content > strong, .rich-content > b { display: block; margin-top: 1.1rem; margin-bottom: 0.2rem; }
         .rich-content em, .rich-content i { font-style: italic; }
         .rich-content a { color: #10305a; text-decoration: underline; text-underline-offset: 2px; }
@@ -128,11 +127,12 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           border-radius: 0 0.75rem 0.75rem 0;
           margin: 1.25rem 0;
           font-style: normal;
+          text-align: center;
         }
         .rich-content blockquote h4,
         .rich-content blockquote h5 { margin-top: 0.25rem; }
-        .rich-content table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 14px; }
-        .rich-content th, .rich-content td { border: 1px solid #e5e7eb; padding: 0.5rem 0.75rem; text-align: left; }
+        .rich-content table { width: 100%; border-collapse: collapse; margin: 1rem 0; font-size: 14px; text-align: center; }
+        .rich-content th, .rich-content td { border: 1px solid #e5e7eb; padding: 0.5rem 0.75rem; text-align: center; }
         .rich-content th { background: #f3f4f6; font-weight: 600; color: #10305a; }
       `}</style>
 
