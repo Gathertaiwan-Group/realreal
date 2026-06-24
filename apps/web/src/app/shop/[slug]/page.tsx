@@ -185,6 +185,28 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
 
+        {/* 真實回饋 banner — all products */}
+        <div className="mt-10">
+          <Link
+            href="/testimonials"
+            className="flex items-center justify-between rounded-2xl px-6 py-5 transition-opacity hover:opacity-90"
+            style={{ backgroundColor: "#f0f4f9" }}
+          >
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-0.5" style={{ color: "#f59e0b" }}>
+                {[1,2,3,4,5].map(i => <span key={i} className="text-xl">★</span>)}
+              </div>
+              <div>
+                <p className="font-semibold text-sm" style={{ color: "#10305a" }}>看更多真實回饋</p>
+                <p className="text-xs mt-0.5" style={{ color: "#687279" }}>來自真實顧客的使用心得與見證</p>
+              </div>
+            </div>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10305a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 18l6-6-6-6"/>
+            </svg>
+          </Link>
+        </div>
+
         {/* 沖泡說明影片 — only protein powders have a brewing step.
             There is no per-product brewing field on the product fetch shape
             (id/name/slug/description/excerpt/category_id/images/variants),
@@ -233,6 +255,24 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
         )}
 
+
+        {/* 品牌故事 + 公益存款 — all products */}
+        <div className="mt-10 mb-4 flex flex-col sm:flex-row gap-3 justify-center">
+          <Link
+            href="/about"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-full px-8 py-4 text-sm font-semibold border-2 transition-colors hover:bg-[#10305a] hover:text-white"
+            style={{ borderColor: "#10305a", color: "#10305a" }}
+          >
+            品牌故事
+          </Link>
+          <Link
+            href="/idea"
+            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-full px-8 py-4 text-sm font-semibold border-2 transition-colors hover:bg-[#10305a] hover:text-white"
+            style={{ borderColor: "#10305a", color: "#10305a" }}
+          >
+            公益存款
+          </Link>
+        </div>
 
       </div>
     </div>
