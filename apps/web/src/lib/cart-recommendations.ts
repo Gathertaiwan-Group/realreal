@@ -27,6 +27,8 @@ interface ApiProduct {
   id: string
   name: string
   slug: string
+  // 加購品只在購物車的「加購商品區」顯示，這裡要排除，避免同商品兩區重複。
+  is_addon?: boolean
   images?: string[] | null
   variants?: Array<{
     id: string
@@ -75,6 +77,8 @@ export async function fetchRecommendations(
         const v = p.default_variant ?? p.variants?.[0]
         if (!v) continue
         if (excludeVariantIds.includes(v.id)) continue
+        // 加購品歸「加購商品區」，「你也可能喜歡」只顯示一般商品（原價、無限制）。
+        if (p.is_addon) continue
         const price = Number(v.price)
         const stock = Number(v.stock_qty)
         if (!Number.isFinite(price) || stock <= 0) continue

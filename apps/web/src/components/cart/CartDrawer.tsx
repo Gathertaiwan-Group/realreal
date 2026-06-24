@@ -14,6 +14,7 @@ import {
   type OrderPreviewData,
 } from "@/lib/shipping-preview"
 import { Button } from "@/components/ui/button"
+import { AddonStrip } from "@/components/product/AddonStrip"
 import {
   Sheet,
   SheetContent,
@@ -413,6 +414,16 @@ export function CartDrawer({
                   ))}
                 </ul>
               </div>
+
+              {/* 加購商品（限量加購價）— 放在「你也可能喜歡」上方 */}
+              <AddonStrip
+                excludeVariantIds={excludeIds}
+                limit={8}
+                title="🛍️ 加購商品"
+                notice="🌟 此區為限量加購，敬請把握機會 🌟"
+                onlyAddon
+                highlight
+              />
 
               {/* Recommendations now scroll together with the items */}
               <RecommendationStrip excludeVariantIds={excludeIds} />
