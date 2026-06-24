@@ -19,6 +19,8 @@ export interface RecommendedProduct {
   variantId: string
   variantName: string
   price: number
+  /** 特價（sale_price）低於原價時帶值，否則 null —— 卡片顯示特價＋原價劃線。 */
+  salePrice: number | null
   stockQty: number
   imageUrl?: string
 }
@@ -34,12 +36,14 @@ interface ApiProduct {
     id: string
     name: string
     price: number | string
+    sale_price?: number | string | null
     stock_qty: number | string
   }>
   default_variant?: {
     id: string
     name: string
     price: number | string
+    sale_price?: number | string | null
     stock_qty: number | string
   } | null
 }
@@ -82,6 +86,9 @@ export async function fetchRecommendations(
         const price = Number(v.price)
         const stock = Number(v.stock_qty)
         if (!Number.isFinite(price) || stock <= 0) continue
+        // 特價：API 有回 sale_price 且低於原價才採用，否則 null（顯示原價）。
+        const rawSale = v.sale_price == null ? NaN : Number(v.sale_price)
+        const salePrice = Number.isFinite(rawSale) && rawSale < price ? rawSale : null
         out.push({
           id: p.id,
           name: p.name,
@@ -89,6 +96,7 @@ export async function fetchRecommendations(
           variantId: v.id,
           variantName: v.name,
           price,
+          salePrice,
           stockQty: stock,
           imageUrl: p.images?.[0],
         })

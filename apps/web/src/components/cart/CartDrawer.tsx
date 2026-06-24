@@ -256,16 +256,28 @@ function RecommendationStrip({
               <p className="text-xs font-medium leading-snug line-clamp-2 text-[#10305a]">{p.name}</p>
             </Link>
             <div className="flex items-center justify-between gap-1">
-              <span className="text-xs font-semibold text-[#10305a]">NT$ {p.price.toLocaleString()}</span>
+              {p.salePrice != null ? (
+                <span className="flex min-w-0 flex-col leading-tight">
+                  <span className="text-xs font-semibold text-[#10305a]">
+                    NT$ {p.salePrice.toLocaleString()}
+                  </span>
+                  <span className="text-[10px] text-zinc-400 line-through">
+                    NT$ {p.price.toLocaleString()}
+                  </span>
+                </span>
+              ) : (
+                <span className="text-xs font-semibold text-[#10305a]">NT$ {p.price.toLocaleString()}</span>
+              )}
               <button
                 type="button"
-                className="flex h-7 items-center gap-0.5 rounded-[10px] border border-[#10305a] px-2 text-xs font-medium text-[#10305a] hover:bg-[#10305a] hover:text-white transition-colors"
+                className="flex h-7 shrink-0 items-center gap-0.5 rounded-[10px] border border-[#10305a] px-2 text-xs font-medium text-[#10305a] hover:bg-[#10305a] hover:text-white transition-colors"
                 onClick={() =>
                   addItem({
                     variantId: p.variantId,
                     productName: p.name,
                     variantName: p.variantName,
-                    price: p.price,
+                    price: p.salePrice ?? p.price,
+                    originalPrice: p.price,
                     qty: 1,
                     stockQty: p.stockQty,
                     imageUrl: p.imageUrl,
