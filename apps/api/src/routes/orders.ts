@@ -85,6 +85,7 @@ const createOrderSchema = z.object({
   couponCode: z.string().optional(),
   points_used: z.number().int().min(0).optional(),
   invoice: invoiceSchema.optional(),
+  notes: z.string().max(500).optional().nullable(),
 })
 
 // POST /orders/preview — price-only preview (subtotal + campaigns + total).
@@ -385,7 +386,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     res.status(400).json({ error: "Invalid request", details: parsed.error.flatten() }); return
   }
 
-  const { items, address, shippingMethod, paymentMethod, guestEmail, invoice } = parsed.data
+  const { items, address, shippingMethod, paymentMethod, guestEmail, invoice, notes } = parsed.data
   let { couponCode } = parsed.data
 
   // 超商取貨收件人姓名必須符合綠界規則，否則訂單成立後 createCvsLogistics 會建單
@@ -742,6 +743,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       points_used: pointsUsed,
       attributed_kol_id: attributedKolId,
       attributed_kol_slug: attributedKolSlug,
+      notes: notes ?? null,
       metadata: (couponCode || invoice)
         ? {
           ...(couponCode ? {

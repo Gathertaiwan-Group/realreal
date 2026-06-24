@@ -42,6 +42,7 @@ type CheckoutData = {
   shippingMethod: string
   shippingFee?: number
   invoice?: InvoiceData
+  notes?: string
   forcedPaymentMethod?: string
 }
 
@@ -457,6 +458,7 @@ export default function PaymentPage() {
           guestEmail: session ? undefined : checkoutData.address.email,
           couponCode: couponApplied ? couponCode : undefined,
           points_used: pointsUsed,
+          notes: checkoutData.notes || undefined,
         }),
       })
 

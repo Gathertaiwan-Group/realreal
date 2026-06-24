@@ -212,6 +212,7 @@ export default function CheckoutPage() {
   const [cvsAddress, setCvsAddress] = useState("")
   const [country, setCountry] = useState("")
   const [invoice, setInvoice] = useState<InvoiceData>({ type: "B2C_2" })
+  const [notes, setNotes] = useState("")
   const [errors, setErrors] = useState<FieldErrors>({})
   const [touched, setTouched] = useState<Record<string, boolean>>({})
 
@@ -724,6 +725,7 @@ export default function CheckoutPage() {
       shippingMethod,
       shippingFee: preview?.shipping ?? 0,
       invoice,
+      notes: notes.trim() || undefined,
       ...(addressType === "cvs_cod" ? { forcedPaymentMethod: "cvs_cod" } : {}),
     }
     localStorage.setItem("realreal-checkout", JSON.stringify(checkoutData))
@@ -1194,6 +1196,24 @@ export default function CheckoutPage() {
               <section className="space-y-4">
                 <h2 className="text-lg font-semibold border-b pb-2">發票資訊</h2>
                 <InvoiceSelector value={invoice} onChange={setInvoice} />
+              </section>
+
+              {/* Order notes */}
+              <section className="space-y-4">
+                <h2 className="text-lg font-semibold border-b pb-2">備註</h2>
+                <div className="space-y-1.5">
+                  <Label htmlFor="notes">訂單備註（選填）</Label>
+                  <textarea
+                    id="notes"
+                    value={notes}
+                    onChange={e => setNotes(e.target.value)}
+                    maxLength={500}
+                    rows={3}
+                    placeholder="例：自選口味組合——草莓 x 2、可可 x 1、杏仁火龍果 x 1"
+                    className="flex w-full rounded-lg border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
+                  />
+                  <p className="text-xs text-zinc-400">{notes.length}/500</p>
+                </div>
               </section>
 
               {/* Mobile-only order summary */}
