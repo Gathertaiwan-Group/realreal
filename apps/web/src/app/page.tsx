@@ -494,7 +494,7 @@ export default async function HomePage() {
       {/* 1a. 精選商品 (置頂) */}
       <ProductSection
         title="從這裡開始認識誠真"
-        subtitle="最受歡迎的產品與風味"
+        subtitle="最受歡迎的產品與風味。"
         products={pinnedProducts}
         moreLabel="查看全部商品 →"
         moreHref="/shop"
