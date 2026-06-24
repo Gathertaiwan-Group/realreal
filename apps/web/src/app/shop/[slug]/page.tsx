@@ -284,9 +284,16 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
         )}
 
-        {/* 品牌故事 + 公益存款 — non-protein products */}
+        {/* 常見問題 + 品牌故事 + 公益存款 — non-protein products */}
         {!isProtein && (
           <div className="mt-10 mb-4 flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              href="/faq"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
+              style={{ borderColor: "#10305a", color: "#10305a" }}
+            >
+              常見問題
+            </Link>
             <Link
               href="/about"
               className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
