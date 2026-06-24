@@ -34,8 +34,9 @@ export function AddToCartSection({
   useEffect(() => {
     for (const v of variants) {
       const ep = Number(v.sale_price ?? v.price)
+      const op = Number(v.price)
       const item = cartItems.find((i) => i.variantId === v.id)
-      if (item && item.price !== ep) updatePrice(v.id, ep)
+      if (item && (item.price !== ep || item.originalPrice !== op)) updatePrice(v.id, ep, op)
     }
   }, [variants, cartItems, updatePrice])
 
@@ -54,6 +55,7 @@ export function AddToCartSection({
       productName,
       variantName: selected.name,
       price,
+      originalPrice: Number(selected.price),
       qty,
       stockQty: selected.stock_qty ?? undefined,
       imageUrl,

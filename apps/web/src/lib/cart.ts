@@ -7,6 +7,8 @@ export type CartItem = {
   productName: string
   variantName: string
   price: number
+  /** Original (non-sale) price — kept for strikethrough display in checkout. */
+  originalPrice?: number
   qty: number
   /** Latest known stock for the variant — used to clamp adds/updates. */
   stockQty?: number
@@ -26,7 +28,7 @@ type CartStore = {
   addItem: (item: CartItem) => void
   removeItem: (variantId: string) => void
   updateQty: (variantId: string, qty: number) => void
-  updatePrice: (variantId: string, price: number) => void
+  updatePrice: (variantId: string, price: number, originalPrice?: number) => void
   clear: () => void
   total: () => number
 }
@@ -51,7 +53,7 @@ export const useCart = create<CartStore>()(
             return {
               items: state.items.map((i) =>
                 i.variantId === item.variantId
-                  ? { ...i, qty: newQty, stockQty: item.stockQty ?? i.stockQty, price: item.price ?? i.price }
+                  ? { ...i, qty: newQty, stockQty: item.stockQty ?? i.stockQty, price: item.price ?? i.price, originalPrice: item.originalPrice ?? i.originalPrice }
                   : i,
               ),
             }
@@ -81,10 +83,12 @@ export const useCart = create<CartStore>()(
             }),
           }
         }),
-      updatePrice: (variantId, price) =>
+      updatePrice: (variantId, price, originalPrice) =>
         set((state) => ({
           items: state.items.map((i) =>
-            i.variantId === variantId ? { ...i, price } : i,
+            i.variantId === variantId
+              ? { ...i, price, ...(originalPrice !== undefined ? { originalPrice } : {}) }
+              : i,
           ),
         })),
       clear: () => set({ items: [] }),

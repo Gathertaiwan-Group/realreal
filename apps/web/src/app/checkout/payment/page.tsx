@@ -32,7 +32,7 @@ type PaymentOption = {
 }
 
 type CheckoutData = {
-  items: { variantId: string; productName: string; variantName: string; price: number; qty: number }[]
+  items: { variantId: string; productName: string; variantName: string; price: number; originalPrice?: number; qty: number }[]
   address: {
     name: string; phone: string; email?: string; addressType: string;
     city: string; district?: string; postalCode: string; addressLine?: string;
@@ -697,7 +697,12 @@ export default function PaymentPage() {
                     <p className="font-medium truncate">{item.productName}</p>
                     <p className="text-xs text-zinc-500">{item.variantName} x {item.qty}</p>
                   </div>
-                  <p className="font-medium whitespace-nowrap">NT$ {(item.price * item.qty).toLocaleString()}</p>
+                  <div className="text-right">
+                    <p className="font-medium whitespace-nowrap" style={{ color: "#10305a" }}>NT$ {(item.price * item.qty).toLocaleString()}</p>
+                    {item.originalPrice && item.originalPrice > item.price && (
+                      <p className="text-xs line-through whitespace-nowrap" style={{ color: "#687279" }}>NT$ {(item.originalPrice * item.qty).toLocaleString()}</p>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
