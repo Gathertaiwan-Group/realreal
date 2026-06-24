@@ -136,7 +136,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         .rich-content th { background: #f3f4f6; font-weight: 600; color: #10305a; }
       `}</style>
 
-      <div className="container mx-auto px-4 py-8 max-w-7xl">
+      <div className="mx-auto px-4 py-8 max-w-5xl">
         {/* Breadcrumb */}
         <nav className="mb-8 flex items-center gap-1 text-sm" style={{ color: "#687279" }}>
           <Link href="/" className="hover:opacity-70 transition-opacity">首頁</Link>
@@ -146,8 +146,11 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           <span className="font-medium" style={{ color: "#10305a" }}>{product.name}</span>
         </nav>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-10 lg:gap-16">
-          <ImageGallery images={images} productName={product.name} />
+        {/* Top: image + purchase info side by side */}
+        <div className="grid grid-cols-1 md:grid-cols-[5fr_6fr] gap-8 lg:gap-12 md:items-start">
+          <div className="md:sticky md:top-4">
+            <ImageGallery images={images} productName={product.name} />
+          </div>
 
           <div className="flex flex-col">
             <h1
@@ -165,7 +168,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
               />
             </div>
 
-            {/* Excerpt */}
+            {/* Excerpt — short intro stays in right column */}
             {product.excerpt && (
               <div className="mt-6 pt-6 border-t border-gray-100">
                 {isHtml(product.excerpt)
@@ -173,46 +176,34 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                   : <PlainTextContent text={product.excerpt} />}
               </div>
             )}
-
-            {/* Description */}
-            {product.description && (
-              <div className="mt-6 pt-6 border-t border-gray-100">
-                {isHtml(product.description)
-                  ? <RichContent html={product.description} />
-                  : <PlainTextContent text={product.description} />}
-              </div>
-            )}
           </div>
         </div>
 
-        {/* 真實回饋 banner — all products */}
-        <div className="mt-10">
-          <Link
-            href="/testimonials"
-            className="flex items-center justify-between rounded-2xl px-6 py-5 transition-opacity hover:opacity-90"
-            style={{ backgroundColor: "#f0f4f9" }}
-          >
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-0.5" style={{ color: "#f59e0b" }}>
-                {[1,2,3,4,5].map(i => <span key={i} className="text-xl">★</span>)}
-              </div>
-              <div>
-                <p className="font-semibold text-sm" style={{ color: "#10305a" }}>看更多真實回饋</p>
-                <p className="text-xs mt-0.5" style={{ color: "#687279" }}>來自真實顧客的使用心得與見證</p>
-              </div>
-            </div>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10305a" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M9 18l6-6-6-6"/>
-            </svg>
-          </Link>
-        </div>
+        {/* Description — full width below the grid */}
+        {product.description && (
+          <div className="mt-10 pt-8 border-t border-gray-100">
+            {isHtml(product.description)
+              ? <RichContent html={product.description} />
+              : <PlainTextContent text={product.description} />}
+          </div>
+        )}
 
-        {/* 沖泡說明影片 — only protein powders have a brewing step.
-            There is no per-product brewing field on the product fetch shape
-            (id/name/slug/description/excerpt/category_id/images/variants),
-            so the most accurate available signal is the powder category
-            (plant-based-powder). Freeze-dried fruit, gift sets, etc. are
-            eaten directly and must not show brewing instructions. */}
+        {/* 安心保證 image — non-protein products */}
+        {!isProtein && (
+          <div className="mt-12 flex justify-center">
+            <Image
+              src="/product-info/assurance.jpg"
+              alt="安心保證"
+              width={1200}
+              height={1200}
+              sizes="(max-width: 560px) 100vw, 560px"
+              style={{ width: "100%", maxWidth: "560px", height: "auto" }}
+              className="rounded-2xl"
+            />
+          </div>
+        )}
+
+        {/* 沖泡說明影片 — protein only */}
         {isProtein && (
           <div className="mt-14 flex flex-col items-center gap-4">
             <h2 className="text-lg font-semibold" style={{ color: "#10305a" }}>沖泡說明</h2>
@@ -231,7 +222,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         {/* Product info images — protein only */}
         {isProtein && (
           <div className="mt-14 max-w-[960px] mx-auto">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map((n) => (
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
               <Image
                 key={n}
                 src={`/product-info/protein/${n}.jpg`}
@@ -243,36 +234,65 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 className="block"
               />
             ))}
-            <div className="flex justify-center py-12">
+            {/* Image 11 has the 看更多真實回饋 button baked in — make it a link */}
+            <Link href="/testimonials" className="block">
+              <Image
+                src="/product-info/protein/11.jpg"
+                alt="看更多真實回饋"
+                width={1800}
+                height={2700}
+                sizes="(max-width: 960px) 100vw, 960px"
+                style={{ width: "100%", height: "auto" }}
+                className="block"
+              />
+            </Link>
+
+            {/* 三個並列按鈕 — protein */}
+            <div className="flex flex-col sm:flex-row gap-3 justify-center pt-10 pb-12">
               <Link
                 href="/faq"
-                className="inline-flex items-center gap-2 rounded-full px-10 py-4 text-base font-semibold transition-opacity hover:opacity-80"
-                style={{ backgroundColor: "#10305a", color: "#ffffff" }}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
+                style={{ borderColor: "#10305a", color: "#10305a" }}
               >
                 常見問題
+              </Link>
+              <Link
+                href="/about"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
+                style={{ borderColor: "#10305a", color: "#10305a" }}
+              >
+                品牌故事
+              </Link>
+              <Link
+                href="/idea"
+                className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
+                style={{ borderColor: "#10305a", color: "#10305a" }}
+              >
+                公益存款
               </Link>
             </div>
           </div>
         )}
 
-
-        {/* 品牌故事 + 公益存款 — all products */}
-        <div className="mt-10 mb-4 flex flex-col sm:flex-row gap-3 justify-center">
-          <Link
-            href="/about"
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-full px-8 py-4 text-sm font-semibold border-2 transition-colors hover:bg-[#10305a] hover:text-white"
-            style={{ borderColor: "#10305a", color: "#10305a" }}
-          >
-            品牌故事
-          </Link>
-          <Link
-            href="/idea"
-            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 rounded-full px-8 py-4 text-sm font-semibold border-2 transition-colors hover:bg-[#10305a] hover:text-white"
-            style={{ borderColor: "#10305a", color: "#10305a" }}
-          >
-            公益存款
-          </Link>
-        </div>
+        {/* 品牌故事 + 公益存款 — non-protein products */}
+        {!isProtein && (
+          <div className="mt-10 mb-4 flex flex-col sm:flex-row gap-3 justify-center">
+            <Link
+              href="/about"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
+              style={{ borderColor: "#10305a", color: "#10305a" }}
+            >
+              品牌故事
+            </Link>
+            <Link
+              href="/idea"
+              className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
+              style={{ borderColor: "#10305a", color: "#10305a" }}
+            >
+              公益存款
+            </Link>
+          </div>
+        )}
 
       </div>
     </div>
