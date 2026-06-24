@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Minus, Plus, ShoppingCart } from "lucide-react"
 import { useCart } from "@/lib/cart"
 import { Badge } from "@/components/ui/badge"
@@ -28,6 +28,16 @@ export function AddToCartSection({
   )
   const [qty, setQty] = useState(1)
   const addItem = useCart((s) => s.addItem)
+  const updatePrice = useCart((s) => s.updatePrice)
+  const cartItems = useCart((s) => s.items)
+
+  useEffect(() => {
+    for (const v of variants) {
+      const ep = Number(v.sale_price ?? v.price)
+      const item = cartItems.find((i) => i.variantId === v.id)
+      if (item && item.price !== ep) updatePrice(v.id, ep)
+    }
+  }, [variants, cartItems, updatePrice])
 
   const selected = variants.find((v) => v.id === selectedVariantId)
   const price = selected

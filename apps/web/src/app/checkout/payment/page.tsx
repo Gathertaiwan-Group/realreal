@@ -624,7 +624,7 @@ export default function PaymentPage() {
             <div className="space-y-1.5 text-sm">
               <div className="flex justify-between text-zinc-500">
                 <span>商品小計</span>
-                <span>NT$ {subtotal.toLocaleString()}</span>
+                <span>NT$ {(preview?.subtotal ?? subtotal).toLocaleString()}</span>
               </div>
               {campaignDiscountLines.map(d => (
                 <div key={d.campaign_id} className="flex justify-between text-green-600">
@@ -704,7 +704,7 @@ export default function PaymentPage() {
             <div className="border-t pt-3 space-y-2 text-sm">
               <div className="flex justify-between text-zinc-500">
                 <span>商品小計</span>
-                <span>NT$ {subtotal.toLocaleString()}</span>
+                <span>NT$ {(preview?.subtotal ?? subtotal).toLocaleString()}</span>
               </div>
               {campaignDiscountLines.map(d => (
                 <div key={d.campaign_id} className="flex justify-between text-green-600">
