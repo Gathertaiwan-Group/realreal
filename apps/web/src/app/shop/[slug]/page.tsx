@@ -222,7 +222,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         {/* Product info images — protein only */}
         {isProtein && (
           <div className="mt-14 max-w-[960px] mx-auto">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => (
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
               <Image
                 key={n}
                 src={`/product-info/protein/${n}.jpg`}
@@ -234,11 +234,11 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 className="block"
               />
             ))}
-            {/* Image 11 has the 看更多真實回饋 button baked in — make it a link */}
+            {/* Image 10 is 使用者回饋 with 看更多真實回饋 button baked in */}
             <Link href="/testimonials" className="block">
               <Image
-                src="/product-info/protein/11.jpg"
-                alt="看更多真實回饋"
+                src="/product-info/protein/10.jpg"
+                alt="使用者回饋"
                 width={1800}
                 height={2700}
                 sizes="(max-width: 960px) 100vw, 960px"
@@ -246,6 +246,16 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 className="block"
               />
             </Link>
+            {/* Image 11 is 安心保證 */}
+            <Image
+              src="/product-info/protein/11.jpg"
+              alt="安心保證"
+              width={1800}
+              height={2700}
+              sizes="(max-width: 960px) 100vw, 960px"
+              style={{ width: "100%", height: "auto" }}
+              className="block"
+            />
 
             {/* 三個並列按鈕 — protein */}
             <div className="flex flex-col sm:flex-row gap-3 justify-center pt-10 pb-12">
