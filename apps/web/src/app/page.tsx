@@ -8,6 +8,7 @@ import { getSiteContent, getPosts } from "@/lib/content"
 import type { Post } from "@/lib/content"
 import type { Metadata } from "next"
 import { TestimonialsCarousel } from "@/components/ui/testimonials-carousel"
+import { ProductCard } from "@/components/catalog/ProductCard"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -177,44 +178,9 @@ function ProductSection({
         )}
 
         <div className="mt-7 grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-          {products.map((product) => {
-            const image = product.images?.[0]
-            return (
-              <Link
-                key={product.id}
-                href={`/shop/${product.slug}`}
-                className="group"
-              >
-                <Card className="overflow-hidden border-0 shadow-sm hover:shadow-lg transition-shadow duration-300">
-                  <div className="aspect-square relative bg-zinc-50 overflow-hidden">
-                    {image ? (
-                      <Image
-                        src={image}
-                        alt={product.name}
-                        fill
-                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                        className="object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                    ) : (
-                      <div className="flex h-full w-full items-center justify-center text-zinc-300 text-sm">
-                        無圖片
-                      </div>
-                    )}
-                  </div>
-                  <CardContent className="p-4">
-                    <p className="font-medium text-sm text-[#10305a] line-clamp-2">
-                      {product.name}
-                    </p>
-                    {product.min_price != null && product.min_price > 0 && (
-                      <p className="mt-1 text-sm font-semibold text-[#687279]">
-                        NT$ {product.min_price.toLocaleString()}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              </Link>
-            )
-          })}
+          {products.map((product) => (
+            <ProductCard key={product.id} product={product} />
+          ))}
         </div>
 
         {products.length > 0 && (
