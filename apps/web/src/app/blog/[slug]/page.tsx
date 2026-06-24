@@ -111,7 +111,7 @@ export default async function BlogPostPage({ params }: Props) {
         {/* Back link */}
         <div className="mt-16 border-t pt-8">
           <Link
-            href="/blog"
+            href={post.category === "真實見證" ? "/testimonials" : "/blog"}
             className="inline-flex items-center gap-2 text-sm font-medium text-[#10305a] hover:underline"
           >
             <svg
@@ -128,7 +128,7 @@ export default async function BlogPostPage({ params }: Props) {
               <path d="m12 19-7-7 7-7" />
               <path d="M19 12H5" />
             </svg>
-            返回聰明生活
+            {post.category === "真實見證" ? "返回真實見證" : "返回聰明生活"}
           </Link>
         </div>
       </div>
