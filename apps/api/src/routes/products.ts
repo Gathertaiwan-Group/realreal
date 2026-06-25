@@ -36,6 +36,7 @@ const productSchema = z.object({
   is_addon: z.boolean().optional(),
   is_recommended: z.boolean().optional(),
   display_priority: z.number().int().min(0).max(99999).optional(),
+  min_tier_id: z.string().uuid().nullable().optional(),
 })
 
 const nestedVariantSchema = z.object({
@@ -196,7 +197,8 @@ productsRouter.get("/:slug", async (req, res) => {
   const { data, error } = await supabase
     .from("products")
     .select(`
-      id, name, slug, description, excerpt, category_id, images, is_active, created_at,
+      id, name, slug, description, excerpt, category_id, images, is_active, created_at, min_tier_id,
+      membership_tiers!min_tier_id(id, name, min_spend),
       product_variants (id, sku, name, price, sale_price, addon_price, addon_limit, stock_qty, weight, attributes)
     `)
     .eq("slug", req.params.slug)
@@ -209,8 +211,8 @@ productsRouter.get("/:slug", async (req, res) => {
   }
   if (err) { res.status(500).json({ error: err.message }); return }
 
-  // Remap product_variants -> variants for frontend compatibility
-  const { product_variants, ...rest } = data as typeof data & { product_variants?: unknown[] }
+  // Remap product_variants -> variants, membership_tiers -> min_tier for frontend compatibility
+  const { product_variants, membership_tiers: minTierRaw, ...rest } = data as typeof data & { product_variants?: unknown[]; membership_tiers?: unknown }
 
   // Flatten images: DB stores {url, alt, sort_order}[] — extract just the URL strings
   let images: string[] | null = null
@@ -223,7 +225,7 @@ productsRouter.get("/:slug", async (req, res) => {
     }
   }
 
-  res.json({ data: { ...rest, images, variants: product_variants ?? [] } })
+  res.json({ data: { ...rest, images, variants: product_variants ?? [], min_tier: minTierRaw ?? null } })
 })
 
 // POST /products — admin only

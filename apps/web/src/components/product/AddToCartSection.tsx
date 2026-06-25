@@ -18,10 +18,14 @@ export function AddToCartSection({
   productName,
   variants,
   imageUrl,
+  minTierName,
+  userQualifies = true,
 }: {
   productName: string
   variants: Variant[]
   imageUrl?: string
+  minTierName?: string
+  userQualifies?: boolean
 }) {
   const [selectedVariantId, setSelectedVariantId] = useState<string>(
     variants[0]?.id ?? ""
@@ -63,8 +67,17 @@ export function AddToCartSection({
     setQty(1)
   }
 
+  const tierLocked = !!minTierName && !userQualifies
+
   return (
     <div className="space-y-5">
+      {/* Tier restriction notice */}
+      {tierLocked && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm" style={{ color: "#92400e" }}>
+          此商品限 <strong>{minTierName}</strong> 以上會員購買
+        </div>
+      )}
+
       {/* Variant selector */}
       <div className="space-y-2">
         <p className="text-sm font-medium" style={{ color: "#687279" }}>規格</p>
@@ -141,10 +154,10 @@ export function AddToCartSection({
           className="flex-1 h-10 gap-2 inline-flex items-center justify-center text-sm font-medium text-white rounded-[10px] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           style={{ backgroundColor: "#10305a" }}
           onClick={handleAdd}
-          disabled={outOfStock}
+          disabled={outOfStock || tierLocked}
         >
           <ShoppingCart className="h-4 w-4" />
-          {outOfStock ? "目前缺貨" : "加入購物車"}
+          {outOfStock ? "目前缺貨" : tierLocked ? "會員限定商品" : "加入購物車"}
         </button>
       </div>
 

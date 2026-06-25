@@ -5,6 +5,7 @@ import { ChevronRight } from "lucide-react"
 import { getProductBySlug, getCategories } from "@/lib/catalog"
 import { AddToCartSection } from "@/components/product/AddToCartSection"
 import { ImageGallery } from "@/components/product/ImageGallery"
+import { createClient } from "@/lib/supabase/server"
 
 const BULLET_CHARS = "✔✅✓▪▸•◆■◉"
 const BULLET_START_RE = new RegExp(`^[${BULLET_CHARS}]`)
@@ -100,6 +101,38 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
   const isProtein = productCategory?.slug === "plant-based-powder"
   const isFruit = productCategory?.slug === "freeze-dried"
 
+  // Membership tier gate — compute server-side so the locked state is in the HTML
+  let minTierName: string | undefined
+  let userQualifies = true
+  if (product.min_tier) {
+    minTierName = product.min_tier.name
+    userQualifies = false
+    try {
+      const supabase = await createClient()
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        const { data: profile } = await supabase
+          .from("user_profiles")
+          .select("membership_tier_id")
+          .eq("user_id", user.id)
+          .maybeSingle()
+        const userTierId = (profile as { membership_tier_id: string | null } | null)?.membership_tier_id ?? null
+        if (userTierId) {
+          const { data: userTier } = await supabase
+            .from("membership_tiers")
+            .select("min_spend")
+            .eq("id", userTierId)
+            .maybeSingle()
+          if (userTier) {
+            userQualifies = Number((userTier as { min_spend: number }).min_spend) >= Number(product.min_tier.min_spend)
+          }
+        }
+      }
+    } catch {
+      userQualifies = false
+    }
+  }
+
   const images = product.images ?? []
   const mainImage = images[0]
 
@@ -166,6 +199,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 productName={product.name}
                 variants={product.variants ?? []}
                 imageUrl={mainImage ?? undefined}
+                minTierName={minTierName}
+                userQualifies={userQualifies}
               />
             </div>
 

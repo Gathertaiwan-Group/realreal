@@ -446,6 +446,56 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   // the shared helper. mergedItems is the authoritative cart for pricing,
   // order_items, the campaign evaluator and stock deduction below.
   const mergedItems = mergeItemsByVariant(items.map((i) => ({ ...i })))
+
+  // Membership tier restriction — check BEFORE pricing/stock.
+  // If any product in the cart has min_tier_id set, the buyer must be logged in
+  // and hold a tier with min_spend >= the required tier's min_spend.
+  {
+    const productIds = [...new Set(
+      mergedItems.map((i) => variantMap.get(i.variantId)?.product_id).filter((id): id is string => !!id)
+    )]
+    if (productIds.length > 0) {
+      const { data: productRows } = await supabase
+        .from("products")
+        .select("id, min_tier_id")
+        .in("id", productIds)
+      const restricted = (productRows ?? []).filter((p: { id: string; min_tier_id: string | null }) => p.min_tier_id)
+      if (restricted.length > 0) {
+        const reqTierIds = [...new Set(restricted.map((p: { id: string; min_tier_id: string | null }) => p.min_tier_id as string))]
+        const { data: reqTiers } = await supabase
+          .from("membership_tiers")
+          .select("id, min_spend")
+          .in("id", reqTierIds)
+        const reqTierMap = new Map((reqTiers ?? []).map((t: { id: string; min_spend: number }) => [t.id, Number(t.min_spend)]))
+        let userMinSpend = -1
+        if (userId) {
+          const { data: uProfile } = await supabase
+            .from("user_profiles")
+            .select("membership_tier_id")
+            .eq("user_id", userId)
+            .maybeSingle()
+          const uTierId = (uProfile as { membership_tier_id: string | null } | null)?.membership_tier_id ?? null
+          if (uTierId) {
+            const { data: uTier } = await supabase
+              .from("membership_tiers")
+              .select("min_spend")
+              .eq("id", uTierId)
+              .maybeSingle()
+            userMinSpend = uTier ? Number((uTier as { min_spend: number }).min_spend) : 0
+          }
+        }
+        for (const item of mergedItems) {
+          const prod = restricted.find((p: { id: string; min_tier_id: string | null }) => p.id === variantMap.get(item.variantId)?.product_id)
+          if (!prod?.min_tier_id) continue
+          const requiredMinSpend = reqTierMap.get(prod.min_tier_id) ?? Infinity
+          if (userMinSpend < requiredMinSpend) {
+            res.status(403).json({ error: "您的會員等級不符合此商品的購買資格" }); return
+          }
+        }
+      }
+    }
+  }
+
   const { expandedItems, subtotalCents } = computeAddonPricing(
     mergedItems.map((i) => ({ variantId: i.variantId, qty: i.qty })),
     variantMap,

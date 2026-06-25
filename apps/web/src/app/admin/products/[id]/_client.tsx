@@ -28,6 +28,7 @@ type Variant = {
 }
 
 type Category = { id: string; name: string }
+type TierRow = { id: string; name: string; min_spend: number; sort_order?: number }
 
 /** Convert plain text (with \n line breaks) to basic HTML for TiptapEditor */
 function toHtml(text: string): string {
@@ -56,6 +57,7 @@ type ProductRow = {
   is_addon?: boolean | null
   is_recommended?: boolean | null
   images?: unknown
+  min_tier_id?: string | null
 }
 
 function imageToUrl(img: unknown): string {
@@ -80,7 +82,9 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
   const [isAddon, setIsAddon] = useState<boolean>(product.is_addon ?? false)
   const [isRecommended, setIsRecommended] = useState<boolean>(product.is_recommended ?? false)
   const [categoryId, setCategoryId] = useState<string>(product.category_id ?? "")
+  const [minTierId, setMinTierId] = useState<string>(product.min_tier_id ?? "")
   const [categories, setCategories] = useState<Category[]>([])
+  const [tiers, setTiers] = useState<TierRow[]>([])
   const [variants, setVariants] = useState<Variant[]>([])
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
@@ -140,6 +144,10 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
       .then(r => r.json())
       .then(j => setCategories(j.data ?? []))
       .catch(() => {})
+    fetch(`${API_URL}/membership-tiers`)
+      .then(r => r.json())
+      .then(j => setTiers(j.data ?? []))
+      .catch(() => {})
   }, [product.id, API_URL])
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -165,6 +173,7 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
       is_addon: isAddon,
       is_recommended: isRecommended,
       category_id: categoryId || null,
+      min_tier_id: minTierId || null,
       images: imagesPayload,
     }
     try {
@@ -324,6 +333,23 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
               <option key={c.id} value={c.id}>{c.name}</option>
             ))}
           </select>
+        </div>
+
+        {/* Membership tier restriction */}
+        <div className={fieldClass}>
+          <Label htmlFor="min-tier">購買資格（會員等級限制）</Label>
+          <select
+            id="min-tier"
+            value={minTierId}
+            onChange={e => setMinTierId(e.target.value)}
+            className="mt-1 flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus:outline-none focus:ring-1 focus:ring-ring"
+          >
+            <option value="">無限制（所有人可購買）</option>
+            {tiers.map(t => (
+              <option key={t.id} value={t.id}>{t.name}（累積消費 NT${Number(t.min_spend).toLocaleString()} 以上）</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-gray-400">設定後，未達指定等級的會員與訪客將無法加入購物車。</p>
         </div>
 
         {/* Images */}
