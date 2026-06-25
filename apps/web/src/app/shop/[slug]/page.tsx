@@ -98,6 +98,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
   const productCategory = categories.find(c => c.id === product.category_id)
   const isProtein = productCategory?.slug === "plant-based-powder"
+  const isFruit = productCategory?.slug === "freeze-dried"
 
   const images = product.images ?? []
   const mainImage = images[0]
@@ -185,6 +186,24 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
             {isHtml(product.description)
               ? <RichContent html={product.description} />
               : <PlainTextContent text={product.description} />}
+          </div>
+        )}
+
+        {/* 凍乾水果商說圖 — fruit products only */}
+        {isFruit && (
+          <div className="mt-14 max-w-[960px] mx-auto">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <Image
+                key={n}
+                src={`/product-info/fruit/${n}.png`}
+                alt={`凍乾水果商品說明 ${n}`}
+                width={1800}
+                height={1350}
+                sizes="(max-width: 960px) 100vw, 960px"
+                style={{ width: "100%", height: "auto" }}
+                className="block"
+              />
+            ))}
           </div>
         )}
 
