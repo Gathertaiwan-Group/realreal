@@ -180,8 +180,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
         </div>
 
-        {/* Description — full width below the grid */}
-        {product.description && (
+        {/* Description — full width below the grid (hidden for fruit products) */}
+        {product.description && !isFruit && (
           <div className="mt-10 pt-8 border-t border-gray-100">
             {isHtml(product.description)
               ? <RichContent html={product.description} />
@@ -207,8 +207,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
         )}
 
-        {/* 安心保證 image — non-protein products */}
-        {!isProtein && (
+        {/* 安心保證 image — non-protein, non-fruit products only */}
+        {!isProtein && !isFruit && (
           <div className="mt-12 flex justify-center">
             <Image
               src="/product-info/assurance.jpg"
