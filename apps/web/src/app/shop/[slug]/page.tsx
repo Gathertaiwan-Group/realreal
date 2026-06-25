@@ -192,7 +192,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         {/* 凍乾水果商說圖 — fruit products only */}
         {isFruit && (
           <div className="mt-14 max-w-[960px] mx-auto">
-            {[1, 2, 3, 4, 5].map((n) => (
+            {["1", "2", "3", "4", "5-v2"].map((n) => (
               <Image
                 key={n}
                 src={`/product-info/fruit/${n}.png`}
