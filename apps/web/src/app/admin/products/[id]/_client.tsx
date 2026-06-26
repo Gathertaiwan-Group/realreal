@@ -56,6 +56,7 @@ type ProductRow = {
   is_active?: boolean | null
   is_addon?: boolean | null
   is_recommended?: boolean | null
+  is_featured?: boolean | null
   images?: unknown
   min_tier_id?: string | null
 }
@@ -81,6 +82,7 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
   const [isActive, setIsActive] = useState<boolean>(product.is_active ?? true)
   const [isAddon, setIsAddon] = useState<boolean>(product.is_addon ?? false)
   const [isRecommended, setIsRecommended] = useState<boolean>(product.is_recommended ?? false)
+  const [isFeatured, setIsFeatured] = useState<boolean>(product.is_featured ?? false)
   const [categoryId, setCategoryId] = useState<string>(product.category_id ?? "")
   const [minTierId, setMinTierId] = useState<string>(product.min_tier_id ?? "")
   const [categories, setCategories] = useState<Category[]>([])
@@ -129,6 +131,32 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
       }
     } catch (err) {
       setLocal(prev) // rollback
+      toast.error(`網路錯誤：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setTogglingField(null)
+    }
+  }
+
+  async function autoSaveFeatured(next: boolean) {
+    if (togglingField) return
+    const prev = !next
+    setIsFeatured(next)
+    setTogglingField("is_active") // reuse the lock — any non-null value blocks re-clicks
+    try {
+      const token = await getToken()
+      const res = await fetch(`${API_URL}/admin/products/${product.id}/feature`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({ is_featured: next }),
+      })
+      if (res.ok) {
+        toast.success(next ? "已設為 KOL 推薦商品" : "已移出 KOL 推薦商品")
+      } else {
+        setIsFeatured(prev)
+        toast.error(`更新失敗 (${res.status})`)
+      }
+    } catch (err) {
+      setIsFeatured(prev)
       toast.error(`網路錯誤：${err instanceof Error ? err.message : String(err)}`)
     } finally {
       setTogglingField(null)
@@ -308,6 +336,29 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
           </span>
         </div>
         <p className="-mt-3 text-xs text-gray-400">控制購物車「你也可能喜歡」是否顯示此商品；都沒勾時自動補暢銷商品。</p>
+
+        {/* Featured flag — controls KOL landing page recommended products */}
+        <div className="flex items-center gap-3">
+          <Label>KOL 推薦商品</Label>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={isFeatured}
+            disabled={togglingField !== null}
+            onClick={() => autoSaveFeatured(!isFeatured)}
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors disabled:opacity-60 ${
+              isFeatured ? "bg-[#10305a]" : "bg-zinc-300"
+            }`}
+          >
+            <span className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+              isFeatured ? "translate-x-5" : "translate-x-0.5"
+            }`} />
+          </button>
+          <span className={isFeatured ? "text-[#10305a] text-sm" : "text-gray-400 text-sm"}>
+            {isFeatured ? "✓ 顯示於 KOL landing 推薦區" : "不顯示於 KOL landing 推薦區"}
+          </span>
+        </div>
+        <p className="-mt-3 text-xs text-gray-400">開啟後，此商品會出現在所有 KOL 的推薦商品區（/k/某KOL）。</p>
 
         {/* Name & Slug */}
         <div className={fieldClass}>
