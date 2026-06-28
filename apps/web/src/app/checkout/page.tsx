@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState, useCallback, useMemo } from "react"
+import { useEffect, useState, useCallback, useMemo, useRef } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { useCart } from "@/lib/cart"
@@ -219,6 +219,7 @@ export default function CheckoutPage() {
   // Account-bound saved address book (loaded for logged-in users in 2b).
   const [savedAddresses, setSavedAddresses] = useState<UserAddress[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<string>("")
+  const didRunAddressTypeEffect = useRef(false)
 
   const searchParams = useSearchParams()
 
@@ -617,6 +618,11 @@ export default function CheckoutPage() {
   // T8: only react to addressType changes — listening to shippingMethod here
   // would fight the user's manual selection (711 vs family).
   useEffect(() => {
+    if (!didRunAddressTypeEffect.current) {
+      didRunAddressTypeEffect.current = true
+      return
+    }
+
     if ((addressType === "cvs" || addressType === "cvs_cod") && shippingMethod === "home_delivery") {
       setShippingMethod("711")
     }
