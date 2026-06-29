@@ -41,6 +41,7 @@ import { adminOrdersRouter } from "./routes/admin-orders"
 import { adminSettingsRouter } from "./routes/admin-settings"
 import { adminTeamRouter } from "./routes/admin-team"
 import { adminCustomersRouter } from "./routes/admin-customers"
+import { authLegacyRouter } from "./routes/auth-legacy"
 import { pointsRouter } from "./routes/points"
 import { kolsRouter } from "./routes/kols"
 import { adminKolsRouter } from "./routes/admin-kols"
@@ -96,6 +97,7 @@ app.use("/admin/orders", adminOrdersRouter)
 app.use("/admin/settings", adminSettingsRouter)
 app.use("/admin/team", adminTeamRouter)
 app.use("/admin/customers", adminCustomersRouter)
+app.use("/auth/legacy", authLegacyRouter)
 app.use("/orders", ordersRouter)
 app.use("/webhooks/pchomepay", pchomepayWebhookRouter)
 app.use("/webhooks/linepay", linepayWebhookRouter)

@@ -4,9 +4,13 @@ import { createClient } from "@/lib/supabase/server"
 import { redirect } from "next/navigation"
 import { z } from "zod"
 
+// Relaxed to min(1): imported WordPress users may have set passwords <8 chars
+// back when WP allowed weaker minimums. Validation still rejects empties; the
+// legacy-fallback path then handles auth via the stored PHPass hash. Register
+// flow still enforces ≥8.
 const loginSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: z.string().min(1),
 })
 
 const registerSchema = z.object({
@@ -24,11 +28,38 @@ export async function loginAction(_prev: unknown, formData: FormData) {
     email: formData.get("email"),
     password: formData.get("password"),
   })
-  if (!parsed.success) return { error: "請填入有效的 Email 和密碼（至少 8 字元）" }
+  if (!parsed.success) return { error: "請填入有效的 Email 和密碼" }
 
   const supabase = await createClient()
   const { error } = await supabase.auth.signInWithPassword(parsed.data)
-  if (error) return { error: error.message }
+  if (error) {
+    // WordPress-import legacy fallback (added 2026-06-30 when 72 users were
+    // imported from the old WP site). Supabase rejected the (email, password)
+    // pair — could be a real wrong password, or an imported user whose
+    // encrypted_password is a random throwaway and whose real PHPass hash
+    // lives on user_profiles.wp_legacy_password_hash. Ask the API to verify
+    // against the WP hash and, on success, re-hash to bcrypt; then we retry
+    // signInWithPassword and let it succeed normally.
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+    try {
+      const r = await fetch(`${apiUrl}/auth/legacy/verify-and-migrate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(parsed.data),
+        // Server action runs server-side; no browser CORS concern.
+      })
+      const body = (await r.json().catch(() => ({}))) as { migrated?: boolean }
+      if (r.ok && body.migrated) {
+        const { error: retryErr } = await supabase.auth.signInWithPassword(parsed.data)
+        if (retryErr) return { error: retryErr.message }
+        // success — fall through to redirect below
+      } else {
+        return { error: error.message }
+      }
+    } catch {
+      return { error: error.message }
+    }
+  }
 
   // Only allow same-origin relative paths. An attacker-supplied absolute or
   // protocol-relative URL (?redirect=//evil.example) would otherwise bounce the
