@@ -424,7 +424,17 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     }
   }
 
-  const orderNumber = "RR" + Date.now() + randomBytes(4).toString("hex")
+  // 8-digit order number from a Postgres sequence (migration 0045). The
+  // sequence guarantees uniqueness without a retry loop. Old WP / RR<ts>
+  // formats remain valid because order_number is TEXT — only NEW orders
+  // pick up the short format.
+  const { data: seqResult, error: seqErr } = await supabase.rpc("next_order_number")
+  if (seqErr || typeof seqResult !== "string") {
+    console.error("[orders] next_order_number RPC failed:", seqErr)
+    res.status(500).json({ error: "Failed to allocate order number" })
+    return
+  }
+  const orderNumber = seqResult
 
   // Authoritative pricing — NEVER trust the client's items[].unitPrice. Recompute
   // every line from the catalog so a tampered request (or a stale cart snapshot)
