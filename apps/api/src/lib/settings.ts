@@ -327,7 +327,7 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   "points.apply_to_sale": "true",
   "points.expire_days": "365",
   "shipping.fee_home_delivery": "150",
-  "shipping.fee_cvs": "65",
+  "shipping.fee_cvs": "80",
   "shipping.fee_cvs_cod": "80",
   "shipping.free_threshold_home": "999",
   "shipping.free_threshold_cvs": "499",

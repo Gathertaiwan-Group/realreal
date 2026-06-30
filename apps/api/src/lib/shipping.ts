@@ -33,7 +33,7 @@ export async function getShippingRule(
     ? "shipping.free_threshold_home"
     : "shipping.free_threshold_cvs"
 
-  const fee = Number((await getSetting(feeKey)) ?? "100")
+  const fee = Number((await getSetting(feeKey)) ?? "80")
   const threshold = Number((await getSetting(thresholdKey)) ?? "0")
 
   return { fee, free_threshold: threshold }
