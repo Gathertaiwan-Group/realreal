@@ -39,76 +39,81 @@ export async function initiatePayment(
   orderId: string,
   amount: number
 ): Promise<{ paymentUrl: string; merchantTradeNo: string }> {
-  // platform_order_id format mirrors the legacy WP woo-jkopay plugin's
-  // pattern (<orderId>-<YYYYMMDDhhmmss>) so JKO Pay support can cross
-  // reference old + new orders by the same scheme.
-  const ts = new Date()
-    .toISOString()
-    .replace(/\D/g, "")
-    .slice(0, 14)
-  const platformOrderId = `${orderId}-${ts}`
   const apiUrl = getApiBaseUrl()
   const siteUrl = getSiteUrl()
   const { storeId, apiKey, secretKey, baseUrl } = await getCreds()
 
-  // Field shape inferred from JKO Pay callbacks captured in the legacy WP
-  // backup (wp_comments rows mention platform_order_id, final_price,
-  // result_url, redeem_amount/redeem_detail, etc.). Currency in TWD,
-  // prices in dollars (not cents).
+  // platform_order_id pattern mirrors the legacy WP woo-jkopay plugin:
+  //   sprintf('%d-%s', $order_id, current_time('YmdHis'))
+  // — keep the same scheme so JKO Pay support can cross-reference old +
+  // new orders by the same id format.
+  const ymdhms = new Date()
+    .toISOString()
+    .replace(/[-:T]/g, "")
+    .slice(0, 14)
+  const platformOrderId = `${orderId}-${ymdhms}`
+
+  // valid_time: "YYYY-MM-DD HH:mm:ss" in UTC+8, +30 minutes from now (matches
+  // the PHP plugin's gmdate('Y-m-d H:i:s', current_time('timestamp') + 30 * MINUTE + 8 * HOUR)).
+  const validAt = new Date(Date.now() + 30 * 60 * 1000 + 8 * 60 * 60 * 1000)
+  const validTime = validAt.toISOString().replace("T", " ").slice(0, 19)
+
+  // Payload shape lifted verbatim from class-wc-gateway-jkopay.php so the
+  // request matches the format JKO Pay's API has been accepting from this
+  // merchant for over a year. Notably: prices are integers (TWD dollars,
+  // not cents); valid_time is a STRING; unredeem/payment_type/escrow are
+  // mandatory; confirm_url / store_name / goods are NOT sent.
   const bodyObj = {
-    store_id: storeId,
     platform_order_id: platformOrderId,
+    store_id: storeId,
     currency: "TWD",
-    total_price: amount,
-    final_price: amount,
-    valid_time: 900,
-    confirm_url: `${apiUrl}/webhooks/jkopay`,
+    total_price: Math.round(amount),
+    final_price: Math.round(amount),
+    unredeem: 0,
     result_url: `${apiUrl}/webhooks/jkopay`,
     result_display_url: `${siteUrl}/checkout/confirm?order=${encodeURIComponent(orderId)}`,
-    store_name: "誠真生活 RealReal",
-    goods: `realreal order ${orderId}`,
+    valid_time: validTime,
+    payment_type: "onetime",
+    escrow: false,
   }
   const payload = JSON.stringify(bodyObj)
-  // Digest format: HMAC-SHA256(secret, payload) → hex. TODO: verify against
-  // JKO Pay's official integration doc; current code's previous format was
-  // also hex-hmac (only the header names + endpoint path were wrong) so this
-  // matches what we know. If the gateway still returns
-  // {"result":"201","message":"Authentication failed"}, the digest needs a
-  // different recipe (base64 hmac? sha256(secret+body)? a nonce?) — try
-  // alternatives once the JKO Pay developer doc or the legacy
-  // wp-content/plugins/woo-jkopay/ PHP source is available.
+
+  // Digest = HMAC-SHA256(payload, secret) hex. Header names are
+  // lowercase `api-key` / `digest`. Endpoint is /platform/entry (NOT
+  // /order/create — that legacy path returned a generic 404). All four of
+  // these (path / headers / payload shape / digest) come from the PHP
+  // plugin's class-wc-jkopay-api.php + class-wc-gateway-jkopay.php; this
+  // is a like-for-like Node port.
   const digest = createHmac("sha256", secretKey).update(payload).digest("hex")
 
-  // Endpoint path confirmed by probing onlinepay.jkopay.com — the previous
-  // `/order/create` returned a generic 404. /platform/entry/transaction/
-  // online_pay/order/create echoes a structured JSON response so we know
-  // it's the right route. Headers are Api-Key + Digest (NOT
-  // X-Api-Key / X-Signature, which produced "header Api-Key and Digest
-  // are required" errors).
-  const url = `${baseUrl}/platform/entry/transaction/online_pay/order/create`
-  const response = await fetch(url, {
+  const response = await fetch(`${baseUrl}/platform/entry`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Api-Key": apiKey,
-      Digest: digest,
+      "api-key": apiKey,
+      digest,
     },
     body: payload,
   })
 
   const text = await response.text()
   let data: Record<string, any> = {}
-  try { data = JSON.parse(text) } catch { /* keep text */ }
+  try { data = JSON.parse(text) } catch { /* keep raw text for the log */ }
 
-  // JKO Pay convention: result "000" / "0" = success, others are errors with
-  // a message. The successful response object holds a `payment_url` to
-  // redirect the buyer.
-  const paymentUrl = data?.result_object?.payment_url ?? data?.payment_url
-  if (!paymentUrl) {
+  // result "000" = success per JKO Pay convention; anything else is an
+  // error with a human-readable `message`.
+  if (data.result !== "000") {
     console.error(
-      `[jkopay] order/create failed status=${response.status} body=${text}`,
+      `[jkopay] /platform/entry failed status=${response.status} body=${text}`,
     )
-    throw new Error(`JKOPay error: ${text || `HTTP ${response.status}`}`)
+    throw new Error(
+      `JKOPay error: ${data.message ?? text ?? `HTTP ${response.status}`}`,
+    )
   }
-  return { paymentUrl: paymentUrl as string, merchantTradeNo: platformOrderId }
+  const paymentUrl = data.result_object?.payment_url as string | undefined
+  if (!paymentUrl) {
+    console.error(`[jkopay] missing payment_url in response: ${text}`)
+    throw new Error("JKOPay error: missing payment_url")
+  }
+  return { paymentUrl, merchantTradeNo: platformOrderId }
 }
