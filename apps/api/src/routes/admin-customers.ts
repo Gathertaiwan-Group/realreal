@@ -30,11 +30,20 @@ adminCustomersRouter.use(requireAuth, requireAdmin)
 // ---------------------------------------------------------------------------
 
 adminCustomersRouter.get("/", async (_req, res) => {
+  // 「會員」= 出現在 6/30 VIP CSV 名單上的人 → user_profiles.wp_imported_at IS NOT NULL。
+  //
+  // 1) 排除 27 個從 WP guest 訂單 backfill 出來的帳號（只是讓老客戶能登入看歷
+  //    史訂單，不算正式會員，wp_imported_at IS NULL）。
+  // 2) 排除 admin/editor/viewer 員工帳號（即便他們也是 VIP，也不該出現在這
+  //    個畫面 —— 老闆自己不該被列在客戶名單）。
+  // 對應的同步來源：plan「以 6/30 VIP CSV 為主」一次性 reconcile。
   const { data: profiles, error: profErr } = await supabase
     .from("user_profiles")
     .select(
       "user_id, display_name, phone, total_spend, created_at, membership_tiers(name)",
     )
+    .not("wp_imported_at", "is", null)
+    .eq("role", "customer")
     .order("created_at", { ascending: false })
     .limit(500)
 

@@ -79,17 +79,45 @@ export default async function AdminOrdersPage({
   const toggleQs = toggleParams.toString()
   const toggleHref = toggleQs ? `/admin/orders?${toggleQs}` : "/admin/orders"
 
-  // orders has no FK to user_profiles, so resolve display names in a second query
+  // orders has no FK to user_profiles, so resolve display names + membership
+  // metadata in a second query. The badge logic in 顧客 column needs:
+  //   - display_name
+  //   - wp_imported_at (NULL → "非會員"，否則 → 顯示 tier 名)
+  //   - role (admin/editor/viewer → 「管理員」badge，蓋掉 tier 顯示)
+  //   - membership_tiers.name (FK join)
+  // 以 6/30 VIP CSV 為主同步後，wp_imported_at NOT NULL 才算正式會員。
   const userIds = [
     ...new Set((orders ?? []).map((o) => o.user_id).filter(Boolean) as string[]),
   ]
-  const nameByUser = new Map<string, string | null>()
+  type CustomerMeta = {
+    display_name: string | null
+    role: string | null
+    is_member: boolean
+    tier_name: string | null
+  }
+  const metaByUser = new Map<string, CustomerMeta>()
   if (userIds.length > 0) {
     const { data: profiles } = await supabase
       .from("user_profiles")
-      .select("user_id, display_name")
+      .select("user_id, display_name, role, wp_imported_at, membership_tiers(name)")
       .in("user_id", userIds)
-    for (const p of profiles ?? []) nameByUser.set(p.user_id, p.display_name)
+    for (const p of (profiles ?? []) as Array<{
+      user_id: string
+      display_name: string | null
+      role: string | null
+      wp_imported_at: string | null
+      membership_tiers: { name: string } | Array<{ name: string }> | null
+    }>) {
+      const tier = Array.isArray(p.membership_tiers)
+        ? (p.membership_tiers[0] ?? null)
+        : p.membership_tiers
+      metaByUser.set(p.user_id, {
+        display_name: p.display_name,
+        role: p.role,
+        is_member: Boolean(p.wp_imported_at),
+        tier_name: tier?.name ?? null,
+      })
+    }
   }
 
   return (
@@ -157,7 +185,25 @@ export default async function AdminOrdersPage({
               </tr>
             ) : (
               orders.map((order) => {
-                const displayName = order.user_id ? nameByUser.get(order.user_id) : null
+                const meta = order.user_id ? metaByUser.get(order.user_id) : null
+                const displayName = meta?.display_name ?? null
+                // Badge logic per plan Phase 3:
+                //   guest 訂單           → 不顯示 badge（已有「訪客」名稱）
+                //   admin/editor/viewer  → 「管理員」紫 badge（蓋掉 tier）
+                //   wp_imported_at NULL  → 「非會員」灰 badge
+                //   wp_imported_at NOT NULL → tier 名 outline 藍 badge
+                const isStaff =
+                  meta?.role === "admin" || meta?.role === "editor" || meta?.role === "viewer"
+                const customerBadge = !meta
+                  ? null
+                  : isStaff
+                  ? { label: "管理員", className: "border-purple-200 bg-purple-50 text-purple-700" }
+                  : meta.is_member
+                  ? {
+                      label: meta.tier_name ?? "會員",
+                      className: "border-[#10305a]/20 bg-white text-[#10305a]",
+                    }
+                  : { label: "非會員", className: "border-gray-200 bg-white text-gray-500" }
                 const display = getOrderDisplayStatus(
                   order,
                   order.logistics?.[0] ?? null,
@@ -175,6 +221,13 @@ export default async function AdminOrdersPage({
                     <td className="px-4 py-3">
                       <p className="font-medium text-xs">{displayName ?? "訪客"}</p>
                       <p className="text-zinc-400 text-xs">{order.guest_email ?? "—"}</p>
+                      {customerBadge && (
+                        <span
+                          className={`mt-1 inline-block rounded border px-1.5 py-0.5 text-[10px] leading-none ${customerBadge.className}`}
+                        >
+                          {customerBadge.label}
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3">
                       <Badge className={DISPLAY_BADGE_CLASSES[display.color]}>
