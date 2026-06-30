@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server"
+import { createAdminClient } from "@/lib/supabase/admin"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { AdminTabs } from "../_components/AdminTabs"
@@ -81,25 +82,36 @@ export default async function AdminOrdersPage({
 
   // orders has no FK to user_profiles, so resolve display names + membership
   // metadata in a second query. The badge logic in 顧客 column needs:
-  //   - display_name
+  //   - display_name + email
   //   - role (admin/editor/viewer → 「管理員」badge，蓋掉 tier 顯示)
   //   - membership_tiers.name (FK join — 任何有 user_id 的訂單都顯示 tier)
   // 系統設計：創帳號 → trigger 自動 INSERT user_profiles 並指派最低 tier
   // (初心之友)。所以任何 user_id 都對應到一個 tier 名稱。
+  // Email lives on auth.users (not visible to anon)；用 service-role 撈一次
+  // listUsers 把全部 emails 拿回來，再 map 到我們需要的 ids。
   const userIds = [
     ...new Set((orders ?? []).map((o) => o.user_id).filter(Boolean) as string[]),
   ]
   type CustomerMeta = {
     display_name: string | null
+    email: string | null
     role: string | null
     tier_name: string | null
   }
   const metaByUser = new Map<string, CustomerMeta>()
   if (userIds.length > 0) {
-    const { data: profiles } = await supabase
-      .from("user_profiles")
-      .select("user_id, display_name, role, membership_tiers(name)")
-      .in("user_id", userIds)
+    const adminSb = createAdminClient()
+    const [{ data: profiles }, { data: usersData }] = await Promise.all([
+      supabase
+        .from("user_profiles")
+        .select("user_id, display_name, role, membership_tiers(name)")
+        .in("user_id", userIds),
+      adminSb.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+    ])
+    const emailById = new Map<string, string>()
+    for (const u of usersData?.users ?? []) {
+      if (u.email) emailById.set(u.id, u.email)
+    }
     for (const p of (profiles ?? []) as Array<{
       user_id: string
       display_name: string | null
@@ -111,6 +123,7 @@ export default async function AdminOrdersPage({
         : p.membership_tiers
       metaByUser.set(p.user_id, {
         display_name: p.display_name,
+        email: emailById.get(p.user_id) ?? null,
         role: p.role,
         tier_name: tier?.name ?? null,
       })
@@ -215,7 +228,9 @@ export default async function AdminOrdersPage({
                     </td>
                     <td className="px-4 py-3">
                       <p className="font-medium text-xs">{displayName ?? "訪客"}</p>
-                      <p className="text-zinc-400 text-xs">{order.guest_email ?? "—"}</p>
+                      <p className="text-zinc-400 text-xs">
+                        {meta?.email ?? order.guest_email ?? "—"}
+                      </p>
                       {customerBadge && (
                         <span
                           className={`mt-1 inline-block rounded border px-1.5 py-0.5 text-[10px] leading-none ${customerBadge.className}`}
