@@ -1301,12 +1301,29 @@ ordersRouter.get("/", requireAuth, async (req, res) => {
 
 // GET /orders/by-number/:orderNumber/status — public, returns the minimal
 // status info the post-payment confirm page needs. No PII, no items.
+// EXCEPTION: `guest_email` is returned ONLY when the order is still a guest
+// order (user_id IS NULL). The confirm page uses it to prefill the
+// "建立會員帳號" prompt that converts the just-completed checkout into a
+// Supabase Auth user. Once the order is claimed (user_id set), the field is
+// returned as null so subsequent lookups via the same public URL don't leak
+// the buyer's email.
 ordersRouter.get("/by-number/:orderNumber/status", async (req, res) => {
   const { data, error } = await supabase
     .from("orders")
-    .select("order_number, status, payment_status, payment_method, total")
+    .select("order_number, status, payment_status, payment_method, total, user_id, guest_email")
     .eq("order_number", req.params.orderNumber)
     .maybeSingle()
   if (error || !data) { res.status(404).json({ error: "Order not found" }); return }
-  res.json({ data })
+  const row = data as Record<string, unknown>
+  res.json({
+    data: {
+      order_number: row.order_number,
+      status: row.status,
+      payment_status: row.payment_status,
+      payment_method: row.payment_method,
+      total: row.total,
+      // Conditional — null once a user claims the order.
+      guest_email: row.user_id == null ? (row.guest_email ?? null) : null,
+    },
+  })
 })

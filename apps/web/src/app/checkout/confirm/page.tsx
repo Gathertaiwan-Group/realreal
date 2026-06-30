@@ -7,6 +7,8 @@ import { useCart } from "@/lib/cart"
 import { Button } from "@/components/ui/button"
 import { trackPurchase } from "@/lib/analytics"
 import { clearPromoState } from "@/components/checkout/PromoWidget"
+import { GuestRegisterCard } from "@/components/checkout/GuestRegisterCard"
+import { createClient } from "@/lib/supabase/client"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -115,6 +117,56 @@ export default function ConfirmPage() {
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>(() =>
     initialPaymentStatus(searchParams, orderNumber, isTestPaid),
   )
+
+  // Guest email + login state — populated by the same status endpoint that
+  // drives payment_status polling. `guestEmail` is null unless the order is
+  // still a guest order (server side: returns email only when user_id IS NULL,
+  // so already-claimed orders never leak the address). `isLoggedIn` toggles
+  // the GuestRegisterCard off for members — they have nothing to convert.
+  const [guestEmail, setGuestEmail] = useState<string | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false)
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      try {
+        const supabase = createClient()
+        const { data } = await supabase.auth.getUser()
+        if (!cancelled) setIsLoggedIn(!!data.user)
+      } catch {
+        /* anon user — keep isLoggedIn=false */
+      }
+    })()
+    return () => { cancelled = true }
+  }, [])
+
+  // One-shot fetch of the order's guest_email — separate from the payment
+  // status poll so cvs_cod / test_paid (which skip polling) also get it.
+  // Re-fires when orderNumber changes; once the order is claimed, the API
+  // returns null and the card hides itself.
+  useEffect(() => {
+    if (orderNumber === "---") return
+    let cancelled = false
+    void (async () => {
+      try {
+        const r = await fetch(
+          `${API_URL}/orders/by-number/${encodeURIComponent(orderNumber)}/status`,
+        )
+        if (!r.ok || cancelled) return
+        const body = (await r.json()) as { data?: { guest_email?: string | null } }
+        if (!cancelled) setGuestEmail(body.data?.guest_email ?? null)
+      } catch {
+        /* network blip — silently leave guestEmail null */
+      }
+    })()
+    return () => { cancelled = true }
+  }, [orderNumber])
+
+  // Card is eligible only when (a) we know the visitor isn't logged in,
+  // (b) the order has a guest email server-side, and (c) we have an
+  // orderNumber to prove ownership in the register-from-guest endpoint.
+  const showGuestRegister =
+    !isLoggedIn && !!guestEmail && orderNumber !== "---"
 
   // Server-side truth: fetch the real payment_status from the API.
   // URL params from the gateway redirect can lie (a hostile redirect could
@@ -242,6 +294,11 @@ export default function ConfirmPage() {
               <li>取貨時現場付款給店員（現金）</li>
             </ol>
           </div>
+          {showGuestRegister && guestEmail && (
+            <div className="max-w-sm mx-auto">
+              <GuestRegisterCard email={guestEmail} orderNumber={orderNumber} />
+            </div>
+          )}
           <Link href="/shop">
             <Button variant="outline">繼續購物</Button>
           </Link>
@@ -406,6 +463,12 @@ export default function ConfirmPage() {
             </span>
           </div>
         </div>
+
+        {showGuestRegister && guestEmail && (
+          <div className="mb-6">
+            <GuestRegisterCard email={guestEmail} orderNumber={orderNumber} />
+          </div>
+        )}
 
         {/* Actions */}
         <div className="space-y-3">
