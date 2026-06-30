@@ -5,7 +5,7 @@ import { incrementSpendAndUpgrade } from "./tier"
 import { inventoryQueue } from "./queue"
 import { invoiceQueue } from "../workers/invoice-issuer"
 import { getSetting } from "./settings"
-import { grantPoints, loadPointsSettings, redeemPoints } from "./points"
+import { grantPoints, redeemPoints } from "./points"
 import { sendLineNotify } from "./line-notify"
 
 /**
@@ -282,20 +282,13 @@ export async function enqueuePostPaymentJobs(orderId: string) {
 
       // Redeem points if order.points_used > 0
       const pointsUsed = Number((order as { points_used?: number }).points_used ?? 0)
-      let pointsDiscount = pointsUsed
-      try {
-        const settings = await loadPointsSettings()
-        pointsDiscount = pointsUsed * Number(settings.ratio ?? 1)
-      } catch {
-        pointsDiscount = pointsUsed
-      }
-      const subtotalTwd = Number((order as { subtotal?: number | string | null }).subtotal ?? 0)
-      const discountTwd = Number((order as { discount_amount?: number | string | null }).discount_amount ?? 0)
-      const nonPointsDiscountTwd = Math.max(0, discountTwd - pointsDiscount)
-      const earnBaseTwd = Math.max(0, subtotalTwd - nonPointsDiscountTwd)
+      // New formula: (結帳金額 - 80) × 會員百分比 = 點數
+      // 結帳金額 = order.total (actual amount paid including shipping)
+      // -80 = shipping deduction (standard fee across all methods)
+      const totalTwd = Number((order as { total?: number | string | null }).total ?? 0)
+      const earnBaseTwd = Math.max(0, totalTwd - 80)
 
-      // Grant earned points from merchandise after non-points discounts.
-      // Shipping and point redemption do not reduce the earn base.
+      // Grant earned points: base = total paid minus shipping fee (80).
       await grantPoints(orderId, order.user_id, earnBaseTwd, tierId)
 
       if (pointsUsed > 0) {
