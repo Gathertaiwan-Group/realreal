@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { InvoiceSelector, type InvoiceData } from "@/components/checkout/InvoiceSelector"
 import { API_URL } from "@/lib/api-url"
+import { applyAddonDisplay, cartDisplaySubtotal } from "@/lib/addon-display"
 import {
   buildOrderPreviewItems,
   formatShippingPreviewLabel,
@@ -197,6 +198,14 @@ export default function CheckoutPage() {
   const total = useCart(s => s.total)
   const updatePrice = useCart(s => s.updatePrice)
   const [hydrated, setHydrated] = useState(false)
+
+  // Per-line addon pricing for the 訂單摘要 — mirrors CartDrawer so what the
+  // user saw before clicking 結帳 is exactly what they see here. Without this,
+  // each line renders item.price * item.qty (raw catalog price), making the
+  // discount appear to "reset to 原價" between cart and checkout. The
+  //商品小計 row uses preview?.subtotal (server-authoritative), but per-line
+  // numbers need their own calculation. addonLines is index-aligned to items.
+  const addonLines = useMemo(() => applyAddonDisplay(items), [items])
 
   const [name, setName] = useState("")
   const [phone, setPhone] = useState("")
@@ -740,7 +749,16 @@ export default function CheckoutPage() {
 
   if (!hydrated) return null
 
-  const subtotal = total()
+  // Local subtotal fallback — used by 訂單摘要 when preview is still loading
+  // OR when offline. Apply add-on display rule so the fallback matches the
+  // per-line numbers (otherwise mobile shows lines NT$50 + NT$380 = NT$430
+  // but 商品小計 NT$580 from the raw total() helper). preview.subtotal stays
+  // authoritative once it arrives.
+  const subtotal = cartDisplaySubtotal(items)
+  // total() kept available for places that explicitly want the raw catalog
+  // sum (none currently, but the hook stays exported).
+  void total
+
   const shippingLabel = formatShippingPreviewLabel({ preview, loading: previewLoading })
   const discountLines = preview?.discounts ?? []
   const freeItemsList = preview?.free_items ?? []
@@ -1226,20 +1244,38 @@ export default function CheckoutPage() {
               <section className="lg:hidden space-y-3">
                 <h2 className="text-lg font-semibold border-b pb-2">訂單摘要</h2>
                 <div className="rounded-lg border divide-y">
-                  {items.map(item => (
-                    <div key={item.variantId} className="flex items-center justify-between p-3">
-                      <div>
-                        <p className="font-medium text-sm">{item.productName}</p>
-                        <p className="text-xs text-zinc-500">{item.variantName} x {item.qty}</p>
+                  {items.map((item, i) => {
+                    const line = addonLines[i]
+                    const addonApplied = line?.addonApplied ?? false
+                    const lineSubtotal = line?.lineSubtotal ?? item.price * item.qty
+                    // Original line total for the strikethrough: prefer addon-pre
+                    // (full catalog price × qty) when add-on applied; else fall
+                    // back to the existing sale_price-vs-price strikethrough.
+                    const originalLineTotal = addonApplied
+                      ? item.price * item.qty
+                      : item.originalPrice && item.originalPrice > item.price
+                        ? item.originalPrice * item.qty
+                        : null
+                    return (
+                      <div key={item.variantId} className="flex items-center justify-between p-3">
+                        <div>
+                          <p className="font-medium text-sm">{item.productName}</p>
+                          <p className="text-xs text-zinc-500">
+                            {item.variantName} x {item.qty}
+                            {addonApplied && (
+                              <span className="ml-2 inline-flex items-center rounded bg-[#10305a]/10 px-1 py-0.5 text-[10px] font-medium text-[#10305a]">加購價</span>
+                            )}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="font-medium text-sm" style={{ color: "#10305a" }}>NT$ {lineSubtotal.toLocaleString()}</p>
+                          {originalLineTotal != null && (
+                            <p className="text-xs line-through" style={{ color: "#687279" }}>NT$ {originalLineTotal.toLocaleString()}</p>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-medium text-sm" style={{ color: "#10305a" }}>NT$ {(item.price * item.qty).toLocaleString()}</p>
-                        {item.originalPrice && item.originalPrice > item.price && (
-                          <p className="text-xs line-through" style={{ color: "#687279" }}>NT$ {(item.originalPrice * item.qty).toLocaleString()}</p>
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                   <div className="p-3 space-y-1 text-sm">
                     <div className="flex justify-between text-zinc-500">
                       <span>商品小計</span>
@@ -1313,20 +1349,35 @@ export default function CheckoutPage() {
             <div className="sticky top-8 rounded-lg border bg-zinc-50/50 p-5 space-y-4">
               <h2 className="font-semibold text-lg">訂單摘要</h2>
               <div className="divide-y">
-                {items.map(item => (
-                  <div key={item.variantId} className="flex justify-between py-2.5 text-sm">
-                    <div className="min-w-0 flex-1 pr-3">
-                      <p className="font-medium truncate">{item.productName}</p>
-                      <p className="text-xs text-zinc-500">{item.variantName} x {item.qty}</p>
+                {items.map((item, i) => {
+                  const line = addonLines[i]
+                  const addonApplied = line?.addonApplied ?? false
+                  const lineSubtotal = line?.lineSubtotal ?? item.price * item.qty
+                  const originalLineTotal = addonApplied
+                    ? item.price * item.qty
+                    : item.originalPrice && item.originalPrice > item.price
+                      ? item.originalPrice * item.qty
+                      : null
+                  return (
+                    <div key={item.variantId} className="flex justify-between py-2.5 text-sm">
+                      <div className="min-w-0 flex-1 pr-3">
+                        <p className="font-medium truncate">{item.productName}</p>
+                        <p className="text-xs text-zinc-500">
+                          {item.variantName} x {item.qty}
+                          {addonApplied && (
+                            <span className="ml-1.5 inline-flex items-center rounded bg-[#10305a]/10 px-1 py-0.5 text-[10px] font-medium text-[#10305a]">加購價</span>
+                          )}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-medium whitespace-nowrap" style={{ color: "#10305a" }}>NT$ {lineSubtotal.toLocaleString()}</p>
+                        {originalLineTotal != null && (
+                          <p className="text-xs line-through whitespace-nowrap" style={{ color: "#687279" }}>NT$ {originalLineTotal.toLocaleString()}</p>
+                        )}
+                      </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium whitespace-nowrap" style={{ color: "#10305a" }}>NT$ {(item.price * item.qty).toLocaleString()}</p>
-                      {item.originalPrice && item.originalPrice > item.price && (
-                        <p className="text-xs line-through whitespace-nowrap" style={{ color: "#687279" }}>NT$ {(item.originalPrice * item.qty).toLocaleString()}</p>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
               <div className="border-t pt-3 space-y-2 text-sm">
                 <div className="flex justify-between text-zinc-500">

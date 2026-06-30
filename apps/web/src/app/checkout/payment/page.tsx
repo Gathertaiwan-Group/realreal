@@ -1,12 +1,13 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { createClient } from "@/lib/supabase/client"
 import { Button } from "@/components/ui/button"
 import { toast } from "sonner"
 import { API_URL } from "@/lib/api-url"
+import { applyAddonDisplay, cartDisplaySubtotal } from "@/lib/addon-display"
 import type { InvoiceData } from "@/components/checkout/InvoiceSelector"
 import {
   buildOrderPreviewItems,
@@ -32,7 +33,12 @@ type PaymentOption = {
 }
 
 type CheckoutData = {
-  items: { variantId: string; productName: string; variantName: string; price: number; originalPrice?: number; qty: number }[]
+  // isAddon / addonPrice ride through localStorage from the cart store so the
+  // 訂單摘要 can render the same add-on discounted line that the cart drawer
+  // showed before the user clicked 下一步. Without these fields the page falls
+  // back to item.price × item.qty (catalog price), making the discount appear
+  // to "reset to 原價" between cart and checkout.
+  items: { variantId: string; productName: string; variantName: string; price: number; originalPrice?: number; qty: number; isAddon?: boolean; addonPrice?: number }[]
   address: {
     name: string; phone: string; email?: string; addressType: string;
     city: string; district?: string; postalCode: string; addressLine?: string;
@@ -267,6 +273,10 @@ export default function PaymentPage() {
                     ...item,
                     price: Number(v.sale_price ?? v.price),
                     originalPrice: Number(v.price),
+                    // Explicit re-spread so the spread above never accidentally
+                    // drops these even if a future refactor strips ...item.
+                    isAddon: item.isAddon,
+                    addonPrice: item.addonPrice,
                   }
                 }),
               }
@@ -279,9 +289,19 @@ export default function PaymentPage() {
     }
   }, [router])
 
-  const subtotal = checkoutData
-    ? checkoutData.items.reduce((sum, i) => sum + i.price * i.qty, 0)
-    : 0
+  // Local subtotal fallback — apply add-on rule so 商品小計 matches the per-
+  // line totals when preview is offline / pending. preview.subtotal still
+  // wins when it's available (server-authoritative).
+  const subtotal = checkoutData ? cartDisplaySubtotal(checkoutData.items) : 0
+
+  // Per-line addon pricing for the 訂單摘要 (matches the cart drawer +
+  // checkout step 1 so the same line totals carry across all 3 surfaces).
+  // Server-authoritative pricing still wins for the 商品小計 row (it reads
+  // preview?.subtotal); this is purely for the per-line display.
+  const addonLines = useMemo(
+    () => (checkoutData ? applyAddonDisplay(checkoutData.items) : []),
+    [checkoutData],
+  )
 
   // Derived from promo state — written by PromoWidget at step 1. We still read
   // these to (a) feed the server preview the applied coupon/points and (b)
@@ -720,20 +740,35 @@ export default function PaymentPage() {
           <div className="sticky top-8 rounded-lg border bg-zinc-50/50 p-5 space-y-4">
             <h2 className="font-semibold text-lg">訂單摘要</h2>
             <div className="divide-y">
-              {checkoutData.items.map(item => (
-                <div key={item.variantId} className="flex justify-between py-2.5 text-sm">
-                  <div className="min-w-0 flex-1 pr-3">
-                    <p className="font-medium truncate">{item.productName}</p>
-                    <p className="text-xs text-zinc-500">{item.variantName} x {item.qty}</p>
+              {checkoutData.items.map((item, i) => {
+                const line = addonLines[i]
+                const addonApplied = line?.addonApplied ?? false
+                const lineSubtotal = line?.lineSubtotal ?? item.price * item.qty
+                const originalLineTotal = addonApplied
+                  ? item.price * item.qty
+                  : item.originalPrice && item.originalPrice > item.price
+                    ? item.originalPrice * item.qty
+                    : null
+                return (
+                  <div key={item.variantId} className="flex justify-between py-2.5 text-sm">
+                    <div className="min-w-0 flex-1 pr-3">
+                      <p className="font-medium truncate">{item.productName}</p>
+                      <p className="text-xs text-zinc-500">
+                        {item.variantName} x {item.qty}
+                        {addonApplied && (
+                          <span className="ml-1.5 inline-flex items-center rounded bg-[#10305a]/10 px-1 py-0.5 text-[10px] font-medium text-[#10305a]">加購價</span>
+                        )}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium whitespace-nowrap" style={{ color: "#10305a" }}>NT$ {lineSubtotal.toLocaleString()}</p>
+                      {originalLineTotal != null && (
+                        <p className="text-xs line-through whitespace-nowrap" style={{ color: "#687279" }}>NT$ {originalLineTotal.toLocaleString()}</p>
+                      )}
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <p className="font-medium whitespace-nowrap" style={{ color: "#10305a" }}>NT$ {(item.price * item.qty).toLocaleString()}</p>
-                    {item.originalPrice && item.originalPrice > item.price && (
-                      <p className="text-xs line-through whitespace-nowrap" style={{ color: "#687279" }}>NT$ {(item.originalPrice * item.qty).toLocaleString()}</p>
-                    )}
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
             <div className="border-t pt-3 space-y-2 text-sm">
               <div className="flex justify-between text-zinc-500">
