@@ -402,11 +402,16 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   const userId: string | undefined = res.locals.userId
 
   if (paymentMethod === "test_paid") {
-    if (!userId) {
-      res.status(401).json({ error: "test_paid requires authentication (請先登入)" })
-      return
-    }
+    // Gate model:
+    //   ALLOW_NON_ADMIN_TEST_PAID=true → sandbox open to ANYONE (guests +
+    //     logged-in users). For dev / QA / pre-launch testing.
+    //   Otherwise → must be logged-in admin. Safe default for production
+    //     once the env flag is dropped.
     if (process.env.ALLOW_NON_ADMIN_TEST_PAID !== "true") {
+      if (!userId) {
+        res.status(401).json({ error: "test_paid requires authentication (請先登入)" })
+        return
+      }
       const { data: profile } = await supabase
         .from("user_profiles")
         .select("role")
