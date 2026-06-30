@@ -12,12 +12,19 @@ import { sendLineNotify } from "./line-notify"
  * After a successful payment, send confirmation email, create invoice,
  * and update membership. No BullMQ/Redis needed — all direct calls.
  * Shared across all payment gateway webhooks (PChomePay, LINE Pay, JKOPay).
+ *
+ * For CVS COD orders, the customer/admin/LINE notifications are sent earlier
+ * by `notifyOrderPlacedCod()` at checkout time (admin needs to ship BEFORE
+ * customer can pay at pickup). When this function runs at COD pickup
+ * (ecpay-logistics webhook → delivered → enqueuePostPaymentJobs), it skips
+ * the notification block so we don't re-send those emails — invoice / points
+ * / tier upgrade still fire because those are the actual payment-time events.
  */
 export async function enqueuePostPaymentJobs(orderId: string) {
   // Fetch order details needed for the email
   const { data: order } = await supabase
     .from("orders")
-    .select("id, order_number, subtotal, discount_amount, total, guest_email, user_id, points_used, attributed_kol_slug, metadata, order_items(*)")
+    .select("id, order_number, subtotal, discount_amount, total, guest_email, user_id, points_used, attributed_kol_slug, metadata, payment_method, order_items(*)")
     .eq("id", orderId)
     .single()
 
@@ -27,6 +34,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   }
 
   const totalTwd = Number(order.total ?? 0)
+  const isCod = (order as { payment_method?: string | null }).payment_method === "cvs_cod"
 
   // 0) Update total_spend, check tier upgrade, accumulate charity_savings.
   // Idempotency: stamp order_post_payment_log.tier_incremented_at so webhook
@@ -89,27 +97,34 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   }
   const recipientEmail = userEmail ?? (order as any).guest_email as string | undefined
 
-  // 1a) Customer confirmation email
-  if (recipientEmail) {
-    try {
-      await renderAndSendEmail({
-        template: "payment-confirmed",
-        to: recipientEmail,
-        data: {
-          orderNumber: order.order_number,
-          amount: String(totalTwd),
-          method: "",
-        },
-      })
-    } catch (err) {
-      console.warn("[post-payment] customer email send failed (non-fatal):", err)
+  // 1a) Customer confirmation email — skipped for COD (already sent by
+  // notifyOrderPlacedCod at checkout). Sending again here would arrive after
+  // pickup, confusing the customer with a "付款成功" notice they didn't expect.
+  if (!isCod) {
+    if (recipientEmail) {
+      try {
+        await renderAndSendEmail({
+          template: "payment-confirmed",
+          to: recipientEmail,
+          data: {
+            orderNumber: order.order_number,
+            amount: String(totalTwd),
+            method: "",
+          },
+        })
+      } catch (err) {
+        console.warn("[post-payment] customer email send failed (non-fatal):", err)
+      }
+    } else {
+      console.warn(`[post-payment] no email for order ${orderId}, skipping customer email`)
     }
-  } else {
-    console.warn(`[post-payment] no email for order ${orderId}, skipping customer email`)
   }
 
   // 1b) Admin "new order" notification — configurable address.
-  try {
+  // Skipped for COD: admin already received "new order" at checkout time
+  // (notifyOrderPlacedCod), they've shipped, and "付款已完成請出貨" wording
+  // is wrong at this stage (it's an already-shipped pickup-payment event).
+  if (!isCod) try {
     const adminEmails = parseRecipients(await getSetting("notifications.admin_email"))
     if (adminEmails.length > 0) {
       // Pull shipping address + items for a richer admin email.
@@ -173,14 +188,17 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   // 1c) LINE Notify push — spec M Section 2. Goes to whoever holds the
   // configured access token (typically the admin's personal LINE via 1-on-1
   // Notify). Fire-and-forget semantics live inside sendLineNotify itself.
-  const kolSlug = (order as { attributed_kol_slug?: string | null })
-    .attributed_kol_slug ?? null
-  await sendLineNotify(
-    `🛒 新訂單 #${order.order_number}\n` +
-      `顧客：${userEmail ?? "guest"}\n` +
-      `金額：NT$ ${totalTwd}` +
-      (kolSlug ? `\n來自 KOL：${kolSlug}` : ""),
-  )
+  // Skipped for COD: admin's LINE got pinged at checkout time.
+  if (!isCod) {
+    const kolSlug = (order as { attributed_kol_slug?: string | null })
+      .attributed_kol_slug ?? null
+    await sendLineNotify(
+      `🛒 新訂單 #${order.order_number}\n` +
+        `顧客：${userEmail ?? "guest"}\n` +
+        `金額：NT$ ${totalTwd}` +
+        (kolSlug ? `\n來自 KOL：${kolSlug}` : ""),
+    )
+  }
 
   // 2) Create an invoice record (if not already present) and enqueue Amego
   //    issuance via the invoice worker.
@@ -298,4 +316,146 @@ export async function enqueuePostPaymentJobs(orderId: string) {
       console.warn("[post-payment] points grant/redeem failed (non-fatal):", err)
     }
   }
+}
+
+/**
+ * Notification chain for CVS COD (超商取貨付款) orders, fired at checkout time.
+ *
+ * Why a separate function: COD doesn't charge at checkout, so the regular
+ * post-payment chain runs WITHOUT email/admin/LINE — those happen here instead
+ * because admin needs to ship BEFORE the customer can pay at pickup. Invoice /
+ * points / tier upgrade still wait for the actual payment-at-pickup webhook
+ * (ecpay-logistics delivered → enqueuePostPaymentJobs).
+ *
+ * Customer wording: "訂單已成立，請至超商完成取貨付款" (not "付款成功").
+ * Admin wording: "新訂單 — 超商取貨付款，請備貨出貨" (not "付款已完成").
+ */
+export async function notifyOrderPlacedCod(orderId: string) {
+  const { data: order } = await supabase
+    .from("orders")
+    .select(
+      "id, order_number, total, guest_email, user_id, attributed_kol_slug",
+    )
+    .eq("id", orderId)
+    .single()
+
+  if (!order) {
+    console.warn(`[order-placed-cod] order ${orderId} not found, skipping`)
+    return
+  }
+
+  const totalTwd = Number(order.total ?? 0)
+
+  // Resolve recipient: registered user or guest email
+  let userEmail: string | undefined
+  if (order.user_id) {
+    try {
+      const { data } = await supabase.auth.admin.getUserById(order.user_id)
+      userEmail = data?.user?.email ?? undefined
+    } catch { /* ignore */ }
+  }
+  const recipientEmail =
+    userEmail ?? ((order as { guest_email?: string | null }).guest_email as string | undefined)
+
+  // Pull shipping address + items for the body
+  const [{ data: shippingRow }, { data: items }] = await Promise.all([
+    supabase
+      .from("order_addresses")
+      .select("name, phone, address_type, address, cvs_store_id, cvs_type")
+      .eq("order_id", orderId)
+      .eq("type", "shipping")
+      .maybeSingle(),
+    supabase
+      .from("order_items")
+      .select("product_snapshot, qty, unit_price")
+      .eq("order_id", orderId),
+  ])
+
+  const itemLines = (items ?? [])
+    .map((it: any) => {
+      const snap = it.product_snapshot ?? {}
+      const name = snap.name ?? "商品"
+      const variant =
+        snap.variant_name && snap.variant_name !== "預設"
+          ? `（${snap.variant_name}）`
+          : ""
+      return `  • ${name}${variant} × ${it.qty} = NT$ ${Number(it.unit_price) * Number(it.qty)}`
+    })
+    .join("\n")
+
+  const s: any = shippingRow ?? {}
+  const cvsChain = s.cvs_type === "family" ? "全家" : "7-11"
+  const cvsLine =
+    s.address_type === "cvs"
+      ? `${cvsChain} ${s.address ?? ""} (${s.cvs_store_id ?? ""})`
+      : "—"
+
+  // --- Customer email: order-placed (COD) ---
+  if (recipientEmail) {
+    try {
+      const subject = `【誠真生活】訂單已成立 #${order.order_number} — 請至超商取貨付款`
+      const html = `
+        <div style="font-family: -apple-system, sans-serif; max-width:600px; color:#1a1a1a;">
+          <h2 style="color:#10305a; margin:0 0 8px;">訂單已成立</h2>
+          <p style="color:#687279; margin:0 0 24px; line-height:1.6;">
+            感謝您的訂購！您選擇了「超商取貨付款」。<br/>
+            訂單將於 1–3 個工作天備貨出貨，包裹到達門市後將以簡訊通知您取貨，<br/>
+            請攜帶手機至門市出示取件條碼並完成付款。
+          </p>
+          <table style="border-collapse:collapse; width:100%; font-size:14px;">
+            <tr><td style="padding:6px 0; color:#687279; width:120px;">訂單編號</td><td style="font-family:monospace; font-weight:600;">${order.order_number}</td></tr>
+            <tr><td style="padding:6px 0; color:#687279;">應付金額</td><td style="font-weight:600; color:#10305a;">NT$ ${totalTwd}</td></tr>
+            <tr><td style="padding:6px 0; color:#687279;">付款方式</td><td>超商取貨付款</td></tr>
+            <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">取件門市</td><td>${cvsLine}</td></tr>
+            <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">商品</td><td style="white-space:pre-line;">${itemLines || "—"}</td></tr>
+          </table>
+          <p style="margin:24px 0 0; font-size:13px; color:#687279;">
+            如需查詢訂單狀態，請至會員中心 → 訂單紀錄。<br/>
+            若包裹超過 7 天未取，訂單將自動取消、商品退回，敬請留意門市取件通知。
+          </p>
+        </div>
+      `
+      await sendEmail({ to: recipientEmail, subject, html })
+    } catch (err) {
+      console.warn("[order-placed-cod] customer email send failed (non-fatal):", err)
+    }
+  } else {
+    console.warn(`[order-placed-cod] no email for order ${orderId}, skipping customer email`)
+  }
+
+  // --- Admin "new order — COD" notification ---
+  try {
+    const adminEmails = parseRecipients(await getSetting("notifications.admin_email"))
+    if (adminEmails.length > 0) {
+      const subject = `【誠真生活】新訂單 ${order.order_number}（超商取貨付款）— NT$ ${totalTwd}`
+      const html = `
+        <div style="font-family: -apple-system, sans-serif; max-width:600px;">
+          <h2 style="color:#10305a; margin:0 0 8px;">新訂單通知（超商取貨付款）</h2>
+          <p style="color:#687279; margin:0 0 24px;">訂單已成立，請備貨並建立物流；客人取貨時於超商付款。</p>
+          <table style="border-collapse:collapse; width:100%; font-size:14px;">
+            <tr><td style="padding:6px 0; color:#687279; width:120px;">訂單編號</td><td style="font-family:monospace; font-weight:600;">${order.order_number}</td></tr>
+            <tr><td style="padding:6px 0; color:#687279;">應收金額（COD）</td><td style="font-weight:600; color:#10305a;">NT$ ${totalTwd}</td></tr>
+            <tr><td style="padding:6px 0; color:#687279;">收件人</td><td>${s.name ?? "—"}</td></tr>
+            <tr><td style="padding:6px 0; color:#687279;">電話</td><td><a href="tel:${s.phone ?? ""}">${s.phone ?? "—"}</a></td></tr>
+            <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">取件門市</td><td>${cvsLine}</td></tr>
+            <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">商品</td><td style="white-space:pre-line;">${itemLines || "—"}</td></tr>
+          </table>
+          <p style="margin:24px 0 0; font-size:13px; color:#687279;">進管理後台處理 → <a href="https://realreal-store.vercel.app/admin/orders" style="color:#10305a;">/admin/orders</a></p>
+        </div>
+      `
+      await sendEmail({ to: adminEmails, subject, html })
+    }
+  } catch (err) {
+    console.warn("[order-placed-cod] admin notification failed (non-fatal):", err)
+  }
+
+  // --- LINE Notify ---
+  const kolSlug = (order as { attributed_kol_slug?: string | null })
+    .attributed_kol_slug ?? null
+  await sendLineNotify(
+    `📦 新訂單（COD）#${order.order_number}\n` +
+      `顧客：${userEmail ?? "guest"}\n` +
+      `應收：NT$ ${totalTwd}（取貨付款）` +
+      (kolSlug ? `\n來自 KOL：${kolSlug}` : ""),
+  )
 }

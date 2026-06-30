@@ -17,7 +17,7 @@ import { initiatePayment as jkoPayInitiatePayment } from "../lib/jkopay"
 import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
 import { computeShipping, getShippingRule } from "../lib/shipping"
 import { inventoryQueue } from "../lib/queue"
-import { enqueuePostPaymentJobs } from "../lib/enqueue-post-payment"
+import { enqueuePostPaymentJobs, notifyOrderPlacedCod } from "../lib/enqueue-post-payment"
 import { saveCustomerContact } from "../lib/save-customer-contact"
 import { validateCvsReceiverName } from "../lib/ecpay-name"
 import { cancelOrderById } from "../lib/cancel-order"
@@ -1030,6 +1030,15 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     } catch (err) {
       console.warn("[orders] cvs_cod logistics enqueue failed (non-fatal):", err)
     }
+
+    // Notify customer + admin + LINE immediately at checkout time. COD doesn't
+    // go through a payment webhook at this stage, so without this call admin
+    // would never learn about the order until pickup (way too late to ship).
+    // enqueuePostPaymentJobs runs later (at pickup) and is COD-aware — it skips
+    // these same emails so we don't double-send.
+    void notifyOrderPlacedCod(order.id).catch((err) =>
+      console.warn("[orders] cvs_cod notify failed (non-fatal):", err),
+    )
 
     // Return without paymentUrl — frontend detects this and navigates to confirm
     res.status(201).json({
