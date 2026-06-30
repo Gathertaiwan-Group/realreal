@@ -105,11 +105,18 @@ async function getCategoryIdBySlug(slug: string): Promise<string | undefined> {
 
 async function isFirstPurchase(userId: string | null | undefined): Promise<boolean> {
   if (!userId) return false // guest 不算首購
+  // Disqualify the user if ANY prior order either (a) reached a fulfilled
+  // status — they already had a real first purchase, OR (b) is still in
+  // pending and ALREADY claimed first_purchase_applied=true — without this
+  // clause a user could place several pending orders in quick succession
+  // and each one would re-claim the first-purchase discount (the migration
+  // 0028 partial unique index `uniq_first_purchase_per_user` then trips on
+  // the second INSERT/UPDATE, breaking admin status changes too).
   const { count, error } = await supabase
     .from("orders")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
-    .in("status", ["processing", "shipped", "completed"])
+    .or("status.in.(processing,shipped,completed),first_purchase_applied.eq.true")
   if (error) {
     console.warn("[first-purchase] check failed:", error.message)
     return false // fail closed
