@@ -39,36 +39,76 @@ export async function initiatePayment(
   orderId: string,
   amount: number
 ): Promise<{ paymentUrl: string; merchantTradeNo: string }> {
-  const merchantTradeNo = `RRJ${Date.now()}`
+  // platform_order_id format mirrors the legacy WP woo-jkopay plugin's
+  // pattern (<orderId>-<YYYYMMDDhhmmss>) so JKO Pay support can cross
+  // reference old + new orders by the same scheme.
+  const ts = new Date()
+    .toISOString()
+    .replace(/\D/g, "")
+    .slice(0, 14)
+  const platformOrderId = `${orderId}-${ts}`
   const apiUrl = getApiBaseUrl()
   const siteUrl = getSiteUrl()
   const { storeId, apiKey, secretKey, baseUrl } = await getCreds()
 
+  // Field shape inferred from JKO Pay callbacks captured in the legacy WP
+  // backup (wp_comments rows mention platform_order_id, final_price,
+  // result_url, redeem_amount/redeem_detail, etc.). Currency in TWD,
+  // prices in dollars (not cents).
   const bodyObj = {
     store_id: storeId,
-    merchant_trade_no: merchantTradeNo,
+    platform_order_id: platformOrderId,
     currency: "TWD",
     total_price: amount,
-    order_desc: `realreal.cc 訂單 ${orderId.slice(0, 8)}`,
-    result_url: `${siteUrl}/checkout/confirm?order=${encodeURIComponent(orderId)}`,
-    notify_url: `${apiUrl}/webhooks/jkopay`,
+    final_price: amount,
+    valid_time: 900,
+    confirm_url: `${apiUrl}/webhooks/jkopay`,
+    result_url: `${apiUrl}/webhooks/jkopay`,
+    result_display_url: `${siteUrl}/checkout/confirm?order=${encodeURIComponent(orderId)}`,
+    store_name: "誠真生活 RealReal",
+    goods: `realreal order ${orderId}`,
   }
   const payload = JSON.stringify(bodyObj)
-  const signature = createHmac("sha256", secretKey).update(payload).digest("hex")
+  // Digest format: HMAC-SHA256(secret, payload) → hex. TODO: verify against
+  // JKO Pay's official integration doc; current code's previous format was
+  // also hex-hmac (only the header names + endpoint path were wrong) so this
+  // matches what we know. If the gateway still returns
+  // {"result":"201","message":"Authentication failed"}, the digest needs a
+  // different recipe (base64 hmac? sha256(secret+body)? a nonce?) — try
+  // alternatives once the JKO Pay developer doc or the legacy
+  // wp-content/plugins/woo-jkopay/ PHP source is available.
+  const digest = createHmac("sha256", secretKey).update(payload).digest("hex")
 
-  const response = await fetch(`${baseUrl}/order/create`, {
+  // Endpoint path confirmed by probing onlinepay.jkopay.com — the previous
+  // `/order/create` returned a generic 404. /platform/entry/transaction/
+  // online_pay/order/create echoes a structured JSON response so we know
+  // it's the right route. Headers are Api-Key + Digest (NOT
+  // X-Api-Key / X-Signature, which produced "header Api-Key and Digest
+  // are required" errors).
+  const url = `${baseUrl}/platform/entry/transaction/online_pay/order/create`
+  const response = await fetch(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-Store-ID": storeId,
-      "X-Api-Key": apiKey,
-      "X-Signature": signature,
+      "Api-Key": apiKey,
+      Digest: digest,
     },
     body: payload,
   })
-  const data = await response.json() as Record<string, any>
-  if (!data.payment_url) {
-    throw new Error(`JKOPay error: ${JSON.stringify(data)}`)
+
+  const text = await response.text()
+  let data: Record<string, any> = {}
+  try { data = JSON.parse(text) } catch { /* keep text */ }
+
+  // JKO Pay convention: result "000" / "0" = success, others are errors with
+  // a message. The successful response object holds a `payment_url` to
+  // redirect the buyer.
+  const paymentUrl = data?.result_object?.payment_url ?? data?.payment_url
+  if (!paymentUrl) {
+    console.error(
+      `[jkopay] order/create failed status=${response.status} body=${text}`,
+    )
+    throw new Error(`JKOPay error: ${text || `HTTP ${response.status}`}`)
   }
-  return { paymentUrl: data.payment_url as string, merchantTradeNo }
+  return { paymentUrl: paymentUrl as string, merchantTradeNo: platformOrderId }
 }
