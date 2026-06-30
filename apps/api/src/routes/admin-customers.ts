@@ -22,6 +22,79 @@ export const adminCustomersRouter = Router()
 adminCustomersRouter.use(requireAuth, requireAdmin)
 
 // ---------------------------------------------------------------------------
+// GET /admin/customers — list page payload (profiles + tier + email + points)
+//
+// Replaces the page's previous direct supabase.from("user_profiles") call.
+// FE can't read auth.users from the browser (anon role), so we resolve emails
+// here via the service role with a single listUsers + map lookup.
+// ---------------------------------------------------------------------------
+
+adminCustomersRouter.get("/", async (_req, res) => {
+  const { data: profiles, error: profErr } = await supabase
+    .from("user_profiles")
+    .select(
+      "user_id, display_name, phone, total_spend, created_at, membership_tiers(name)",
+    )
+    .order("created_at", { ascending: false })
+    .limit(500)
+
+  if (profErr) {
+    res.status(500).json({ error: profErr.message })
+    return
+  }
+  const rows = (profiles ?? []) as unknown as Array<{
+    user_id: string
+    display_name: string | null
+    phone: string | null
+    total_spend: number | string | null
+    created_at: string
+    membership_tiers: { name: string } | Array<{ name: string }> | null
+  }>
+
+  // Email lookup — one listUsers call covers up to 1000 accounts (plenty).
+  // If we ever exceed this we'll need pagination.
+  const emailById = new Map<string, string>()
+  try {
+    const { data } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
+    for (const u of data?.users ?? []) {
+      if (u.email) emailById.set(u.id, u.email)
+    }
+  } catch (err) {
+    console.warn("[admin/customers] listUsers failed (emails will be missing):", err)
+  }
+
+  // Points balances — single bulk read against the materialized-ish view.
+  const userIds = rows.map((r) => r.user_id)
+  const balanceById = new Map<string, number>()
+  if (userIds.length > 0) {
+    const { data: bals } = await supabase
+      .from("v_user_points_balance")
+      .select("user_id, balance")
+      .in("user_id", userIds)
+    for (const b of (bals ?? []) as Array<{ user_id: string; balance: number | string }>) {
+      balanceById.set(b.user_id, Number(b.balance ?? 0))
+    }
+  }
+
+  const out = rows.map((r) => {
+    const tier = Array.isArray(r.membership_tiers)
+      ? (r.membership_tiers[0] ?? null)
+      : r.membership_tiers
+    return {
+      user_id: r.user_id,
+      display_name: r.display_name,
+      phone: r.phone,
+      email: emailById.get(r.user_id) ?? null,
+      total_spend: Number(r.total_spend ?? 0),
+      created_at: r.created_at,
+      tier_name: tier?.name ?? null,
+      points_balance: balanceById.get(r.user_id) ?? 0,
+    }
+  })
+  res.json({ data: out })
+})
+
+// ---------------------------------------------------------------------------
 // GET /admin/customers/lookup?email=X — single-row email→id lookup
 // Used by the campaigns test bench (admin impersonates a customer scenario).
 // ---------------------------------------------------------------------------
