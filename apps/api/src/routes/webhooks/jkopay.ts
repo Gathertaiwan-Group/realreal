@@ -1,6 +1,5 @@
 import { Router } from "express"
 import { supabase } from "../../lib/supabase"
-import { verifySignature, getJkopaySecretKey } from "../../lib/jkopay"
 
 export const jkopayWebhookRouter = Router()
 
@@ -22,99 +21,199 @@ async function restoreStockForOrder(orderId: string) {
   if (restored.error) throw new Error(restored.error.message)
 }
 
-// POST /webhooks/jkopay — JKOPay server notification via X-Signature header
+// POST /webhooks/jkopay — JKOPay result_url callback.
+//
+// 1:1 port of woo-jkopay 0.1.0 PHP plugin (class-wc-gateway-jkopay.php
+// handle_callback). Key facts from the canonical plugin:
+//
+//   - JKO Pay does NOT sign the result_url callback. The earlier
+//     X-Signature/HMAC gate had no counterpart in JKO's actual protocol —
+//     every legitimate callback was being rejected with HTTP 400, which is
+//     why the production DB has zero jkopay webhook_events rows despite
+//     real successful payments (orders 10000008 / 10000012 stuck at
+//     payment_status=pending).
+//   - Body shape: { transaction: { platform_order_id, status, tradeNo, ... } }
+//     (sometimes flattened without the `transaction` wrapper — handle both).
+//   - status === 0 OR status === "0" → SUCCESS. Anything else → FAIL.
+//   - platform_order_id format: `${orderNumber}-${YYYYMMDDHHmmss}`. The PHP
+//     plugin uses regex `^(\d+)-` to extract the WooCommerce order ID.
+//     For us, the left-of-dash portion is the order_number we stamped in
+//     initiatePayment(). We resolve order via payments.gateway_tx_id
+//     (which holds the full `platform_order_id`) AND fall back to
+//     orders.order_number for safety.
+//   - Idempotent: webhook_events row keyed by (gateway, merchant_trade_no)
+//     dedupes retries; we still re-check order.payment_status before
+//     re-running side effects.
+//   - Always returns 200 OK so JKO doesn't retry unnecessarily once the
+//     callback is acknowledged.
 jkopayWebhookRouter.post("/", async (req, res) => {
-  // HMAC must be verified against the EXACT bytes JKOPay signed — re-encoding
-  // via JSON.stringify(req.body) re-orders keys and rewrites Unicode escapes.
-  const rawBody = (req as any).rawBody as string | undefined ?? JSON.stringify(req.body)
-  const signature = req.headers["x-signature"] as string
+  const rawBody =
+    (req as { rawBody?: string }).rawBody ??
+    (typeof req.body === "string" ? req.body : JSON.stringify(req.body))
 
-  const secretKey = await getJkopaySecretKey()
-  if (!signature || !verifySignature(rawBody, signature, secretKey)) {
-    res.status(400).json({ error: "Invalid signature" }); return
+  console.log(`[webhooks/jkopay] received: ${rawBody.slice(0, 600)}`)
+
+  let body: Record<string, unknown> = {}
+  try {
+    body = typeof req.body === "object" && req.body !== null
+      ? (req.body as Record<string, unknown>)
+      : JSON.parse(rawBody)
+  } catch {
+    console.warn("[webhooks/jkopay] body not JSON — acking with 200 to stop retries")
+    res.status(200).send("OK")
+    return
   }
 
-  const { merchant_trade_no, trade_no, status } = req.body as Record<string, string>
+  // PHP plugin: $tx = $data['transaction'] ?? $data;
+  const tx = (
+    body.transaction && typeof body.transaction === "object"
+      ? (body.transaction as Record<string, unknown>)
+      : body
+  )
 
-  if (!merchant_trade_no) {
-    res.status(400).json({ error: "Missing merchant_trade_no" }); return
+  const platformOrderId = (tx.platform_order_id ?? tx.platformOrderId) as
+    | string
+    | undefined
+  if (!platformOrderId) {
+    console.warn("[webhooks/jkopay] missing platform_order_id — acking")
+    res.status(200).send("OK")
+    return
   }
 
-  // Idempotency guard — insert into webhook_events, catch unique constraint "23505"
+  // Idempotency guard. Use platform_order_id as the dedupe key (matches
+  // JKO's per-trade uniqueness — same id can't be ack'd twice).
   const { error: idempotencyError } = await supabase
     .from("webhook_events")
     .insert({
       gateway: "jkopay",
-      merchant_trade_no: merchant_trade_no,
-      payload: rawBody,
+      merchant_trade_no: platformOrderId,
+      payload: body as object,
     })
 
   if (idempotencyError) {
     if (idempotencyError.code === "23505") {
-      res.json({ result: "OK" }); return
+      // Already processed — JKO retry of an ack'd event. Still return 200.
+      res.status(200).send("OK")
+      return
     }
-    console.error("[webhooks/jkopay] idempotency insert failed:", idempotencyError)
-    res.status(500).json({ error: "InternalError" }); return
+    console.error("[webhooks/jkopay] webhook_events insert failed:", idempotencyError)
+    // Don't 500 — JKO retries forever and we'd accumulate noise. Continue
+    // best-effort and log.
   }
 
-  const success = status === "SUCCESS"
+  // Status: 0 (number) OR "0" (string) === SUCCESS. Anything else fails.
+  const statusCode = tx.status
+  const success = statusCode === 0 || statusCode === "0"
+  const tradeNo = (tx.tradeNo ?? tx.trade_no) as string | undefined
 
-  const { data: tx } = await supabase
+  // Resolve the order. payments.gateway_tx_id stores the full platform_order_id
+  // (set in initiatePayment as the merchantTradeNo). Fallback: extract the
+  // order_number (left of the `-`) and look up orders directly.
+  let orderId: string | null = null
+  let paymentId: string | null = null
+
+  const { data: tx1 } = await supabase
     .from("payments")
     .select("id, order_id")
-    .eq("gateway_tx_id", merchant_trade_no)
+    .eq("gateway_tx_id", platformOrderId)
     .maybeSingle()
 
-  if (tx) {
-    if (!success) {
-      const { data: order } = await supabase
-        .from("orders")
-        .select("payment_status")
-        .eq("id", tx.order_id)
-        .maybeSingle()
-      if (order?.payment_status !== "paid") {
-        try {
-          await restoreStockForOrder(tx.order_id)
-        } catch (err) {
-          console.warn("[webhooks/jkopay] restore stock failed (non-fatal):", err)
-        }
-      }
-    }
-
-    await supabase
-      .from("payments")
-      .update({
-        status: success ? "captured" : "failed",
-        raw_response: JSON.stringify({ ...req.body, gateway_trade_no: trade_no }),
-      })
-      .eq("id", tx.id)
-
-    const { error: flipErr } = await supabase
+  if (tx1) {
+    orderId = (tx1 as { order_id: string }).order_id
+    paymentId = (tx1 as { id: string }).id
+  } else {
+    const orderNumber = platformOrderId.split("-")[0]
+    const { data: orderRow } = await supabase
       .from("orders")
-      .update({
-        status: success ? "processing" : "failed",
-        payment_status: success ? "paid" : "failed",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", tx.order_id)
-    if (flipErr) {
-      // Rewind dedupe + 500 so JKOPay retries; otherwise a paid order is
-      // silently stuck on pending.
-      console.error("[webhooks/jkopay] order status flip failed:", flipErr)
-      await supabase.from("webhook_events").delete()
-        .eq("gateway", "jkopay").eq("merchant_trade_no", merchant_trade_no)
-      res.status(500).json({ error: "order update failed" }); return
+      .select("id")
+      .eq("order_number", orderNumber)
+      .maybeSingle()
+    if (orderRow) {
+      orderId = (orderRow as { id: string }).id
     }
+  }
 
-    if (success) {
+  if (!orderId) {
+    console.warn(
+      `[webhooks/jkopay] no order found for platform_order_id=${platformOrderId}`,
+    )
+    res.status(200).send("OK")
+    return
+  }
+
+  // Update payments row (insert one if we couldn't find it earlier — covers
+  // a race where the order existed but no payments row was written).
+  const paymentPatch = {
+    status: success ? "captured" : "failed",
+    raw_response: JSON.stringify({ ...body, tradeNo }),
+  }
+  if (paymentId) {
+    await supabase.from("payments").update(paymentPatch).eq("id", paymentId)
+  } else {
+    await supabase.from("payments").insert({
+      order_id: orderId,
+      gateway: "jkopay",
+      gateway_tx_id: platformOrderId,
+      amount: Number((tx.final_price ?? tx.total_price ?? 0) as number),
+      status: paymentPatch.status,
+      raw_response: paymentPatch.raw_response,
+    })
+  }
+
+  // Restore stock on failure (only if order isn't already paid via another
+  // signal). Done BEFORE flipping order status so a paid-then-failed-retry
+  // doesn't double-restore.
+  if (!success) {
+    const { data: orderForStock } = await supabase
+      .from("orders")
+      .select("payment_status")
+      .eq("id", orderId)
+      .maybeSingle()
+    if (
+      (orderForStock as { payment_status?: string } | null)?.payment_status !==
+      "paid"
+    ) {
       try {
-        const { enqueuePostPaymentJobs } = await import("../../lib/enqueue-post-payment")
-        await enqueuePostPaymentJobs(tx.order_id)
+        await restoreStockForOrder(orderId)
       } catch (err) {
-        console.warn("[webhooks/jkopay] enqueue jobs failed (non-fatal):", err)
+        console.warn("[webhooks/jkopay] restore stock failed (non-fatal):", err)
       }
     }
   }
 
-  res.json({ result: "OK" })
+  // Flip order status. Use payment_status as the idempotency check — if it's
+  // already "paid" we skip the post-payment chain to avoid double-grant of
+  // points / double-issue of invoice.
+  const { data: orderBefore } = await supabase
+    .from("orders")
+    .select("payment_status")
+    .eq("id", orderId)
+    .maybeSingle()
+  const alreadyPaid =
+    (orderBefore as { payment_status?: string } | null)?.payment_status === "paid"
+
+  const { error: flipErr } = await supabase
+    .from("orders")
+    .update({
+      status: success ? "processing" : "failed",
+      payment_status: success ? "paid" : "failed",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", orderId)
+  if (flipErr) {
+    console.error("[webhooks/jkopay] order status flip failed:", flipErr)
+  }
+
+  if (success && !alreadyPaid) {
+    try {
+      const { enqueuePostPaymentJobs } = await import(
+        "../../lib/enqueue-post-payment"
+      )
+      await enqueuePostPaymentJobs(orderId)
+    } catch (err) {
+      console.warn("[webhooks/jkopay] enqueuePostPaymentJobs failed (non-fatal):", err)
+    }
+  }
+
+  res.status(200).send("OK")
 })
