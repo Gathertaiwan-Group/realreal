@@ -14,14 +14,14 @@ export type CarouselItem = {
 
 const DEFAULT_ITEMS: CarouselItem[] = [
   { type: "video", src: "/brand/review-video.mov", alt: "顧客回饋影片" },
-  { type: "image", src: "https://realreal.cc/wp-content/uploads/2026/02/S__73097241_0-576x1024.jpg", alt: "顧客回饋 1" },
-  { type: "image", src: "https://realreal.cc/wp-content/uploads/2026/02/S__73097242_0-576x1024.jpg", alt: "顧客回饋 2" },
-  { type: "image", src: "https://realreal.cc/wp-content/uploads/2026/02/回饋5-576x1024.jpg", alt: "顧客回饋 3" },
-  { type: "image", src: "https://realreal.cc/wp-content/uploads/2026/02/回饋1-576x1024.jpg", alt: "顧客回饋 4" },
-  { type: "image", src: "https://realreal.cc/wp-content/uploads/2026/02/回饋2-576x1024.jpg", alt: "顧客回饋 5" },
-  { type: "image", src: "https://realreal.cc/wp-content/uploads/2026/02/回饋3-576x1024.jpg", alt: "顧客回饋 6" },
-  { type: "image", src: "https://realreal.cc/wp-content/uploads/2026/02/回饋4-653x1024.jpg", alt: "顧客回饋 7" },
-  { type: "image", src: "https://realreal.cc/wp-content/uploads/2026/02/FCF1A2D1-116B-4048-A859-ECA627D3CFEB-576x1024.jpg", alt: "顧客回饋 8" },
+  { type: "image", src: "https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/legacy-wp/de270008bc4f78af80171e0161e91614.jpg", alt: "顧客回饋 1" },
+  { type: "image", src: "https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/legacy-wp/d0313c0a4128ab049d472fe47492b856.jpg", alt: "顧客回饋 2" },
+  { type: "image", src: "https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/legacy-wp/f57273957d46814a4ea2f8b9f184d19d.jpg", alt: "顧客回饋 3" },
+  { type: "image", src: "https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/legacy-wp/6de0d35141b2593217969fcdf0f38ffb.jpg", alt: "顧客回饋 4" },
+  { type: "image", src: "https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/legacy-wp/af4caa33891c6ea045be1fd0e011e93c.jpg", alt: "顧客回饋 5" },
+  { type: "image", src: "https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/legacy-wp/6994188db63c723bf347ee6c4f11435f.jpg", alt: "顧客回饋 6" },
+  { type: "image", src: "https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/legacy-wp/f6ed8d57e5e88c1948fd1cfe31fcc8dc.jpg", alt: "顧客回饋 7" },
+  { type: "image", src: "https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/legacy-wp/c63e2a3af7142e9223a112a52515eafb.jpg", alt: "顧客回饋 8" },
 ]
 
 const ITEMS_PER_PAGE = 4
