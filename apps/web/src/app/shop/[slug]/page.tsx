@@ -242,8 +242,8 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
         )}
 
-        {/* 安心保證 image — non-protein, non-fruit products only */}
-        {!isProtein && !isFruit && (
+        {/* 安心保證 image — non-protein, non-fruit products only (bag1 skipped: uses inline images in description) */}
+        {!isProtein && !isFruit && product.slug !== "bag1" && (
           <div className="mt-12 flex justify-center">
             <Image
               src="/product-info/assurance.jpg"
