@@ -12,7 +12,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://realreal.cc"),
   title: {
     default: "誠真生活 RealReal | 純淨植物力健康食品",
-    template: "%s | 誠真生活 RealReal",
+    template: "%s",
   },
   description:
     "誠真生活 RealReal 是來自台灣的純素健康食品品牌，嚴選天然植物原料，提供高品質營養補充與健康零食，純粹投入，誠真健康。",
