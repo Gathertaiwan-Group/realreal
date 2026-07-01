@@ -414,25 +414,20 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   }
 
   if (paymentMethod === "test_paid") {
-    // Gate model:
-    //   ALLOW_NON_ADMIN_TEST_PAID=true → sandbox open to ANYONE (guests +
-    //     logged-in users). For dev / QA / pre-launch testing.
-    //   Otherwise → must be logged-in admin. Safe default for production
-    //     once the env flag is dropped.
-    if (process.env.ALLOW_NON_ADMIN_TEST_PAID !== "true") {
-      if (!userId) {
-        res.status(401).json({ error: "test_paid requires authentication (請先登入)" })
-        return
-      }
-      const { data: profile } = await supabase
-        .from("user_profiles")
-        .select("role")
-        .eq("user_id", userId)
-        .maybeSingle()
-      if ((profile as { role?: string | null } | null)?.role !== "admin") {
-        res.status(403).json({ error: "test_paid is restricted to admins" })
-        return
-      }
+    // ADMIN ONLY. 移除環境變數 fallback,避免誤設 ALLOW_NON_ADMIN_TEST_PAID=true
+    // 導致一般會員可白吃訂單。前端 checkout/payment/page.tsx 也只 render 給 admin。
+    if (!userId) {
+      res.status(401).json({ error: "test_paid requires authentication (請先登入)" })
+      return
+    }
+    const { data: profile } = await supabase
+      .from("user_profiles")
+      .select("role")
+      .eq("user_id", userId)
+      .maybeSingle()
+    if ((profile as { role?: string | null } | null)?.role !== "admin") {
+      res.status(403).json({ error: "test_paid is restricted to admins" })
+      return
     }
   }
 
