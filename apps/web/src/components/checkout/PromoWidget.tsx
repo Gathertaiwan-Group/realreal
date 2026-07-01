@@ -300,7 +300,6 @@ export function PromoWidget({ subtotal }: { subtotal: number }) {
     <section className="rounded-lg border bg-white p-5 space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="font-semibold text-base">💰 折抵與優惠</h2>
-        <span className="text-xs text-zinc-500">先看到優惠後的總金額，再填收件資訊</span>
       </div>
 
       {/* Member discount — auto-applied, no input */}
@@ -316,7 +315,10 @@ export function PromoWidget({ subtotal }: { subtotal: number }) {
 
       {/* Coupon section */}
       <div className="space-y-1.5">
-        <Label className="text-sm font-medium">🎟 優惠碼</Label>
+        <div className="flex items-center gap-2">
+          <Label className="text-sm font-medium">🎟 優惠碼</Label>
+          <span className="text-xs text-zinc-500">優惠碼區分大小寫</span>
+        </div>
         {state.couponApplied ? (
           <div className="flex items-center justify-between rounded bg-emerald-50 border border-emerald-200 p-3 text-sm">
             <span>
@@ -364,7 +366,10 @@ export function PromoWidget({ subtotal }: { subtotal: number }) {
       {isLoggedIn && (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
-            <Label className="text-sm font-medium">✨ 公益點數</Label>
+            <div className="flex items-center gap-2">
+              <Label className="text-sm font-medium">✨ 公益存款</Label>
+              <span className="text-xs text-zinc-500">可選擇折抵消費或留作公益</span>
+            </div>
             <span className="text-xs text-zinc-500">
               餘額 <strong>{state.pointsBalance.toLocaleString()}</strong> 點
               {state.pointsBalance > 0 && (
