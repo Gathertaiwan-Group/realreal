@@ -315,22 +315,19 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
             <div className="flex flex-col sm:flex-row gap-3 justify-center pt-10 pb-12">
               <Link
                 href="/faq"
-                className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
-                style={{ borderColor: "#10305a", color: "#10305a" }}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 border-[#10305a] bg-white px-8 py-4 text-base font-semibold text-[#10305a] transition-colors hover:bg-[#10305a] hover:text-white"
               >
                 常見問題
               </Link>
               <Link
                 href="/about"
-                className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
-                style={{ borderColor: "#10305a", color: "#10305a" }}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 border-[#10305a] bg-white px-8 py-4 text-base font-semibold text-[#10305a] transition-colors hover:bg-[#10305a] hover:text-white"
               >
                 品牌故事
               </Link>
               <Link
                 href="/idea"
-                className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
-                style={{ borderColor: "#10305a", color: "#10305a" }}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 border-[#10305a] bg-white px-8 py-4 text-base font-semibold text-[#10305a] transition-colors hover:bg-[#10305a] hover:text-white"
               >
                 公益存款
               </Link>
@@ -343,22 +340,19 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           <div className="mt-10 mb-4 flex flex-col sm:flex-row gap-3 justify-center">
             <Link
               href="/faq"
-              className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
-              style={{ borderColor: "#10305a", color: "#10305a" }}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 border-[#10305a] bg-white px-8 py-4 text-base font-semibold text-[#10305a] transition-colors hover:bg-[#10305a] hover:text-white"
             >
               常見問題
             </Link>
             <Link
               href="/about"
-              className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
-              style={{ borderColor: "#10305a", color: "#10305a" }}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 border-[#10305a] bg-white px-8 py-4 text-base font-semibold text-[#10305a] transition-colors hover:bg-[#10305a] hover:text-white"
             >
               品牌故事
             </Link>
             <Link
               href="/idea"
-              className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 px-8 py-4 text-base font-semibold transition-colors hover:bg-[#10305a] hover:text-white"
-              style={{ borderColor: "#10305a", color: "#10305a" }}
+              className="flex-1 sm:flex-none inline-flex items-center justify-center rounded-full border-2 border-[#10305a] bg-white px-8 py-4 text-base font-semibold text-[#10305a] transition-colors hover:bg-[#10305a] hover:text-white"
             >
               公益存款
             </Link>
