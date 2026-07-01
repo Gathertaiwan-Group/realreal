@@ -24,6 +24,23 @@ async function getToken(): Promise<string | undefined> {
   return session?.access_token
 }
 
+export async function editProfileAction(
+  customerId: string,
+  data: {
+    display_name?: string | null
+    phone?: string | null
+    birthday?: string | null
+  },
+): Promise<{ ok: boolean }> {
+  const token = await getToken()
+  const result = await apiClient<{ ok: boolean }>(
+    `/admin/customers/${customerId}/profile`,
+    { method: "PATCH", body: JSON.stringify(data), token },
+  )
+  revalidatePath(`/admin/customers/${customerId}`)
+  return result
+}
+
 export async function adjustPointsAction(
   customerId: string,
   delta: number,

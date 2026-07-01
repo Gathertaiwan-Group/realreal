@@ -40,6 +40,7 @@ import {
   adjustPointsAction,
   changeTierAction,
   disableAccountAction,
+  editProfileAction,
   sendResetEmailAction,
 } from "./actions"
 
@@ -242,6 +243,7 @@ function HeroCard({
   isDisabled: boolean
 }) {
   const [isPending, startTransition] = useTransition()
+  const [showEditModal, setShowEditModal] = useState(false)
 
   function handleSendReset() {
     startTransition(async () => {
@@ -314,9 +316,7 @@ function HeroCard({
               size="sm"
               variant="outline"
               disabled={isPending}
-              onClick={() =>
-                toast.info("編輯資料功能尚未開放，請至 Supabase 後台處理")
-              }
+              onClick={() => setShowEditModal(true)}
             >
               <Edit className="mr-1 h-3.5 w-3.5" />
               編輯資料
@@ -333,6 +333,17 @@ function HeroCard({
           </div>
         </div>
       </CardContent>
+      {showEditModal && (
+        <EditProfileModal
+          customerId={customerId}
+          initial={{
+            display_name: profile.display_name,
+            phone: profile.phone,
+            birthday: profile.birthday,
+          }}
+          onClose={() => setShowEditModal(false)}
+        />
+      )}
     </Card>
   )
 }
@@ -842,6 +853,140 @@ function AdminActionsCard({
         />
       )}
     </>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Edit-profile modal
+// ---------------------------------------------------------------------------
+
+function EditProfileModal({
+  customerId,
+  initial,
+  onClose,
+}: {
+  customerId: string
+  initial: {
+    display_name: string | null
+    phone: string | null
+    birthday: string | null
+  }
+  onClose: () => void
+}) {
+  const [displayName, setDisplayName] = useState(initial.display_name ?? "")
+  const [phone, setPhone] = useState(initial.phone ?? "")
+  const [birthday, setBirthday] = useState(initial.birthday ?? "")
+  const [isPending, startTransition] = useTransition()
+
+  function handleSubmit() {
+    // birthday 若非空要 YYYY-MM-DD (瀏覽器 date input 保證此格式)
+    startTransition(async () => {
+      try {
+        await editProfileAction(customerId, {
+          display_name: displayName.trim(),
+          phone: phone.trim(),
+          birthday: birthday.trim(),
+        })
+        toast.success("已更新")
+        onClose()
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "更新失敗")
+      }
+    })
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="edit-profile-title"
+      onClick={(e) => {
+        if (e.target === e.currentTarget && !isPending) onClose()
+      }}
+    >
+      <div className="w-full max-w-md rounded-lg bg-white shadow-lg">
+        <div className="flex items-center justify-between border-b px-4 py-3">
+          <h2 id="edit-profile-title" className="text-sm font-semibold text-[#10305a]">
+            編輯資料
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isPending}
+            aria-label="關閉"
+            className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="space-y-3 p-4">
+          <div>
+            <label htmlFor="edit-name" className="block text-xs text-[#687279] mb-1.5">
+              姓名
+            </label>
+            <input
+              id="edit-name"
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              disabled={isPending}
+              autoFocus
+              className="w-full h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="edit-phone" className="block text-xs text-[#687279] mb-1.5">
+              電話
+            </label>
+            <input
+              id="edit-phone"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              disabled={isPending}
+              placeholder="0912345678"
+              className="w-full h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
+            />
+          </div>
+
+          <div>
+            <label htmlFor="edit-birthday" className="block text-xs text-[#687279] mb-1.5">
+              生日
+            </label>
+            <input
+              id="edit-birthday"
+              type="date"
+              value={birthday}
+              onChange={(e) => setBirthday(e.target.value)}
+              disabled={isPending}
+              className="w-full h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
+            />
+          </div>
+
+          <p className="text-[11px] text-zinc-400">
+            Email 需另外用「發送密碼重設信」由使用者自行變更；等級請用「變更等級」；點數請用「手動加扣點」。
+          </p>
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={onClose}
+            disabled={isPending}
+          >
+            取消
+          </Button>
+          <Button type="button" size="sm" onClick={handleSubmit} disabled={isPending}>
+            {isPending ? "儲存中…" : "儲存"}
+          </Button>
+        </div>
+      </div>
+    </div>
   )
 }
 

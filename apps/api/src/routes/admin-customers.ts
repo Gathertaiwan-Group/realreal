@@ -301,6 +301,49 @@ adminCustomersRouter.get("/:id", async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// PATCH /admin/customers/:id/profile — edit display_name / phone / birthday
+// ---------------------------------------------------------------------------
+// Only these three fields are exposed. tier / total_spend / charity_savings
+// 都由別的 endpoint 或系統 trigger 維護，避免手動亂改破壞會員等級邏輯。
+
+const editProfileSchema = z.object({
+  display_name: z.string().trim().max(100).nullable().optional(),
+  phone: z.string().trim().max(50).nullable().optional(),
+  birthday: z
+    .string()
+    .trim()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "生日格式須為 YYYY-MM-DD")
+    .nullable()
+    .optional(),
+})
+
+adminCustomersRouter.patch("/:id/profile", async (req, res) => {
+  const parsed = editProfileSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid body", details: parsed.error.flatten() })
+    return
+  }
+  // Empty string → NULL 讓 admin 可以清空欄位
+  const updates: Record<string, string | null> = {}
+  for (const [k, v] of Object.entries(parsed.data)) {
+    if (v === undefined) continue
+    updates[k] = v === "" ? null : (v as string | null)
+  }
+  if (Object.keys(updates).length === 0) {
+    res.json({ ok: true }); return
+  }
+  const { error } = await supabase
+    .from("user_profiles")
+    .update(updates)
+    .eq("user_id", req.params.id)
+  if (error) {
+    res.status(500).json({ error: error.message })
+    return
+  }
+  res.json({ ok: true })
+})
+
+// ---------------------------------------------------------------------------
 // POST /admin/customers/:id/points/adjust — manual point adjustment
 // ---------------------------------------------------------------------------
 
