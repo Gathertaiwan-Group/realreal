@@ -368,7 +368,9 @@ export function PromoWidget({ subtotal }: { subtotal: number }) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Label className="text-sm font-medium">✨ 公益存款</Label>
-              <span className="text-xs text-zinc-500">可選擇折抵消費或留作公益</span>
+              {state.pointsBalance > 0 && (
+                <span className="text-xs text-zinc-500">可選擇折抵消費或留作公益</span>
+              )}
             </div>
             <span className="text-xs text-zinc-500">
               餘額 <strong>{state.pointsBalance.toLocaleString()}</strong> 點
