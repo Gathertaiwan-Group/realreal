@@ -399,7 +399,19 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     }
   }
   const requestedPointsUsed = parsed.data.points_used ?? 0
-  const userId: string | undefined = res.locals.userId
+  let userId: string | undefined = res.locals.userId
+
+  // Auto-link 訪客結帳到既有帳號：如果沒 Bearer 但 guestEmail 對應到現存
+  // auth.users.email，直接視為已登入下的訂單。避免 VIP 用訪客身分結帳
+  // 時，訂單掛 guest_email 看不到他自己 (歷史案例：10000011/10000012)。
+  if (!userId && guestEmail) {
+    const { data: matchedId } = await supabase.rpc("get_user_id_by_email", {
+      p_email: guestEmail.toLowerCase(),
+    })
+    if (matchedId) {
+      userId = matchedId as string
+    }
+  }
 
   if (paymentMethod === "test_paid") {
     // Gate model:
