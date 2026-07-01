@@ -12,6 +12,7 @@ type Customer = {
   phone: string | null
   email: string | null
   total_spend: number | null
+  charity_savings: number | null
   created_at: string
   tier_name: string | null
   points_balance: number
@@ -115,7 +116,7 @@ export default function AdminCustomersPage() {
               <th className="px-4 py-3 text-left font-medium">電話</th>
               <th className="px-4 py-3 text-left font-medium">會員等級</th>
               <th className="px-4 py-3 text-right font-medium">累計消費</th>
-              <th className="px-4 py-3 text-right font-medium">點數餘額</th>
+              <th className="px-4 py-3 text-right font-medium">公益存款</th>
               <th className="px-4 py-3 text-left font-medium">
                 <button
                   type="button"
@@ -144,7 +145,10 @@ export default function AdminCustomersPage() {
               </tr>
             ) : (
               sorted.map((c) => {
-                const balance = c.points_balance ?? 0
+                // 顯示「公益存款」= user_profiles.charity_savings (from 6/30
+                // VIP CSV)。points_balance 屬於未來的交易點數系統，跟 6/30
+                // 累積數字是不同概念，暫時不顯示。
+                const savings = Number(c.charity_savings ?? 0)
                 return (
                   <tr
                     key={c.user_id}
@@ -174,10 +178,10 @@ export default function AdminCustomersPage() {
                     <td
                       className={
                         "px-4 py-3 text-right font-medium " +
-                        (balance > 0 ? "text-[#10305a]" : "text-gray-400")
+                        (savings > 0 ? "text-[#10305a]" : "text-gray-400")
                       }
                     >
-                      {balance.toLocaleString()} 點
+                      NT$ {savings.toLocaleString()}
                     </td>
                     <td className="px-4 py-3 text-[#687279] text-xs">
                       {new Date(c.created_at).toLocaleDateString("zh-TW")}

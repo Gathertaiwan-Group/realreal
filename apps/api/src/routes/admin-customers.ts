@@ -43,7 +43,7 @@ adminCustomersRouter.get("/", async (_req, res) => {
   const { data: profiles, error: profErr } = await supabase
     .from("user_profiles")
     .select(
-      "user_id, display_name, phone, total_spend, created_at, membership_tiers(name)",
+      "user_id, display_name, phone, total_spend, charity_savings, created_at, membership_tiers(name)",
     )
     .eq("role", "customer")
     .order("created_at", { ascending: false })
@@ -58,6 +58,7 @@ adminCustomersRouter.get("/", async (_req, res) => {
     display_name: string | null
     phone: string | null
     total_spend: number | string | null
+    charity_savings: number | string | null
     created_at: string
     membership_tiers: { name: string } | Array<{ name: string }> | null
   }>
@@ -97,6 +98,7 @@ adminCustomersRouter.get("/", async (_req, res) => {
       phone: r.phone,
       email: emailById.get(r.user_id) ?? null,
       total_spend: Number(r.total_spend ?? 0),
+      charity_savings: Number(r.charity_savings ?? 0),
       created_at: r.created_at,
       tier_name: tier?.name ?? null,
       points_balance: balanceById.get(r.user_id) ?? 0,
