@@ -100,16 +100,20 @@ export default async function AdminOrdersPage({
   }
   const metaByUser = new Map<string, CustomerMeta>()
   if (userIds.length > 0) {
+    // adminSb 是 null 時（Vercel 沒設 SUPABASE_SERVICE_ROLE_KEY）就
+    // 不撈 emails，畫面 fallback「—」；至少不會整個頁面 throw。
     const adminSb = createAdminClient()
-    const [{ data: profiles }, { data: usersData }] = await Promise.all([
+    const [{ data: profiles }, usersResult] = await Promise.all([
       supabase
         .from("user_profiles")
         .select("user_id, display_name, role, membership_tiers(name)")
         .in("user_id", userIds),
-      adminSb.auth.admin.listUsers({ page: 1, perPage: 1000 }),
+      adminSb
+        ? adminSb.auth.admin.listUsers({ page: 1, perPage: 1000 })
+        : Promise.resolve({ data: null }),
     ])
     const emailById = new Map<string, string>()
-    for (const u of usersData?.users ?? []) {
+    for (const u of usersResult.data?.users ?? []) {
       if (u.email) emailById.set(u.id, u.email)
     }
     for (const p of (profiles ?? []) as Array<{
