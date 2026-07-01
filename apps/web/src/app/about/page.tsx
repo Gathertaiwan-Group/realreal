@@ -59,7 +59,7 @@ export default async function AboutPage() {
           <div className="w-full md:w-1/2 flex-shrink-0">
             <div className="relative rounded-2xl overflow-hidden shadow-md">
               <Image
-                src="https://realreal.cc/wp-content/uploads/2025/09/reallightjpeg-865x1024.webp"
+                src="https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/legacy-wp/be1b8ac6b1a9aa376218909be204e453.webp"
                 alt="誠真生活創辦人"
                 width={865}
                 height={1024}
@@ -138,7 +138,7 @@ export default async function AboutPage() {
 
           <div className="relative rounded-2xl overflow-hidden shadow-sm">
             <Image
-              src="https://realreal.cc/wp-content/uploads/2025/09/AdobeStock_365765933-1024x683.webp"
+              src="https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/legacy-wp/d566e8c1fe0ef8d88d96d75a3428a6ab.webp"
               alt="品牌願景"
               width={1024}
               height={683}
