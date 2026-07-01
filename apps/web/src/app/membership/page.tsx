@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 const membershipImages = [
   {
-    src: "https://realreal.cc/wp-content/uploads/2025/12/會員制度表_沒有按鈕_會員圖1.jpg",
+    src: "https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/membership/675b76e81af03e313ae5e5cd98fe2ed6.jpg",
     alt: "會員制度表",
     width: 1800,
     height: 1350,
