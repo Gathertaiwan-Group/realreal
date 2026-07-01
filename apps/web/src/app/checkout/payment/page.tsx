@@ -152,10 +152,6 @@ export default function PaymentPage() {
   // Mirror the server check (orders.ts) + admin layout: read user_profiles.role
   // for the logged-in user and require "admin".
   const [isAdmin, setIsAdmin] = useState(false)
-  // Runtime flag from the API (mirrors server ALLOW_NON_ADMIN_TEST_PAID). Fetched
-  // rather than read from a NEXT_PUBLIC build-time env, which this Next build does
-  // not reliably inline for newly-added vars.
-  const [configAllowTestPaid, setConfigAllowTestPaid] = useState(false)
   useEffect(() => {
     let cancelled = false
     void (async () => {
@@ -177,29 +173,11 @@ export default function PaymentPage() {
     return () => { cancelled = true }
   }, [])
 
-  // Sandbox visibility for non-admins: ask the API whether ALLOW_NON_ADMIN_TEST_PAID
-  // is on. Runtime fetch keeps UI visibility consistent with what POST /orders will
-  // actually accept, and sidesteps the build-time NEXT_PUBLIC inlining pitfall.
-  useEffect(() => {
-    let cancelled = false
-    void (async () => {
-      try {
-        const res = await fetch(`${API_URL}/config`)
-        if (!res.ok || cancelled) return
-        const data = (await res.json()) as { allowTestPaid?: boolean }
-        if (!cancelled) setConfigAllowTestPaid(Boolean(data.allowTestPaid))
-      } catch { /* API down → leave sandbox hidden */ }
-    })()
-    return () => { cancelled = true }
-  }, [])
-
   const isCvsShipping = checkoutData?.shippingMethod === "711" || checkoutData?.shippingMethod === "family"
   const forcedPayment = checkoutData?.forcedPaymentMethod as PaymentMethod | undefined
 
-  // 是否顯示「沙盒測試付款」：admin 一律可見；非 admin 則依後端 /config 回傳的
-  // allowTestPaid（＝伺服器端 ALLOW_NON_ADMIN_TEST_PAID）。改用 runtime 旗標，與
-  // 後端 POST /orders 實際接受條件永遠一致，並避開 NEXT_PUBLIC build-time inline 的坑。
-  const allowTestPaid = isAdmin || configAllowTestPaid
+  // 沙盒付款只有 admin 看得到 — 一般會員絕不會看到 test_paid 選項。
+  const allowTestPaid = isAdmin
 
   const PAYMENT_OPTIONS: PaymentOption[] = forcedPayment === "cvs_cod"
     ? [
@@ -223,11 +201,8 @@ export default function PaymentPage() {
           note: "到店取貨時付款，由綠界代收"
         }] : []),
         // Sandbox: skip gateway, run full pipeline (invoice / email / stock /
-        // points / LINE Notify). Visible to admins always; visible to ALL
-        // logged-in users when NEXT_PUBLIC_ALLOW_TEST_PAID==="true" (testing
-        // phase — mirrors the server's ALLOW_NON_ADMIN_TEST_PAID env on the API).
-        // ⚠️ test_paid marks an order paid WITHOUT real payment. Remove both env
-        // flags (Vercel + Railway) before go-live, or customers get free orders.
+        // points / LINE Notify). ADMIN ONLY — 一般會員絕不會看到此選項。
+        // ⚠️ test_paid marks an order paid WITHOUT real payment.
         ...(allowTestPaid ? [{
           value: "test_paid" as PaymentMethod,
           label: "🧪 沙盒測試付款",
