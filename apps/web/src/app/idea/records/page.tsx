@@ -7,7 +7,7 @@ export const metadata: Metadata = {
 }
 
 const contentHtml = `
-<img width="576" height="1024" src="https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-576x1024.jpg" alt="" srcset="https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-576x1024.jpg 576w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-169x300.jpg 169w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-768x1366.jpg 768w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-750x1334.jpg 750w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885-600x1068.jpg 600w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0885.jpg 788w" sizes="(max-width: 576px) 100vw, 576px" />
+<img width="576" height="1024" src="https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/idea/1b03c54a36356fc1dfda299015074d6f.jpg" alt="" />
 
 <h2>第一站｜為腦麻兒築一個遮風避雨的家</h2>
 <p style="color:#a09080;margin-top:-0.5rem;margin-bottom:1.5rem;">2024</p>
@@ -35,7 +35,7 @@ const contentHtml = `
 </ul>
 <p>利他，不是遙遠的理想，而是日常裡可以養成的習慣。</p>
 
-<img width="610" height="1024" src="https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-610x1024.jpg" alt="" srcset="https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-610x1024.jpg 610w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-179x300.jpg 179w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-768x1289.jpg 768w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-750x1259.jpg 750w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881-600x1007.jpg 600w, https://realreal.cc/wp-content/uploads/2025/09/IMG_0881.jpg 803w" sizes="(max-width: 610px) 100vw, 610px" />
+<img width="610" height="1024" src="https://ozwftlkgqmewtadypsfi.supabase.co/storage/v1/object/public/product-images/idea/7b5a736b3e787985b7993e0e263c4775.jpg" alt="" />
 
 <h2>如果你不知道從哪裡開始，就從這裡開始吧</h2>
 
