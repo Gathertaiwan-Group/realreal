@@ -203,7 +203,13 @@ export function CustomerDetailClient({
         客戶列表
       </Link>
 
-      <HeroCard customerId={customerId} profile={profile} isDisabled={isDisabled} />
+      <HeroCard
+        customerId={customerId}
+        profile={profile}
+        isDisabled={isDisabled}
+        tiers={tiers}
+        currentTierId={profile.membership_tier_id}
+      />
 
       <MemberStatusCard
         tier={tier}
@@ -218,13 +224,6 @@ export function CustomerDetailClient({
       <RecentOrdersCard customerId={profile.user_id} orders={orders} />
 
       <LedgerCard ledger={ledger} />
-
-      <AdminActionsCard
-        customerId={customerId}
-        currentTierId={profile.membership_tier_id}
-        tiers={tiers}
-        isDisabled={isDisabled}
-      />
     </div>
   )
 }
@@ -237,24 +236,16 @@ function HeroCard({
   customerId,
   profile,
   isDisabled,
+  tiers,
+  currentTierId,
 }: {
   customerId: string
   profile: CustomerDetailData["profile"]
   isDisabled: boolean
+  tiers: TierRow[]
+  currentTierId: string | null
 }) {
-  const [isPending, startTransition] = useTransition()
   const [showEditModal, setShowEditModal] = useState(false)
-
-  function handleSendReset() {
-    startTransition(async () => {
-      try {
-        const res = await sendResetEmailAction(customerId)
-        toast.success(res.message ?? "已寄出密碼重設信")
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "寄送失敗")
-      }
-    })
-  }
 
   const roleLabel: Record<string, string> = {
     admin: "管理員",
@@ -315,32 +306,25 @@ function HeroCard({
             <Button
               size="sm"
               variant="outline"
-              disabled={isPending}
               onClick={() => setShowEditModal(true)}
             >
               <Edit className="mr-1 h-3.5 w-3.5" />
               編輯資料
             </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isPending}
-              onClick={handleSendReset}
-            >
-              <KeyRound className="mr-1 h-3.5 w-3.5" />
-              {isPending ? "寄送中…" : "發送密碼重設信"}
-            </Button>
           </div>
         </div>
       </CardContent>
       {showEditModal && (
-        <EditProfileModal
+        <CustomerAdminModal
           customerId={customerId}
           initial={{
             display_name: profile.display_name,
             phone: profile.phone,
             birthday: profile.birthday,
           }}
+          isDisabled={isDisabled}
+          tiers={tiers}
+          currentTierId={currentTierId}
           onClose={() => setShowEditModal(false)}
         />
       )}
@@ -702,24 +686,64 @@ function LedgerCard({ ledger }: { ledger: CustomerDetailData["ledger"] }) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. Admin 操作 card
+// Customer admin modal — 合併「編輯資料」+「Admin 操作」
 // ---------------------------------------------------------------------------
+//
+// 3 sections in one modal:
+//   1. 基本資料      — 姓名 / 電話 / 生日  (batch save)
+//   2. 會員操作      — 更換等級 (dropdown, 立即套用) + 手動加扣點 (inline form)
+//   3. 帳號管理      — 發送密碼重設信 (fire-and-forget) + 停用/恢復 (2-step confirm)
 
-function AdminActionsCard({
+function CustomerAdminModal({
   customerId,
-  currentTierId,
-  tiers,
+  initial,
   isDisabled,
+  tiers,
+  currentTierId,
+  onClose,
 }: {
   customerId: string
-  currentTierId: string | null
-  tiers: TierRow[]
+  initial: {
+    display_name: string | null
+    phone: string | null
+    birthday: string | null
+  }
   isDisabled: boolean
+  tiers: TierRow[]
+  currentTierId: string | null
+  onClose: () => void
 }) {
   const [isPending, startTransition] = useTransition()
-  const [showAdjustModal, setShowAdjustModal] = useState(false)
-  const [showDisableConfirm, setShowDisableConfirm] = useState(false)
+
+  // Section 1 — 基本資料
+  const [displayName, setDisplayName] = useState(initial.display_name ?? "")
+  const [phone, setPhone] = useState(initial.phone ?? "")
+  const [birthday, setBirthday] = useState(initial.birthday ?? "")
+
+  // Section 2a — 等級
   const [selectedTier, setSelectedTier] = useState<string>(currentTierId ?? "")
+
+  // Section 2b — 加扣點
+  const [delta, setDelta] = useState<string>("")
+  const [note, setNote] = useState<string>("")
+
+  // Section 3 — 停用 confirm
+  const [showDisableConfirm, setShowDisableConfirm] = useState(false)
+
+  function handleSaveProfile() {
+    startTransition(async () => {
+      try {
+        await editProfileAction(customerId, {
+          display_name: displayName.trim(),
+          phone: phone.trim(),
+          birthday: birthday.trim(),
+        })
+        toast.success("基本資料已更新")
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "更新失敗")
+      }
+    })
+  }
 
   function handleTierChange(newTierId: string) {
     if (!newTierId || newTierId === currentTierId) return
@@ -734,16 +758,25 @@ function AdminActionsCard({
     })
   }
 
-  function handleDisableConfirm() {
+  function handleAdjustPoints() {
+    const n = Number(delta)
+    if (!Number.isInteger(n) || n === 0) {
+      toast.error("請輸入非零整數")
+      return
+    }
+    const trimmed = note.trim()
+    if (!trimmed) {
+      toast.error("請填寫原因")
+      return
+    }
     startTransition(async () => {
       try {
-        const res = await disableAccountAction(customerId, !isDisabled)
-        toast.success(
-          res.role === "disabled" ? "帳號已停用" : "帳號已恢復",
-        )
-        setShowDisableConfirm(false)
+        await adjustPointsAction(customerId, n, trimmed)
+        toast.success(`已${n > 0 ? "加" : "扣"} ${Math.abs(n)} 點`)
+        setDelta("")
+        setNote("")
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : "操作失敗")
+        toast.error(e instanceof Error ? e.message : "調整失敗")
       }
     })
   }
@@ -759,44 +792,110 @@ function AdminActionsCard({
     })
   }
 
+  function handleDisableConfirm() {
+    startTransition(async () => {
+      try {
+        const res = await disableAccountAction(customerId, !isDisabled)
+        toast.success(res.role === "disabled" ? "帳號已停用" : "帳號已恢復")
+        setShowDisableConfirm(false)
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : "操作失敗")
+      }
+    })
+  }
+
   return (
     <>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm text-[#10305a]">Admin 操作</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Row 1: 手動加扣點 + 發送密碼重設信 */}
-          <div className="flex flex-wrap gap-2">
-            <Button
-              size="sm"
-              variant="outline"
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="customer-admin-title"
+        onClick={(e) => {
+          if (e.target === e.currentTarget && !isPending) onClose()
+        }}
+      >
+        <div className="w-full max-w-lg rounded-lg bg-white shadow-lg max-h-[90vh] overflow-y-auto">
+          <div className="sticky top-0 z-10 flex items-center justify-between border-b bg-white px-4 py-3">
+            <h2 id="customer-admin-title" className="text-sm font-semibold text-[#10305a]">
+              客戶管理
+            </h2>
+            <button
+              type="button"
+              onClick={onClose}
               disabled={isPending}
-              onClick={() => setShowAdjustModal(true)}
+              aria-label="關閉"
+              className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50"
             >
-              <Plus className="mr-1 h-3.5 w-3.5" />
-              手動加扣點
-            </Button>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={isPending}
-              onClick={handleSendReset}
-            >
-              <KeyRound className="mr-1 h-3.5 w-3.5" />
-              發送密碼重設信
-            </Button>
+              <X className="h-4 w-4" />
+            </button>
           </div>
 
-          {/* Row 2: tier dropdown */}
-          <div>
-            <label
-              htmlFor="tier-select"
-              className="block text-xs text-[#687279] mb-1.5"
-            >
-              更換等級
-            </label>
-            <div className="flex items-center gap-2">
+          {/* Section 1 — 基本資料 */}
+          <section className="p-4">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#687279]">
+              基本資料
+            </h3>
+            <div className="space-y-3">
+              <div>
+                <label htmlFor="edit-name" className="block text-xs text-[#687279] mb-1.5">
+                  姓名
+                </label>
+                <input
+                  id="edit-name"
+                  type="text"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                  disabled={isPending}
+                  className="w-full h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-phone" className="block text-xs text-[#687279] mb-1.5">
+                  電話
+                </label>
+                <input
+                  id="edit-phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  disabled={isPending}
+                  placeholder="0912345678"
+                  className="w-full h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
+                />
+              </div>
+              <div>
+                <label htmlFor="edit-birthday" className="block text-xs text-[#687279] mb-1.5">
+                  生日
+                </label>
+                <input
+                  id="edit-birthday"
+                  type="date"
+                  value={birthday}
+                  onChange={(e) => setBirthday(e.target.value)}
+                  disabled={isPending}
+                  className="w-full h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
+                />
+              </div>
+              <div className="flex justify-end">
+                <Button size="sm" onClick={handleSaveProfile} disabled={isPending}>
+                  {isPending ? "儲存中…" : "儲存基本資料"}
+                </Button>
+              </div>
+            </div>
+          </section>
+
+          {/* Section 2 — 會員操作 */}
+          <section className="border-t p-4">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#687279]">
+              會員操作
+            </h3>
+
+            {/* 2a — tier */}
+            <div className="mb-4">
+              <label htmlFor="tier-select" className="block text-xs text-[#687279] mb-1.5">
+                更換等級（立即套用）
+              </label>
               <select
                 id="tier-select"
                 value={selectedTier}
@@ -805,45 +904,122 @@ function AdminActionsCard({
                   setSelectedTier(e.target.value)
                   handleTierChange(e.target.value)
                 }}
-                className="h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
+                className="w-full h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
               >
                 <option value="" disabled>
                   選擇等級…
                 </option>
                 {tiers.map((t) => (
                   <option key={t.id} value={t.id}>
-                    {t.name} (門檻 {formatNTD(t.min_spend)} / 回饋{" "}
-                    {Number(t.rebate_rate)}%)
+                    {t.name} (門檻 {formatNTD(t.min_spend)} / 回饋 {Number(t.rebate_rate)}%)
                   </option>
                 ))}
               </select>
-              {isPending && (
-                <span className="text-xs text-zinc-400">處理中…</span>
-              )}
             </div>
-          </div>
 
-          {/* Row 3: disable */}
-          <div className="border-t pt-4">
-            <Button
-              size="sm"
-              variant="destructive"
-              disabled={isPending}
-              onClick={() => setShowDisableConfirm(true)}
-            >
-              <Ban className="mr-1 h-3.5 w-3.5" />
-              {isDisabled ? "恢復帳號" : "停用帳號"}
+            {/* 2b — points adjust */}
+            <div>
+              <label htmlFor="delta-input" className="block text-xs text-[#687279] mb-1.5">
+                手動加扣點（正值加點、負值扣點）
+              </label>
+              <div className="mb-2 flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isPending}
+                  onClick={() => {
+                    const n = Number(delta) || 0
+                    setDelta(String(-Math.abs(n) || -1))
+                  }}
+                  aria-label="設為負值"
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </Button>
+                <input
+                  id="delta-input"
+                  type="number"
+                  step="1"
+                  value={delta}
+                  onChange={(e) => setDelta(e.target.value)}
+                  placeholder="例：100 或 -50"
+                  disabled={isPending}
+                  className="flex-1 h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={isPending}
+                  onClick={() => {
+                    const n = Number(delta) || 0
+                    setDelta(String(Math.abs(n) || 1))
+                  }}
+                  aria-label="設為正值"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+              <textarea
+                id="note-input"
+                value={note}
+                onChange={(e) => setNote(e.target.value.slice(0, 500))}
+                rows={2}
+                placeholder="原因（必填）：補償客訴 / 活動加碼 / 訂單異常"
+                disabled={isPending}
+                className="w-full rounded-[10px] border border-[#10305a]/30 bg-white px-2 py-1.5 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
+              />
+              <div className="mt-2 flex items-center justify-between">
+                <p className="text-xs text-zinc-400">剩餘 {500 - note.length} 字</p>
+                <Button
+                  size="sm"
+                  onClick={handleAdjustPoints}
+                  disabled={isPending || !delta || !note.trim()}
+                >
+                  {isPending ? "處理中…" : "送出"}
+                </Button>
+              </div>
+            </div>
+          </section>
+
+          {/* Section 3 — 帳號管理 */}
+          <section className="border-t p-4">
+            <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-[#687279]">
+              帳號管理
+            </h3>
+            <div className="mb-4">
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={isPending}
+                onClick={handleSendReset}
+              >
+                <KeyRound className="mr-1 h-3.5 w-3.5" />
+                {isPending ? "寄送中…" : "發送密碼重設信"}
+              </Button>
+            </div>
+            <div className="border-t pt-3">
+              <p className="mb-2 text-[11px] text-red-600">⚠ 危險操作</p>
+              <Button
+                size="sm"
+                variant="destructive"
+                disabled={isPending}
+                onClick={() => setShowDisableConfirm(true)}
+              >
+                <Ban className="mr-1 h-3.5 w-3.5" />
+                {isDisabled ? "恢復帳號" : "停用帳號"}
+              </Button>
+            </div>
+          </section>
+
+          <div className="sticky bottom-0 flex justify-end border-t bg-white px-4 py-3">
+            <Button size="sm" variant="ghost" onClick={onClose} disabled={isPending}>
+              關閉
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
-      {showAdjustModal && (
-        <AdjustPointsModal
-          customerId={customerId}
-          onClose={() => setShowAdjustModal(false)}
-        />
-      )}
       {showDisableConfirm && (
         <ConfirmDisableModal
           isDisabled={isDisabled}
@@ -853,300 +1029,6 @@ function AdminActionsCard({
         />
       )}
     </>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Edit-profile modal
-// ---------------------------------------------------------------------------
-
-function EditProfileModal({
-  customerId,
-  initial,
-  onClose,
-}: {
-  customerId: string
-  initial: {
-    display_name: string | null
-    phone: string | null
-    birthday: string | null
-  }
-  onClose: () => void
-}) {
-  const [displayName, setDisplayName] = useState(initial.display_name ?? "")
-  const [phone, setPhone] = useState(initial.phone ?? "")
-  const [birthday, setBirthday] = useState(initial.birthday ?? "")
-  const [isPending, startTransition] = useTransition()
-
-  function handleSubmit() {
-    // birthday 若非空要 YYYY-MM-DD (瀏覽器 date input 保證此格式)
-    startTransition(async () => {
-      try {
-        await editProfileAction(customerId, {
-          display_name: displayName.trim(),
-          phone: phone.trim(),
-          birthday: birthday.trim(),
-        })
-        toast.success("已更新")
-        onClose()
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "更新失敗")
-      }
-    })
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="edit-profile-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isPending) onClose()
-      }}
-    >
-      <div className="w-full max-w-md rounded-lg bg-white shadow-lg">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <h2 id="edit-profile-title" className="text-sm font-semibold text-[#10305a]">
-            編輯資料
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            aria-label="關閉"
-            className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="space-y-3 p-4">
-          <div>
-            <label htmlFor="edit-name" className="block text-xs text-[#687279] mb-1.5">
-              姓名
-            </label>
-            <input
-              id="edit-name"
-              type="text"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              disabled={isPending}
-              autoFocus
-              className="w-full h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="edit-phone" className="block text-xs text-[#687279] mb-1.5">
-              電話
-            </label>
-            <input
-              id="edit-phone"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              disabled={isPending}
-              placeholder="0912345678"
-              className="w-full h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
-            />
-          </div>
-
-          <div>
-            <label htmlFor="edit-birthday" className="block text-xs text-[#687279] mb-1.5">
-              生日
-            </label>
-            <input
-              id="edit-birthday"
-              type="date"
-              value={birthday}
-              onChange={(e) => setBirthday(e.target.value)}
-              disabled={isPending}
-              className="w-full h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
-            />
-          </div>
-
-          <p className="text-[11px] text-zinc-400">
-            Email 需另外用「發送密碼重設信」由使用者自行變更；等級請用「變更等級」；點數請用「手動加扣點」。
-          </p>
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t px-4 py-3">
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={onClose}
-            disabled={isPending}
-          >
-            取消
-          </Button>
-          <Button type="button" size="sm" onClick={handleSubmit} disabled={isPending}>
-            {isPending ? "儲存中…" : "儲存"}
-          </Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ---------------------------------------------------------------------------
-// Adjust-points modal
-// ---------------------------------------------------------------------------
-
-function AdjustPointsModal({
-  customerId,
-  onClose,
-}: {
-  customerId: string
-  onClose: () => void
-}) {
-  const [delta, setDelta] = useState<string>("")
-  const [note, setNote] = useState<string>("")
-  const [isPending, startTransition] = useTransition()
-
-  // Parse as integer; reject empty / 0 / non-integer at submit time.
-  function handleSubmit() {
-    const n = Number(delta)
-    if (!Number.isInteger(n) || n === 0) {
-      toast.error("請輸入非零整數")
-      return
-    }
-    const trimmed = note.trim()
-    if (!trimmed) {
-      toast.error("請填寫原因")
-      return
-    }
-    startTransition(async () => {
-      try {
-        await adjustPointsAction(customerId, n, trimmed)
-        toast.success(`已${n > 0 ? "加" : "扣"} ${Math.abs(n)} 點`)
-        onClose()
-      } catch (e) {
-        toast.error(e instanceof Error ? e.message : "調整失敗")
-      }
-    })
-  }
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="adjust-points-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget && !isPending) onClose()
-      }}
-    >
-      <div className="w-full max-w-md rounded-lg bg-white shadow-lg">
-        <div className="flex items-center justify-between border-b px-4 py-3">
-          <h2
-            id="adjust-points-title"
-            className="text-sm font-semibold text-[#10305a]"
-          >
-            手動加扣點
-          </h2>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isPending}
-            aria-label="關閉"
-            className="rounded p-1 text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 disabled:opacity-50"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        <div className="space-y-3 p-4">
-          <div>
-            <label
-              htmlFor="delta-input"
-              className="block text-xs text-[#687279] mb-1.5"
-            >
-              點數變動 (正值加點、負值扣點)
-            </label>
-            <div className="flex items-center gap-1.5">
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={isPending}
-                onClick={() => {
-                  const n = Number(delta) || 0
-                  setDelta(String(-Math.abs(n) || -1))
-                }}
-                aria-label="設為負值"
-              >
-                <Minus className="h-3.5 w-3.5" />
-              </Button>
-              <input
-                id="delta-input"
-                type="number"
-                step="1"
-                value={delta}
-                onChange={(e) => setDelta(e.target.value)}
-                placeholder="例：100 或 -50"
-                disabled={isPending}
-                autoFocus
-                className="flex-1 h-9 rounded-[10px] border border-[#10305a]/30 bg-white px-2 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
-              />
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                disabled={isPending}
-                onClick={() => {
-                  const n = Number(delta) || 0
-                  setDelta(String(Math.abs(n) || 1))
-                }}
-                aria-label="設為正值"
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-
-          <div>
-            <label
-              htmlFor="note-input"
-              className="block text-xs text-[#687279] mb-1.5"
-            >
-              原因 <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              id="note-input"
-              value={note}
-              onChange={(e) => setNote(e.target.value.slice(0, 500))}
-              rows={3}
-              placeholder="例：補償客訴 / 活動加碼 / 訂單異常"
-              disabled={isPending}
-              className="w-full rounded-[10px] border border-[#10305a]/30 bg-white px-2 py-1.5 text-sm focus:border-[#10305a] focus:outline-none focus:ring-1 focus:ring-[#10305a]/30"
-            />
-            <p className="mt-1 text-xs text-zinc-400">
-              剩餘 {500 - note.length} 字
-            </p>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2 border-t px-4 py-3">
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={onClose}
-            disabled={isPending}
-          >
-            取消
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleSubmit}
-            disabled={isPending || !delta || !note.trim()}
-          >
-            {isPending ? "處理中…" : "確認"}
-          </Button>
-        </div>
-      </div>
-    </div>
   )
 }
 
