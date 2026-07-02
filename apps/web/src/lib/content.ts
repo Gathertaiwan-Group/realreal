@@ -52,7 +52,7 @@ export async function getPosts(
 export async function getPostBySlug(slug: string): Promise<Post | null> {
   try {
     const res = await fetch(`${API_URL}/posts/${slug}`, {
-      cache: "no-store",
+      next: { revalidate: 60 },
     })
     if (!res.ok) return null
     const json = await res.json()
