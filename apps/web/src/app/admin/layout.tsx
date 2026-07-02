@@ -71,7 +71,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
             <Link
               key={href}
               href={href}
-              className="flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-sm text-white/70 hover:bg-white/10 hover:text-white transition-colors"
+              className="flex items-center gap-2.5 px-3 py-2 rounded-[10px] text-sm hover:bg-white/10 transition-colors"
+              style={{ color: "rgba(255,255,255,0.75)" }}
             >
               <Icon className="w-4 h-4 shrink-0" />
               {label}
