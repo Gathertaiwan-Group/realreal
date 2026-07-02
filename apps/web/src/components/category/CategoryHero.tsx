@@ -5,6 +5,7 @@ export type CategoryHeroProps = {
   bannerUrl?: string | null
   tagline: string
   subtitle?: string | null
+  objectPosition?: string
 }
 
 /**
@@ -17,7 +18,7 @@ export type CategoryHeroProps = {
  *
  * Per spec J Section 5.
  */
-export function CategoryHero({ bannerUrl, tagline, subtitle }: CategoryHeroProps) {
+export function CategoryHero({ bannerUrl, tagline, subtitle, objectPosition = "center" }: CategoryHeroProps) {
   const [opacity, setOpacity] = useState(0)
 
   useEffect(() => {
@@ -26,7 +27,8 @@ export function CategoryHero({ bannerUrl, tagline, subtitle }: CategoryHeroProps
   }, [])
 
   return (
-    <section className="relative w-full h-[320px] md:h-[480px] overflow-hidden">
+    <div className="md:px-12">
+    <section className="relative w-full h-[320px] md:h-[480px] overflow-hidden md:rounded-2xl">
       {bannerUrl ? (
         <>
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -35,6 +37,7 @@ export function CategoryHero({ bannerUrl, tagline, subtitle }: CategoryHeroProps
             alt=""
             aria-hidden="true"
             className="absolute inset-0 w-full h-full object-cover"
+            style={{ objectPosition }}
           />
           <div className="absolute inset-0 bg-black/40" />
         </>
@@ -62,5 +65,6 @@ export function CategoryHero({ bannerUrl, tagline, subtitle }: CategoryHeroProps
         )}
       </div>
     </section>
+    </div>
   )
 }

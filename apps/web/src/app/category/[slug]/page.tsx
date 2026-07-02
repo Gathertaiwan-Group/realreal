@@ -126,6 +126,7 @@ export default async function CategoryLandingPage({
           bannerUrl={category.banner_url}
           tagline={tagline}
           subtitle={category.subtitle}
+          objectPosition={slug === "sustain-life" ? "50% 70%" : "center"}
         />
       )}
 

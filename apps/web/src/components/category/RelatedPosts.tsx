@@ -30,7 +30,7 @@ export function RelatedPosts({ heading, posts }: RelatedPostsProps) {
         {posts.map((post) => (
           <Link
             key={post.slug}
-            href={`/posts/${post.slug}`}
+            href={`/blog/${post.slug}`}
             className="group flex flex-col bg-white overflow-hidden transition-shadow hover:shadow-lg"
             style={{ boxShadow: "2px 2px 6px 0 rgba(0,0,0,.15)" }}
           >

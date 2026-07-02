@@ -106,14 +106,16 @@ categoriesRouter.get("/:slug", async (req, res) => {
       .from("posts")
       .select("slug, title, excerpt, cover_image, published_at")
       .in("slug", relatedSlugs)
+      .eq("status", "published")
       .limit(4)
     if (postsErr) { res.status(500).json({ error: postsErr.message }); return }
     posts = data ?? []
   } else {
-    // Fallback: most recent 4 posts (simple v1; v2 could match by category)
+    // Fallback: most recent 4 published posts
     const { data, error: postsErr } = await supabase
       .from("posts")
       .select("slug, title, excerpt, cover_image, published_at")
+      .eq("status", "published")
       .order("published_at", { ascending: false })
       .limit(4)
     if (postsErr) { res.status(500).json({ error: postsErr.message }); return }
