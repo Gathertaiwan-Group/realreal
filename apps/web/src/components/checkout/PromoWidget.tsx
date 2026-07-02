@@ -362,8 +362,8 @@ export function PromoWidget({ subtotal }: { subtotal: number }) {
         {state.couponError && <p className="text-xs text-red-600">{state.couponError}</p>}
       </div>
 
-      {/* Points section — show for all logged-in users (educational copy when 0 balance) */}
-      {isLoggedIn && (
+      {/* Points section */}
+      {isLoggedIn ? (
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -417,6 +417,27 @@ export function PromoWidget({ subtotal }: { subtotal: number }) {
               )}
             </>
           )}
+        </div>
+      ) : (
+        /* Guest: informational card to introduce 公益存款 and encourage sign-up */
+        <div className="rounded-lg border border-blue-100 bg-blue-50/60 p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold" style={{ color: "#10305a" }}>✨ 公益存款</span>
+            <span className="rounded-full px-2 py-0.5 text-[10px] font-medium text-white" style={{ backgroundColor: "#10305a" }}>
+              會員專屬
+            </span>
+          </div>
+          <p className="text-xs text-zinc-600 leading-relaxed">
+            成為誠真會員，每次消費自動累積<strong>公益存款點數</strong>。<br />
+            點數可折抵下次購物，也可選擇留存為公益捐款，讓消費也能做好事。
+          </p>
+          <a
+            href="/auth/register"
+            className="inline-flex items-center gap-1 text-xs font-medium hover:underline"
+            style={{ color: "#10305a" }}
+          >
+            立即免費加入，開始累積點數 →
+          </a>
         </div>
       )}
     </section>
