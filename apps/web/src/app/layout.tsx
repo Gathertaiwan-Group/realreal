@@ -10,6 +10,13 @@ import "./globals.css"
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://realreal.cc"),
+  // 品牌 favicon（public/favicon.png，150×150 星星 mark）。先前沒接上，分頁顯示
+  // Next 預設 ▲。用 metadata.icons 明確指定，跨 App Router 版本最穩。
+  icons: {
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
+    apple: "/favicon.png",
+  },
   title: {
     default: "誠真生活 RealReal | 純淨植物力健康食品",
     template: "%s",
