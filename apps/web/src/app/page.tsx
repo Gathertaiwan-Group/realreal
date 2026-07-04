@@ -351,6 +351,7 @@ function RetailSection() {
       address: "台北市中正區永綏街7號街道（中山堂對面）",
       dates: "2026/7/18–19（六、日）",
       hours: "13:00–18:00",
+      mapUrl: "https://maps.app.goo.gl/jdv9rmJ1sFTz8Qbe7",
       icon: "📚",
     },
     {
@@ -359,6 +360,7 @@ function RetailSection() {
       address: "南港軟體園區樂購商場",
       dates: "2026/7/9、16、23、30（每週四）",
       hours: "11:30–14:00",
+      mapUrl: "https://share.google/h4UonhL1F99N77ut2",
       icon: "🛍️",
     },
     // 實體通路（由南至北）
