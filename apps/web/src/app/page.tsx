@@ -8,6 +8,7 @@ import { getSiteContent, getPosts } from "@/lib/content"
 import type { Post } from "@/lib/content"
 import type { Metadata } from "next"
 import { TestimonialsCarousel } from "@/components/ui/testimonials-carousel"
+import { RetailCarousel } from "@/components/ui/retail-carousel"
 import { ProductCard } from "@/components/catalog/ProductCard"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
@@ -342,14 +343,30 @@ function BlogSection({ posts }: { posts: Post[] }) {
 }
 
 function RetailSection() {
-  // 由右至左 = 陣列由南至北（最南在左、最北在右）
-  const stores = [
+  const entries = [
+    // 出攤活動（最新活動排最前）
+    {
+      name: "台北閱野假期閱讀節",
+      type: "出攤活動",
+      address: "台北市中正區永綏街7號街道（中山堂對面）",
+      dates: "2026/7/18–19（六、日）",
+      hours: "13:00–18:00",
+      icon: "📚",
+    },
+    {
+      name: "南港軟體園區樂購商場",
+      type: "出攤活動",
+      address: "南港軟體園區樂購商場",
+      dates: "2026/7/9、16、23、30（每週四）",
+      hours: "11:30–14:00",
+      icon: "🛍️",
+    },
+    // 實體通路（由南至北）
     {
       name: "仙卉生機園地",
       type: "生機店",
       address: "彰化縣溪湖鎮郵政街27號",
       phone: "(04) 882-1260",
-      mapUrl: null,
       fbUrl: "https://www.facebook.com/share/1C9Wk8UDW8/?mibextid=wwXIfr",
       icon: "🌿",
     },
@@ -359,7 +376,6 @@ function RetailSection() {
       address: "桃園市中壢區龍慈路91號1樓",
       phone: "(03) 460-1966",
       mapUrl: "https://share.google/vZ79fBx7uAgcFZUMx",
-      fbUrl: null,
       icon: "💊",
     },
     {
@@ -368,7 +384,6 @@ function RetailSection() {
       address: "新北市新店區北新路三段206巷1弄7號",
       phone: "(02) 8914-7185",
       mapUrl: "https://maps.app.goo.gl/zUmLshtYtRhnmLp87",
-      fbUrl: null,
       icon: "🥗",
     },
     {
@@ -377,91 +392,22 @@ function RetailSection() {
       address: "新北市板橋區自由路2號",
       phone: "(02) 2255-8878",
       mapUrl: "https://maps.app.goo.gl/Ug2Jy4SVUDupV4TN8?g_st=ic",
-      fbUrl: null,
       icon: "💊",
     },
   ]
 
   return (
     <section className="py-10 sm:py-14 bg-white border-t border-gray-100">
-      <div className="px-3 sm:px-4">
-        <div className="text-center mb-10">
-          <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ color: "#10305a" }}>
-            在生活裡相遇
-          </h2>
-          <p className="mt-2 text-sm" style={{ color: "#687279" }}>
-            從螢幕到街角，把誠真生活帶回家。
-          </p>
-        </div>
-
-        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
-          {stores.map(store => (
-            <div
-              key={store.name}
-              className="rounded-2xl border border-gray-100 bg-[#f9fafb] p-6 flex flex-col gap-4"
-              style={{ boxShadow: "2px 2px 12px 0 rgba(16,48,90,.06)" }}
-            >
-              <div className="flex items-start gap-3">
-                <span className="text-2xl mt-0.5">{store.icon}</span>
-                <div>
-                  <span
-                    className="inline-block text-xs font-semibold rounded-full px-2.5 py-0.5 mb-1.5"
-                    style={{ background: "#e8f0f7", color: "#10305a" }}
-                  >
-                    {store.type}
-                  </span>
-                  <h3 className="text-base font-bold" style={{ color: "#10305a" }}>{store.name}</h3>
-                </div>
-              </div>
-
-              {(store.address || store.phone) && (
-                <div className="space-y-1.5 text-sm" style={{ color: "#687279" }}>
-                  {store.address && (
-                    <p className="flex items-start gap-2">
-                      <span className="mt-0.5 shrink-0">📍</span>
-                      {store.address}
-                    </p>
-                  )}
-                  {store.phone && (
-                    <p className="flex items-center gap-2">
-                      <span className="shrink-0">📞</span>
-                      <a href={`tel:${store.phone.replace(/[^0-9]/g, "")}`} className="hover:underline">
-                        {store.phone}
-                      </a>
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div className="flex gap-2 mt-auto">
-                {store.mapUrl && (
-                  <a
-                    href={store.mapUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors"
-                    style={{ background: "#10305a", color: "#fff" }}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                    Google Maps
-                  </a>
-                )}
-                {store.fbUrl && (
-                  <a
-                    href={store.fbUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex-1 flex items-center justify-center gap-1.5 rounded-lg py-2 text-xs font-semibold transition-colors"
-                    style={{ background: "#10305a", color: "#fff" }}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg>
-                    Facebook
-                  </a>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+      <div className="text-center mb-10 px-3 sm:px-4">
+        <h2 className="text-2xl font-bold tracking-tight sm:text-3xl" style={{ color: "#10305a" }}>
+          在生活裡相遇
+        </h2>
+        <p className="mt-2 text-sm" style={{ color: "#687279" }}>
+          從螢幕到街角，把誠真生活帶回家。
+        </p>
+      </div>
+      <div className="px-3 sm:px-8">
+        <RetailCarousel entries={entries} />
       </div>
     </section>
   )
