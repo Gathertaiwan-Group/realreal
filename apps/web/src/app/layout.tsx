@@ -41,6 +41,18 @@ export const metadata: Metadata = {
     title: "誠真生活 RealReal | 純淨植物力健康食品",
     description:
       "來自台灣的純素健康食品品牌，嚴選天然植物原料，純粹投入，誠真健康。",
+    images: [
+      {
+        url: "/brand/hero-banner.jpg",
+        width: 1920,
+        height: 1080,
+        alt: "誠真生活 RealReal",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    images: ["/brand/hero-banner.jpg"],
   },
 }
 
