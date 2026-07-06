@@ -190,6 +190,8 @@ export const ALLOWED_KEYS = new Set<string>([
   "shipping.free_threshold_home",
   "shipping.free_threshold_cvs",
   "shipping.fee_overseas_cod",
+  // Logistics
+  "logistics.skip_ecpay",
 ])
 
 /**
