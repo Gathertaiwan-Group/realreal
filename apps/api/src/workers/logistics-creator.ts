@@ -1,6 +1,6 @@
 import { supabase } from "../lib/supabase"
 import { createCvsLogistics, createHomeDelivery } from "../lib/ecpay-logistics"
-import { getSetting } from "../lib/settings"
+import { getSetting, SETTING_DEFAULTS } from "../lib/settings"
 
 /**
  * Create the ECPay logistics record for a paid order.
@@ -27,7 +27,7 @@ export async function processCreateShipment(orderId: string) {
   }
 
   // 手動出貨模式：跳過綠界物流，記錄為 manual，由 admin 自行出貨
-  const skipEcpay = (await getSetting("logistics.skip_ecpay")) === "true"
+  const skipEcpay = ((await getSetting("logistics.skip_ecpay")) ?? SETTING_DEFAULTS["logistics.skip_ecpay"]) === "true"
   if (skipEcpay) {
     const { data: existing } = await supabase.from("logistics").select("id").eq("order_id", orderId).limit(1).maybeSingle()
     if (!existing) {
@@ -145,7 +145,7 @@ export async function processCreateShipmentCod(orderId: string) {
   }
 
   // 手動出貨模式：跳過綠界物流，記錄為 manual，由 admin 自行出貨
-  const skipEcpay = (await getSetting("logistics.skip_ecpay")) === "true"
+  const skipEcpay = ((await getSetting("logistics.skip_ecpay")) ?? SETTING_DEFAULTS["logistics.skip_ecpay"]) === "true"
   if (skipEcpay) {
     const { data: existing } = await supabase.from("logistics").select("id").eq("order_id", orderId).not("ecpay_logistics_id", "is", null).limit(1).maybeSingle()
     if (!existing) {

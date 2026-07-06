@@ -334,5 +334,5 @@ export const SETTING_DEFAULTS: Record<string, string> = {
   "shipping.free_threshold_home": "1499",
   "shipping.free_threshold_cvs": "499",
   "shipping.fee_overseas_cod": "0",
-  "logistics.skip_ecpay": "false",
+  "logistics.skip_ecpay": "true",
 }
