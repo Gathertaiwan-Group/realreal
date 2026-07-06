@@ -1,5 +1,6 @@
 import { supabase } from "../lib/supabase"
 import { createCvsLogistics, createHomeDelivery } from "../lib/ecpay-logistics"
+import { getSetting } from "../lib/settings"
 
 /**
  * Create the ECPay logistics record for a paid order.
@@ -22,6 +23,17 @@ export async function processCreateShipment(orderId: string) {
   if (!order) throw new Error(`Order ${orderId} not found`)
   if (order.payment_status !== "paid") {
     console.log(`[logistics-creator] order ${orderId} payment_status="${order.payment_status}", skipping`)
+    return
+  }
+
+  // 手動出貨模式：跳過綠界物流，記錄為 manual，由 admin 自行出貨
+  const skipEcpay = (await getSetting("logistics.skip_ecpay")) === "true"
+  if (skipEcpay) {
+    const { data: existing } = await supabase.from("logistics").select("id").eq("order_id", orderId).limit(1).maybeSingle()
+    if (!existing) {
+      await supabase.from("logistics").insert({ order_id: orderId, provider: "manual", type: "HOME", status: "pending" })
+    }
+    console.log(`[logistics-creator] skip_ecpay=true — order ${orderId} recorded as manual shipment`)
     return
   }
 
@@ -129,6 +141,17 @@ export async function processCreateShipmentCod(orderId: string) {
   if (!order) throw new Error(`Order ${orderId} not found`)
   if (order.payment_method !== "cvs_cod") {
     console.warn(`[logistics-creator] processCreateShipmentCod called for non-cvs_cod order ${orderId}`)
+    return
+  }
+
+  // 手動出貨模式：跳過綠界物流，記錄為 manual，由 admin 自行出貨
+  const skipEcpay = (await getSetting("logistics.skip_ecpay")) === "true"
+  if (skipEcpay) {
+    const { data: existing } = await supabase.from("logistics").select("id").eq("order_id", orderId).not("ecpay_logistics_id", "is", null).limit(1).maybeSingle()
+    if (!existing) {
+      await supabase.from("logistics").insert({ order_id: orderId, provider: "manual", type: "CVS", status: "pending" })
+    }
+    console.log(`[logistics-creator] skip_ecpay=true — cvs_cod order ${orderId} recorded as manual shipment`)
     return
   }
 
