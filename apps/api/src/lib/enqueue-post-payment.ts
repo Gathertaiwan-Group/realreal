@@ -97,10 +97,50 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   }
   const recipientEmail = userEmail ?? (order as any).guest_email as string | undefined
 
-  // 1a) Customer confirmation email — skipped for COD (already sent by
-  // notifyOrderPlacedCod at checkout). Sending again here would arrive after
-  // pickup, confusing the customer with a "付款成功" notice they didn't expect.
+  // 1a + 1b) Customer confirmation + admin notification — skipped for COD
+  // (notifyOrderPlacedCod already handled both at checkout time).
   if (!isCod) {
+    // Fetch shipping address + items once; share between customer and admin emails.
+    const [{ data: shippingRow }, { data: orderItemRows }] = await Promise.all([
+      supabase
+        .from("order_addresses")
+        .select("name, phone, address_type, address, cvs_store_id, cvs_type, city, postal_code")
+        .eq("order_id", orderId)
+        .eq("type", "shipping")
+        .maybeSingle(),
+      supabase
+        .from("order_items")
+        .select("product_snapshot, qty, unit_price")
+        .eq("order_id", orderId),
+    ])
+
+    const s: any = shippingRow ?? {}
+    const customerName: string = s.name ?? "顧客"
+
+    const mappedItems = (orderItemRows ?? []).map((it: any) => {
+      const snap = it.product_snapshot ?? {}
+      const name = snap.name ?? "商品"
+      const variant = snap.variant_name && snap.variant_name !== "預設" ? `（${snap.variant_name}）` : ""
+      return {
+        name: `${name}${variant}`,
+        qty: Number(it.qty),
+        price: String(Number(it.unit_price) * Number(it.qty)),
+      }
+    })
+
+    const itemLines = mappedItems.map(it => `  • ${it.name} × ${it.qty} = NT$ ${it.price}`).join("\n")
+
+    let pickupInfo = "—"
+    if (shippingRow) {
+      if (s.address_type === "cvs") {
+        const chain = s.cvs_type === "family" ? "全家" : "7-11"
+        pickupInfo = `${chain} ${s.address ?? ""} (${s.cvs_store_id ?? ""})`.trim()
+      } else {
+        pickupInfo = `宅配｜${s.postal_code ?? ""} ${s.city ?? ""} ${s.address ?? ""}`.trim()
+      }
+    }
+
+    // 1a) Customer email
     if (recipientEmail) {
       try {
         await renderAndSendEmail({
@@ -109,7 +149,9 @@ export async function enqueuePostPaymentJobs(orderId: string) {
           data: {
             orderNumber: order.order_number,
             amount: String(totalTwd),
-            method: "",
+            customerName,
+            items: mappedItems,
+            pickupInfo,
           },
         })
       } catch (err) {
@@ -118,71 +160,32 @@ export async function enqueuePostPaymentJobs(orderId: string) {
     } else {
       console.warn(`[post-payment] no email for order ${orderId}, skipping customer email`)
     }
-  }
 
-  // 1b) Admin "new order" notification — configurable address.
-  // Skipped for COD: admin already received "new order" at checkout time
-  // (notifyOrderPlacedCod), they've shipped, and "付款已完成請出貨" wording
-  // is wrong at this stage (it's an already-shipped pickup-payment event).
-  if (!isCod) try {
-    const adminEmails = parseRecipients(await getSetting("notifications.admin_email"))
-    if (adminEmails.length > 0) {
-      // Pull shipping address + items for a richer admin email.
-      const [{ data: shippingRow }, { data: items }] = await Promise.all([
-        supabase
-          .from("order_addresses")
-          .select("name, phone, address_type, address, cvs_store_id, cvs_type, city, postal_code")
-          .eq("order_id", orderId)
-          .eq("type", "shipping")
-          .maybeSingle(),
-        supabase
-          .from("order_items")
-          .select("product_snapshot, qty, unit_price")
-          .eq("order_id", orderId),
-      ])
-
-      const itemLines = (items ?? [])
-        .map((it: any) => {
-          const snap = it.product_snapshot ?? {}
-          const name = snap.name ?? "商品"
-          const variant = snap.variant_name && snap.variant_name !== "預設"
-            ? `（${snap.variant_name}）`
-            : ""
-          return `  • ${name}${variant} × ${it.qty} = NT$ ${Number(it.unit_price) * Number(it.qty)}`
-        })
-        .join("\n")
-
-      let shippingLine = "—"
-      if (shippingRow) {
-        const s: any = shippingRow
-        if (s.address_type === "cvs") {
-          const chain = s.cvs_type === "family" ? "全家" : "7-11"
-          shippingLine = `${chain} ${s.address ?? ""} (${s.cvs_store_id ?? ""})`
-        } else {
-          shippingLine = `宅配 ${s.postal_code ?? ""} ${s.city ?? ""} ${s.address ?? ""}`.trim()
-        }
+    // 1b) Admin notification
+    try {
+      const adminEmails = parseRecipients(await getSetting("notifications.admin_email"))
+      if (adminEmails.length > 0) {
+        const subject = `【誠真生活】新訂單 ${order.order_number} — NT$ ${totalTwd}`
+        const html = `
+          <div style="font-family: -apple-system, sans-serif; max-width:600px;">
+            <h2 style="color:#10305a;margin:0 0 8px">新訂單通知</h2>
+            <p style="color:#687279;margin:0 0 24px">付款已完成，請準備出貨。</p>
+            <table style="border-collapse:collapse;width:100%;font-size:14px;">
+              <tr><td style="padding:6px 0;color:#687279;width:120px">訂單編號</td><td style="font-family:monospace;font-weight:600">${order.order_number}</td></tr>
+              <tr><td style="padding:6px 0;color:#687279">總金額</td><td style="font-weight:600;color:#10305a">NT$ ${totalTwd}</td></tr>
+              <tr><td style="padding:6px 0;color:#687279">收件人</td><td>${customerName}</td></tr>
+              <tr><td style="padding:6px 0;color:#687279">電話</td><td><a href="tel:${s.phone ?? ""}">${s.phone ?? "—"}</a></td></tr>
+              <tr><td style="padding:6px 0;color:#687279;vertical-align:top">取貨</td><td>${pickupInfo}</td></tr>
+              <tr><td style="padding:6px 0;color:#687279;vertical-align:top">商品</td><td style="white-space:pre-line">${itemLines || "—"}</td></tr>
+            </table>
+            <p style="margin:24px 0 0;font-size:13px;color:#687279">進管理後台處理 → <a href="https://realreal-store.vercel.app/admin/orders" style="color:#10305a">/admin/orders</a></p>
+          </div>
+        `
+        await sendEmail({ to: adminEmails, subject, html })
       }
-
-      const subject = `【誠真生活】新訂單 ${order.order_number} — NT$ ${totalTwd}`
-      const html = `
-        <div style="font-family: -apple-system, sans-serif; max-width:600px;">
-          <h2 style="color:#10305a;margin:0 0 8px">新訂單通知</h2>
-          <p style="color:#687279;margin:0 0 24px">付款已完成，請準備出貨。</p>
-          <table style="border-collapse:collapse;width:100%;font-size:14px;">
-            <tr><td style="padding:6px 0;color:#687279;width:120px">訂單編號</td><td style="font-family:monospace;font-weight:600">${order.order_number}</td></tr>
-            <tr><td style="padding:6px 0;color:#687279">總金額</td><td style="font-weight:600;color:#10305a">NT$ ${totalTwd}</td></tr>
-            <tr><td style="padding:6px 0;color:#687279">收件人</td><td>${(shippingRow as any)?.name ?? "—"}</td></tr>
-            <tr><td style="padding:6px 0;color:#687279">電話</td><td><a href="tel:${(shippingRow as any)?.phone ?? ""}">${(shippingRow as any)?.phone ?? "—"}</a></td></tr>
-            <tr><td style="padding:6px 0;color:#687279;vertical-align:top">取貨</td><td>${shippingLine}</td></tr>
-            <tr><td style="padding:6px 0;color:#687279;vertical-align:top">商品</td><td style="white-space:pre-line">${itemLines || "—"}</td></tr>
-          </table>
-          <p style="margin:24px 0 0;font-size:13px;color:#687279">進管理後台處理 → <a href="https://realreal-store.vercel.app/admin/orders" style="color:#10305a">/admin/orders</a></p>
-        </div>
-      `
-      await sendEmail({ to: adminEmails, subject, html })
+    } catch (err) {
+      console.warn("[post-payment] admin notification failed (non-fatal):", err)
     }
-  } catch (err) {
-    console.warn("[post-payment] admin notification failed (non-fatal):", err)
   }
 
   // 1c) LINE Notify push — spec M Section 2. Goes to whoever holds the
@@ -389,22 +392,27 @@ export async function notifyOrderPlacedCod(orderId: string) {
       const subject = `【誠真生活】訂單已成立 #${order.order_number} — 請至超商取貨付款`
       const html = `
         <div style="font-family: -apple-system, sans-serif; max-width:600px; color:#1a1a1a;">
-          <h2 style="color:#10305a; margin:0 0 8px;">訂單已成立</h2>
-          <p style="color:#687279; margin:0 0 24px; line-height:1.6;">
-            感謝您的訂購！您選擇了「超商取貨付款」。<br/>
-            訂單將於 1–3 個工作天備貨出貨，包裹到達門市後將以簡訊通知您取貨，<br/>
-            請攜帶手機至門市出示取件條碼並完成付款。
-          </p>
-          <table style="border-collapse:collapse; width:100%; font-size:14px;">
-            <tr><td style="padding:6px 0; color:#687279; width:120px;">訂單編號</td><td style="font-family:monospace; font-weight:600;">${order.order_number}</td></tr>
-            <tr><td style="padding:6px 0; color:#687279;">應付金額</td><td style="font-weight:600; color:#10305a;">NT$ ${totalTwd}</td></tr>
-            <tr><td style="padding:6px 0; color:#687279;">付款方式</td><td>超商取貨付款</td></tr>
+          <h1 style="color:#10305a; border-bottom:2px solid #10305a; padding-bottom:8px;">誠真生活 RealReal</h1>
+          <p>親愛的 ${s.name ?? "顧客"}，</p>
+          <p>感謝您的訂購！您的訂單已成立。</p>
+          <table style="border-collapse:collapse; width:100%; font-size:14px; margin:16px 0;">
+            <tr><td style="padding:6px 0; color:#687279; width:100px; vertical-align:top;">訂單編號</td><td style="font-family:monospace; font-weight:600;">${order.order_number}</td></tr>
+            <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">應付金額</td><td style="font-weight:600; color:#10305a;">NT$ ${totalTwd}</td></tr>
+            <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">付款方式</td><td>超商取貨付款</td></tr>
             <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">取件門市</td><td>${cvsLine}</td></tr>
             <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">商品</td><td style="white-space:pre-line;">${itemLines || "—"}</td></tr>
           </table>
-          <p style="margin:24px 0 0; font-size:13px; color:#687279;">
-            如需查詢訂單狀態，請至會員中心 → 訂單紀錄。<br/>
-            若包裹超過 7 天未取，訂單將自動取消、商品退回，敬請留意門市取件通知。
+          <p style="line-height:1.6;">
+            訂單將於 1–3 個工作天備貨出貨，包裹到達門市後將以簡訊通知您取貨，<br/>
+            請攜帶手機至門市出示取件條碼並完成付款。
+          </p>
+          <p>如需查詢訂單狀態，請聯絡客服。</p>
+          <hr style="margin:24px 0; border:none; border-top:1px solid #eee;">
+          <p style="font-size:13px; color:#555; line-height:2;">
+            誠真生活 | <a href="https://realreal.cc" style="color:#10305a;">realreal.cc</a><br>
+            Email: <a href="mailto:love@realreal.cc" style="color:#10305a;">love@realreal.cc</a><br>
+            Line 真人客服: @900kevgi<br>
+            Tel: 02-66093066
           </p>
         </div>
       `
