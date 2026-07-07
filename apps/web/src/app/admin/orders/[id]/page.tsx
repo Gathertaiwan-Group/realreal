@@ -143,6 +143,7 @@ export default async function AdminOrderDetailPage({
         orderId={id}
         status={order.status}
         paymentStatus={order.payment_status}
+        paymentMethod={order.payment_method}
         logistics={order.logistics?.[0] ?? null}
       />
 

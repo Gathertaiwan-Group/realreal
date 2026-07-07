@@ -8,6 +8,7 @@ import { inventoryQueue } from "../lib/queue"
 import { refundOrderPoints } from "../lib/points"
 import { decrementSpendOnRefund } from "../lib/tier"
 import { restoreOrderStock, refundCouponUsage, cancelOrderById } from "../lib/cancel-order"
+import { renderAndSendEmail } from "../workers/email-sender"
 
 export const adminOrdersRouter = Router()
 
@@ -267,6 +268,68 @@ adminOrdersRouter.post("/:id/retry-shipment", async (req, res) => {
     const detail = err instanceof Error ? err.message : String(err)
     res.status(500).json({ error: "enqueue failed", detail })
   }
+})
+
+// POST /admin/orders/:id/ship — mark order as shipped and send customer email.
+// Works for regular orders (status="processing") and COD orders (status="pending").
+adminOrdersRouter.post("/:id/ship", async (req, res) => {
+  const orderId = req.params.id
+
+  const { data: order, error } = await supabase
+    .from("orders")
+    .select("id, order_number, status, payment_method, guest_email, user_id")
+    .eq("id", orderId)
+    .single()
+
+  if (error || !order) { res.status(404).json({ error: "Order not found" }); return }
+
+  const isCod = order.payment_method === "cvs_cod"
+  const canShip = order.status === "processing" || (isCod && order.status === "pending")
+  if (!canShip) {
+    res.status(400).json({ error: `Cannot ship order in status "${order.status}"` }); return
+  }
+
+  const { data: shippingAddr } = await supabase
+    .from("order_addresses")
+    .select("name")
+    .eq("order_id", orderId)
+    .eq("type", "shipping")
+    .maybeSingle()
+
+  const customerName = (shippingAddr?.name as string | null | undefined) ?? "顧客"
+
+  let recipientEmail: string | undefined
+  if (order.user_id) {
+    try {
+      const { data } = await supabase.auth.admin.getUserById(order.user_id as string)
+      recipientEmail = data?.user?.email ?? undefined
+    } catch { /* ignore */ }
+  }
+  if (!recipientEmail) recipientEmail = (order.guest_email as string | null | undefined) ?? undefined
+
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({ status: "shipped", updated_at: new Date().toISOString() })
+    .eq("id", orderId)
+
+  if (updateError) {
+    console.error("[admin/orders] ship status update failed:", updateError)
+    res.status(500).json({ error: "Failed to update order status" }); return
+  }
+
+  if (recipientEmail) {
+    try {
+      await renderAndSendEmail({
+        template: "order-shipped",
+        to: recipientEmail,
+        data: { orderNumber: order.order_number as string, customerName },
+      })
+    } catch (err) {
+      console.warn(`[admin/orders] order-shipped email failed for ${orderId}:`, err)
+    }
+  }
+
+  res.json({ ok: true })
 })
 
 // POST /admin/orders/:id/cancel — one-click admin cancellation.

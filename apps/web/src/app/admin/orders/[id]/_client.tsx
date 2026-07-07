@@ -23,6 +23,7 @@ import {
   deleteOrderAction,
   reissueInvoiceAction,
   retryShipmentAction,
+  shipOrderAction,
   updateOrderStatusAction,
   voidInvoiceAction,
 } from "./actions"
@@ -63,6 +64,7 @@ interface OrderActionsProps {
   orderId: string
   status: string
   paymentStatus: string
+  paymentMethod?: string | null
   logistics?: { status: string; type: string } | null
 }
 
@@ -70,6 +72,7 @@ export function OrderActions({
   orderId,
   status,
   paymentStatus,
+  paymentMethod,
   logistics: _logistics,
 }: OrderActionsProps) {
   // logistics is accepted so page.tsx can pass it for parity with the
@@ -148,8 +151,8 @@ export function OrderActions({
     setShowDeleteModal(false)
   }
 
-  const showConfirmPayment = status === "pending" && paymentStatus !== "paid"
-  const showShip = status === "processing"
+  const showConfirmPayment = status === "pending" && paymentStatus !== "paid" && paymentMethod !== "cvs_cod"
+  const showShip = status === "processing" || (status === "pending" && paymentMethod === "cvs_cod")
   // Spec section 2: 「完成訂單」manual fallback only when shipped.
   const showComplete = status === "shipped"
   // Spec section 3: cancellation only allowed in pending / processing / shipped.
@@ -168,7 +171,20 @@ export function OrderActions({
           </Button>
         )}
         {showShip && (
-          <Button size="sm" disabled={isPending} onClick={() => handleAction("shipped")}>
+          <Button
+            size="sm"
+            disabled={isPending}
+            onClick={() => {
+              startTransition(async () => {
+                const result = await shipOrderAction(orderId)
+                if (result?.error) {
+                  toast.error(`出貨失敗：${result.error}`)
+                } else {
+                  toast.success("訂單已出貨，通知信已寄出")
+                }
+              })
+            }}
+          >
             出貨
           </Button>
         )}

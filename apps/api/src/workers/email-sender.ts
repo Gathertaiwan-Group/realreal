@@ -17,7 +17,7 @@ import { renderSubscriptionFailed } from "../emails/SubscriptionFailed"
 export type EmailJobData =
   | { template: "order-confirmation"; to: string; data: { orderNumber: string; items: any[]; total: string; address: string } }
   | { template: "payment-confirmed"; to: string; data: { orderNumber: string; amount: string; method: string } }
-  | { template: "order-shipped"; to: string; data: { orderNumber: string; trackingNumber: string; carrier: string } }
+  | { template: "order-shipped"; to: string; data: { orderNumber: string; customerName: string } }
   | { template: "tier-upgrade"; to: string; data: { newTier: string; discountRate: number; perks: string[] } }
   | { template: "tier-renewed"; to: string; data: { tierName: string; newExpiresAt: string; perks: string[] } }
   | { template: "tier-downgraded"; to: string; data: { fromTier: string; toTier: string; nextRequalifyAmount: number; toPerks: string[] } }

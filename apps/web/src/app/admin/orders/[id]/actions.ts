@@ -82,6 +82,22 @@ export async function voidInvoiceAction(
   }
 }
 
+export async function shipOrderAction(orderId: string): Promise<ActionResult> {
+  try {
+    const supabase = await createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    await apiClient(`/admin/orders/${orderId}/ship`, {
+      method: "POST",
+      body: JSON.stringify({}),
+      token: session?.access_token,
+    })
+    revalidatePath(`/admin/orders/${orderId}`)
+    return { ok: true }
+  } catch (e) {
+    return toErrorResult(e)
+  }
+}
+
 export async function retryShipmentAction(orderId: string): Promise<ActionResult> {
   try {
     const supabase = await createClient()
