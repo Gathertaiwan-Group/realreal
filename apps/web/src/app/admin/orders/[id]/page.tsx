@@ -161,6 +161,14 @@ export default async function AdminOrderDetailPage({
         </CardContent>
       </Card>
 
+      {/* Customer Notes */}
+      {order.notes && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm">
+          <p className="font-semibold text-amber-800 mb-1">顧客備註</p>
+          <p className="text-amber-900 whitespace-pre-line">{order.notes}</p>
+        </div>
+      )}
+
       {/* Items Table */}
       <Card>
         <CardHeader>
