@@ -334,7 +334,9 @@ adminOrdersRouter.post("/:id/ship", async (req, res) => {
   }
 
   try {
-    const adminEmails = parseRecipients(await getSetting("notifications.admin_email"))
+    const settingVal = await getSetting("notifications.admin_email")
+    const adminEmails = parseRecipients(settingVal ?? process.env.ADMIN_EMAIL)
+    console.log(`[admin/orders] ship admin email → setting="${settingVal}" envFallback="${process.env.ADMIN_EMAIL}" resolved=${JSON.stringify(adminEmails)}`)
     if (adminEmails.length > 0) {
       const { renderOrderShipped } = await import("../emails/OrderShipped")
       const subject = `【已出貨】訂單 #${order.order_number} — ${customerName}`
