@@ -1,7 +1,7 @@
 export function renderTierDowngraded(data: { fromTier: string; toTier: string; nextRequalifyAmount: number; toPerks: string[] }): string {
   const perkItems = data.toPerks.map(p => `<li style="padding:4px 0">${p}</li>`).join("")
   const formattedAmount = data.nextRequalifyAmount.toLocaleString("en-US")
-  return `<!DOCTYPE html><html><body style="font-family:sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px">
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="font-family:sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px">
     <h1 style="color:#10305a;border-bottom:2px solid #10305a;padding-bottom:8px">誠真生活 RealReal</h1>
     <h2>會員等級調整通知</h2>
     <p>期內未累積至 <strong>NT$${formattedAmount}</strong>，已調整為 <strong>${data.toTier}</strong> 等級。</p>

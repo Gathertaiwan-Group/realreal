@@ -3,7 +3,7 @@ export function renderOrderConfirmation(data: { orderNumber: string; items: Arra
     `<tr><td style="padding:8px;border-bottom:1px solid #eee">${item.name}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${item.qty}</td><td style="padding:8px;border-bottom:1px solid #eee;text-align:right">NT$${item.price}</td></tr>`
   ).join("")
 
-  return `<!DOCTYPE html><html><body style="font-family:sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px">
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="font-family:sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px">
     <h1 style="color:#10305a;border-bottom:2px solid #10305a;padding-bottom:8px">誠真生活 RealReal</h1>
     <h2>訂單確認</h2>
     <p>感謝您的訂購！您的訂單編號為 <strong>#${data.orderNumber}</strong></p>
