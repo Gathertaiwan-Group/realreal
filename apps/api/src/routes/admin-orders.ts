@@ -9,6 +9,8 @@ import { refundOrderPoints } from "../lib/points"
 import { decrementSpendOnRefund } from "../lib/tier"
 import { restoreOrderStock, refundCouponUsage, cancelOrderById } from "../lib/cancel-order"
 import { renderAndSendEmail } from "../workers/email-sender"
+import { sendEmail, parseRecipients } from "../lib/email"
+import { getSetting } from "../lib/settings"
 
 export const adminOrdersRouter = Router()
 
@@ -317,16 +319,30 @@ adminOrdersRouter.post("/:id/ship", async (req, res) => {
     res.status(500).json({ error: "Failed to update order status" }); return
   }
 
+  const emailData = { orderNumber: order.order_number as string, customerName }
+
   if (recipientEmail) {
     try {
       await renderAndSendEmail({
         template: "order-shipped",
         to: recipientEmail,
-        data: { orderNumber: order.order_number as string, customerName },
+        data: emailData,
       })
     } catch (err) {
-      console.warn(`[admin/orders] order-shipped email failed for ${orderId}:`, err)
+      console.warn(`[admin/orders] order-shipped customer email failed for ${orderId}:`, err)
     }
+  }
+
+  try {
+    const adminEmails = parseRecipients(await getSetting("notifications.admin_email"))
+    if (adminEmails.length > 0) {
+      const { renderOrderShipped } = await import("../emails/OrderShipped")
+      const subject = `【已出貨】訂單 #${order.order_number} — ${customerName}`
+      const html = renderOrderShipped(emailData)
+      await sendEmail({ to: adminEmails, subject, html })
+    }
+  } catch (err) {
+    console.warn(`[admin/orders] order-shipped admin email failed for ${orderId}:`, err)
   }
 
   res.json({ ok: true })
