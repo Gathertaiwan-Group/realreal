@@ -24,7 +24,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   // Fetch order details needed for the email
   const { data: order } = await supabase
     .from("orders")
-    .select("id, order_number, subtotal, discount_amount, total, guest_email, user_id, points_used, attributed_kol_slug, metadata, payment_method, order_items(*)")
+    .select("id, order_number, subtotal, discount_amount, total, guest_email, user_id, points_used, attributed_kol_slug, metadata, payment_method, notes, order_items(*)")
     .eq("id", orderId)
     .single()
 
@@ -177,6 +177,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
               <tr><td style="padding:6px 0;color:#687279">電話</td><td><a href="tel:${s.phone ?? ""}">${s.phone ?? "—"}</a></td></tr>
               <tr><td style="padding:6px 0;color:#687279;vertical-align:top">取貨</td><td>${pickupInfo}</td></tr>
               <tr><td style="padding:6px 0;color:#687279;vertical-align:top">商品</td><td style="white-space:pre-line">${itemLines || "—"}</td></tr>
+              ${(order as any).notes ? `<tr><td style="padding:6px 0;color:#687279;vertical-align:top">顧客備註</td><td style="white-space:pre-line;color:#b45309;font-weight:600">${(order as any).notes}</td></tr>` : ""}
             </table>
             <p style="margin:24px 0 0;font-size:13px;color:#687279">進管理後台處理 → <a href="https://realreal-store.vercel.app/admin/orders" style="color:#10305a">/admin/orders</a></p>
           </div>
@@ -330,7 +331,7 @@ export async function notifyOrderPlacedCod(orderId: string) {
   const { data: order } = await supabase
     .from("orders")
     .select(
-      "id, order_number, total, guest_email, user_id, attributed_kol_slug",
+      "id, order_number, total, guest_email, user_id, attributed_kol_slug, notes",
     )
     .eq("id", orderId)
     .single()
@@ -440,6 +441,7 @@ export async function notifyOrderPlacedCod(orderId: string) {
             <tr><td style="padding:6px 0; color:#687279;">電話</td><td><a href="tel:${s.phone ?? ""}">${s.phone ?? "—"}</a></td></tr>
             <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">取件門市</td><td>${cvsLine}</td></tr>
             <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">商品</td><td style="white-space:pre-line;">${itemLines || "—"}</td></tr>
+            ${(order as any).notes ? `<tr><td style="padding:6px 0; color:#687279; vertical-align:top;">顧客備註</td><td style="white-space:pre-line; color:#b45309; font-weight:600;">${(order as any).notes}</td></tr>` : ""}
           </table>
           <p style="margin:24px 0 0; font-size:13px; color:#687279;">進管理後台處理 → <a href="https://realreal-store.vercel.app/admin/orders" style="color:#10305a;">/admin/orders</a></p>
         </div>
