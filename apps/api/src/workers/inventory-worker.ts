@@ -2,6 +2,7 @@ import { Worker } from "bullmq"
 import { Redis } from "ioredis"
 import { processCreateShipment, processCreateShipmentCod } from "./logistics-creator"
 import { processLowStockAlert } from "../jobs/low-stock-alert"
+import { processPaymentReminder } from "../jobs/payment-reminder"
 
 const connection = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", {
   maxRetriesPerRequest: null,
@@ -21,6 +22,8 @@ export const inventoryWorker = new Worker(
         return processCreateShipmentCod((job.data as { orderId: string }).orderId)
       case "low-stock-check":
         return processLowStockAlert()
+      case "payment-reminder":
+        return processPaymentReminder((job.data as { orderId: string }).orderId)
       default:
         console.warn(`[inventory-worker] unknown job name "${job.name}", skipping`)
         return

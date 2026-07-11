@@ -15,6 +15,7 @@ import { createPayment as pchomepayCreatePayment } from "../lib/pchomepay"
 import { requestPayment as linePayRequestPayment } from "../lib/linepay"
 import { initiatePayment as jkoPayInitiatePayment } from "../lib/jkopay"
 import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
+import { verifyRepayToken } from "../lib/repay-token"
 import { computeShipping, getShippingRule } from "../lib/shipping"
 import { inventoryQueue } from "../lib/queue"
 import { enqueuePostPaymentJobs, notifyOrderPlacedCod } from "../lib/enqueue-post-payment"
@@ -1134,6 +1135,20 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     return
   }
 
+  // Schedule a single unpaid-order reminder 6h out. If the customer pays (or
+  // the order is cancelled) before then, the worker sees the settled state and
+  // no-ops — so exactly one reminder is ever considered, and only for orders
+  // still unpaid at the 6h mark. COD never reaches here (handled above).
+  try {
+    await inventoryQueue.add(
+      "payment-reminder",
+      { orderId: order.id },
+      { delay: 6 * 60 * 60 * 1000, attempts: 3, backoff: { type: "exponential", delay: 60000 } },
+    )
+  } catch (err) {
+    console.warn("[orders] payment-reminder enqueue failed (non-fatal):", err)
+  }
+
   res.status(201).json({
     data: {
       orderId: order.id,
@@ -1144,6 +1159,80 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       discountRate,
     },
   })
+})
+
+// GET /orders/:orderNumber/repay?token=xxx — resume payment for an unpaid order.
+// Reached from the "立即完成付款" button in the unpaid-order reminder email.
+// PUBLIC (no login): guests must be able to pay, so access is gated by an
+// HMAC token tied to the order number instead. Regenerates a fresh gateway
+// session with the SAME payment method the customer originally picked, then
+// 302-redirects to the gateway. Every failure path lands the customer on the
+// order confirm page (or home) rather than a raw error.
+ordersRouter.get("/:orderNumber/repay", async (req, res) => {
+  const orderNumber = req.params.orderNumber
+  const token = typeof req.query.token === "string" ? req.query.token : ""
+  const siteUrl = getSiteUrl()
+  const confirmUrl = `${siteUrl}/checkout/confirm?order=${encodeURIComponent(orderNumber)}`
+
+  if (!verifyRepayToken(orderNumber, token)) {
+    res.redirect(302, siteUrl); return
+  }
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, order_number, status, payment_status, payment_method, total, deleted_at")
+    .eq("order_number", orderNumber)
+    .maybeSingle()
+
+  if (!order || order.deleted_at) { res.redirect(302, siteUrl); return }
+  // Already paid, or no longer payable (cancelled/failed) → just show status.
+  if (order.payment_status === "paid" || order.status !== "pending") {
+    res.redirect(302, confirmUrl); return
+  }
+
+  const method = order.payment_method as string
+  const amount = Math.round(Number(order.total ?? 0))
+  const apiUrl = getApiBaseUrl()
+
+  let paymentUrl: string
+  let gatewayTxId: string | null = null
+  try {
+    if (method === "pchomepay") {
+      const result = await pchomepayCreatePayment({
+        orderId: order.id,
+        orderNumber: order.order_number,
+        amount,
+        itemName: `realreal order #${order.order_number}`,
+        returnUrl: confirmUrl,
+        notifyUrl: `${apiUrl}/webhooks/pchomepay`,
+      })
+      paymentUrl = result.paymentUrl
+      gatewayTxId = order.order_number
+    } else if (method === "linepay") {
+      const result = await linePayRequestPayment(order.order_number, amount, `realreal order #${order.order_number}`)
+      paymentUrl = result.paymentUrl
+      gatewayTxId = result.transactionId
+    } else if (method === "jkopay") {
+      const result = await jkoPayInitiatePayment(order.order_number, amount)
+      paymentUrl = result.paymentUrl
+      gatewayTxId = result.merchantTradeNo
+    } else {
+      // Not an online method (shouldn't happen) — nothing to resume.
+      res.redirect(302, confirmUrl); return
+    }
+  } catch (err) {
+    console.error(`[orders/repay] ${method} re-initiation failed for ${orderNumber}:`, err)
+    res.redirect(302, confirmUrl); return
+  }
+
+  // Point the pending payment row at the new gateway transaction so the
+  // webhook / confirm poll resolves against the fresh session.
+  await supabase
+    .from("payments")
+    .update({ gateway: method, gateway_tx_id: gatewayTxId, status: "pending" })
+    .eq("order_id", order.id)
+
+  res.redirect(302, paymentUrl)
 })
 
 // GET /orders/:id — get order with items, address, payment status (auth required, must own order)

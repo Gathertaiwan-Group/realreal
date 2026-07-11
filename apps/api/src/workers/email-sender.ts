@@ -8,6 +8,7 @@ import { supabase } from "../lib/supabase"
 import { renderOrderConfirmation } from "../emails/OrderConfirmation"
 import { renderPaymentConfirmed } from "../emails/PaymentConfirmed"
 import { renderOrderShipped } from "../emails/OrderShipped"
+import { renderPaymentReminder } from "../emails/PaymentReminder"
 import { renderTierUpgrade } from "../emails/TierUpgrade"
 import { renderTierRenewed } from "../emails/TierRenewed"
 import { renderTierDowngraded } from "../emails/TierDowngraded"
@@ -18,6 +19,7 @@ export type EmailJobData =
   | { template: "order-confirmation"; to: string; data: { orderNumber: string; items: any[]; total: string; address: string } }
   | { template: "payment-confirmed"; to: string; data: { orderNumber: string; amount: string; customerName: string; items: Array<{ name: string; qty: number; price: string }>; pickupInfo: string } }
   | { template: "order-shipped"; to: string; data: { orderNumber: string; customerName: string } }
+  | { template: "payment-reminder"; to: string; data: { orderNumber: string; customerName: string; amount: string; items: Array<{ name: string; qty: number; price: string }>; pickupInfo: string; repayUrl: string } }
   | { template: "tier-upgrade"; to: string; data: { newTier: string; discountRate: number; perks: string[] } }
   | { template: "tier-renewed"; to: string; data: { tierName: string; newExpiresAt: string; perks: string[] } }
   | { template: "tier-downgraded"; to: string; data: { fromTier: string; toTier: string; nextRequalifyAmount: number; toPerks: string[] } }
@@ -141,6 +143,10 @@ export async function renderAndSendEmail(jobData: EmailJobData): Promise<void> {
     case "order-shipped":
       subject = `您的訂單已出貨 #${data.orderNumber}`
       html = renderOrderShipped(data)
+      break
+    case "payment-reminder":
+      subject = `【誠真生活】您的訂單尚未完成付款 #${data.orderNumber}`
+      html = renderPaymentReminder(data)
       break
     case "tier-upgrade":
       subject = `恭喜升級為${data.newTier}！`
