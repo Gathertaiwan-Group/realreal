@@ -1198,16 +1198,23 @@ ordersRouter.get("/:orderNumber/repay", async (req, res) => {
   let gatewayTxId: string | null = null
   try {
     if (method === "pchomepay") {
+      // PChomePay rejects re-creating a session for an order_id it has already
+      // seen — and checkout already created one for #<orderNumber>. Give this
+      // repay attempt a UNIQUE gateway order_id. The notify/confirm chain stays
+      // consistent because the webhook resolves the order via
+      // payments.gateway_tx_id (stored below) and queryPayment() uses this same
+      // id; the storefront confirm page polls by our order_number, untouched.
+      const gwId = `${order.order_number}-r${Date.now().toString(36)}`
       const result = await pchomepayCreatePayment({
         orderId: order.id,
-        orderNumber: order.order_number,
+        orderNumber: gwId,
         amount,
         itemName: `realreal order #${order.order_number}`,
         returnUrl: confirmUrl,
         notifyUrl: `${apiUrl}/webhooks/pchomepay`,
       })
       paymentUrl = result.paymentUrl
-      gatewayTxId = order.order_number
+      gatewayTxId = gwId
     } else if (method === "linepay") {
       const result = await linePayRequestPayment(order.order_number, amount, `realreal order #${order.order_number}`)
       paymentUrl = result.paymentUrl
