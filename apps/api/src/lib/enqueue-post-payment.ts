@@ -404,7 +404,7 @@ export async function notifyOrderPlacedCod(orderId: string) {
             <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">商品</td><td style="white-space:pre-line;">${itemLines || "—"}</td></tr>
           </table>
           <p style="line-height:1.6;">
-            訂單將於 1–3 個工作天備貨出貨，包裹到達門市後將以簡訊通知您取貨，<br/>
+            訂單將於 2–5 個工作天備貨出貨，包裹到達門市後將以簡訊通知您取貨，<br/>
             請攜帶手機至門市出示取件條碼並完成付款。
           </p>
           <p>如需查詢訂單狀態，請聯絡客服。</p>

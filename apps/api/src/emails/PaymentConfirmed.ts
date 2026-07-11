@@ -24,7 +24,7 @@ export function renderPaymentConfirmed(data: {
       <tr><td style="padding:6px 0;color:#687279;vertical-align:top">取貨方式</td><td style="padding:6px 0">${data.pickupInfo}</td></tr>
       <tr><td style="padding:6px 0;color:#687279;vertical-align:top">商品</td><td style="padding:6px 0"><table style="width:100%">${itemRows}</table></td></tr>
     </table>
-    <p>訂單將於 1–3 個工作天備貨出貨。</p>
+    <p>訂單將於 2–5 個工作天備貨出貨。</p>
     <p>如需查詢訂單狀態，請聯絡客服。</p>
     <hr style="margin:24px 0;border:none;border-top:1px solid #eee">
     <p style="font-size:13px;color:#555;line-height:2">
