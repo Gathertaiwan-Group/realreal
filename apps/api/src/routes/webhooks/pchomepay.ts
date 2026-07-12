@@ -96,15 +96,16 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
   // queryPayment succeeded above but returned no status_code, falling back to
   // the (forgeable) notify_message lets an attacker mark unpaid orders paid
   // by sending a crafted notify. Drop the notifyMessage fallback.
+  //
+  // PChomePay 成功時實測 authoritative.status="S" & status_code=null。
+  // 舊 code 只認 status_code 導致 4 筆訂單卡在 pending(見 2026-07-12 事件),
+  // 現同時檢查 status(主要成功旗標)與 status_code(失敗細節碼),兩者任一為 paid 就算 paid。
+  const status = authoritative.status
   const statusCode = authoritative.status_code
-  // PChomePay status_code reference: "S" or "00" / numeric "1" / "success"
-  // generally mean paid; we accept several variants defensively.
-  // notifyType alone is NOT sufficient evidence of paid status — the
-  // authoritative status_code must agree.
+  const isPaidSignal = (s?: string) => s === "S" || s === "00" || s === "1"
   const notifyTypeIsPaid = notifyType === "order_paid" || notifyType === "order_confirm"
-  const statusCodeIsPaid = statusCode === "S" || statusCode === "00" || statusCode === "1"
-  const isPaid = notifyTypeIsPaid && statusCodeIsPaid
-  const isFailed = notifyType === "order_expired" || statusCode === "F"
+  const isPaid = notifyTypeIsPaid && (isPaidSignal(status) || isPaidSignal(statusCode))
+  const isFailed = notifyType === "order_expired" || status === "F" || statusCode === "F"
 
   // Find the payments row by gateway_tx_id (= order_number on PChomePay).
   const { data: tx } = await supabase
