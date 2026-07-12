@@ -155,6 +155,10 @@ export async function queryPayment(orderId: string) {
   )
   return res.data as {
     order_id: string
+    // PChomePay 成功付款的 authoritative status: "S" (=success), "F" (=fail),
+    // "P" (=pending). status_code 只在特定失敗情境有值,成功時常為 null,
+    // 所以判斷 paid 必須看 status 而非 status_code。
+    status?: string
     status_code?: string
     pay_type?: string
     // Authoritative amount the gateway actually collected (integer TWD).
