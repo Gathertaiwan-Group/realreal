@@ -80,6 +80,20 @@ adminOrdersRouter.patch("/:id/status", async (req, res) => {
     res.status(500).json({ error: "Failed to update order status" }); return
   }
 
+  // Manual payment confirmation (a gateway webhook was missed, or an order was
+  // wrongly flipped to failed). Fire the SAME post-payment side effects a real
+  // webhook would: invoice + points + tier + logistics/shipment + 付款確認 email.
+  // Every job is idempotent (SELECT-first / sentinel), so this is safe even if
+  // some already ran. Only on the transition INTO paid (matches the
+  // payment_status='paid' set above).
+  if (newStatus === "processing" && order.payment_status !== "paid") {
+    try {
+      await enqueuePostPaymentJobs(orderId)
+    } catch (err) {
+      console.warn("[admin/orders] enqueuePostPaymentJobs after manual confirm failed (non-fatal):", err)
+    }
+  }
+
   // If we just cancelled a previously-paid order, run the refund chain so
   // points get returned + spend mirrors decremented. Both refundOrderPoints
   // and decrementSpendOnRefund are idempotent (skip on prior refund row /

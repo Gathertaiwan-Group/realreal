@@ -167,6 +167,14 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
         console.warn("[webhooks/pchomepay] enqueue jobs failed (non-fatal):", err)
       }
     } else if (isFailed) {
+      // Guard: NEVER let a failed/expired notify clobber an order that is already
+      // paid. This fires when a customer's abandoned "重新付款" second attempt
+      // expires AFTER the first attempt already succeeded — the order_expired
+      // notify would otherwise flip a real paid order to failed (2026-07 incident,
+      // order #10000035). Both guards are atomic (no read-then-write race):
+      //   - payments: don't downgrade a captured row (repay re-points its
+      //     gateway_tx_id, so the expired notify can match the captured row).
+      //   - orders: .neq("payment_status","paid") leaves a paid order untouched.
       await supabase
         .from("payments")
         .update({
@@ -174,7 +182,8 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
           raw_response: JSON.stringify({ notifyType, notifyMessage, authoritative }),
         })
         .eq("id", tx.id)
-      await supabase
+        .neq("status", "captured")
+      const { data: flipped } = await supabase
         .from("orders")
         .update({
           status: "failed",
@@ -182,6 +191,14 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
           updated_at: new Date().toISOString(),
         })
         .eq("id", tx.order_id)
+        .neq("payment_status", "paid")
+        .select("id")
+      if (!flipped || flipped.length === 0) {
+        console.warn(
+          `[webhooks/pchomepay] ${notifyType} ignored for order ${tx.order_id} ` +
+            `(already paid or gone) — tx ${orderNumber}`,
+        )
+      }
     }
     // refund_* and order_audit just get logged via webhook_events; no order
     // status flip until you wire a real refund / audit workflow.

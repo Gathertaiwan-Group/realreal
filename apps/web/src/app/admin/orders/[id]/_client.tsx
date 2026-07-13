@@ -151,7 +151,10 @@ export function OrderActions({
     setShowDeleteModal(false)
   }
 
-  const showConfirmPayment = status === "pending" && paymentStatus !== "paid" && paymentMethod !== "cvs_cod"
+  // 也對「誤標失敗」的訂單顯示 —— 讓 admin 能把「其實已收款卻被標成 failed」的單
+  // 救回（確認付款 → 設 paid + 補跑付款後流程：點數/發票/物流/通知）。
+  const showConfirmPayment =
+    (status === "pending" || status === "failed") && paymentStatus !== "paid" && paymentMethod !== "cvs_cod"
   const showShip = status === "processing" || (status === "pending" && paymentMethod === "cvs_cod")
   // Spec section 2: 「完成訂單」manual fallback only when shipped.
   const showComplete = status === "shipped"
