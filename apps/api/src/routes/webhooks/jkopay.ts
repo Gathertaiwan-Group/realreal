@@ -111,16 +111,18 @@ jkopayWebhookRouter.post("/", async (req, res) => {
   // order_number (left of the `-`) and look up orders directly.
   let orderId: string | null = null
   let paymentId: string | null = null
+  let expectedAmount: number | null = null
 
   const { data: tx1 } = await supabase
     .from("payments")
-    .select("id, order_id")
+    .select("id, order_id, amount")
     .eq("gateway_tx_id", platformOrderId)
     .maybeSingle()
 
   if (tx1) {
     orderId = (tx1 as { order_id: string }).order_id
     paymentId = (tx1 as { id: string }).id
+    expectedAmount = Number((tx1 as { amount?: number | null }).amount ?? 0)
   } else {
     const orderNumber = platformOrderId.split("-")[0]
     const { data: orderRow } = await supabase
@@ -139,6 +141,43 @@ jkopayWebhookRouter.post("/", async (req, res) => {
     )
     res.status(200).send("OK")
     return
+  }
+
+  // --- Anti-forge gate — JKOPay's result_url is UNSIGNED and there is no JKO
+  // inquiry API to re-verify against, so the callback body is not trustworthy on
+  // its own. To flip an order to PAID we require an EXACT payments.gateway_tx_id
+  // match: the full platform_order_id (order_number + 14-digit timestamp) we
+  // minted at checkout and stored on the payments row. A legit JKO callback
+  // always echoes that exact id back, so this never rejects a real payment — but
+  // it blocks a forged success that only knows the sequential, human-readable
+  // order_number and rides the split("-")[0] fallback above. Without it, anyone
+  // could POST {status:0, platform_order_id:"<orderNumber>-<anything>"} and mark
+  // ANY unpaid order paid. Amount is also checked when the callback carries one.
+  // Failure callbacks are exempt — they only ever mark failed, itself guarded by
+  // .neq(paid) below.
+  const exactMatch = paymentId !== null
+  if (success && !exactMatch) {
+    console.error(
+      `[webhooks/jkopay] SUCCESS rejected: no exact gateway_tx_id match for ` +
+        `platform_order_id=${platformOrderId} (order ${orderId}) — refusing to mark ` +
+        `paid (possible forged callback via order_number fallback).`,
+    )
+    res.status(200).send("OK")
+    return
+  }
+  if (success) {
+    const rawCollected = tx.final_price ?? tx.total_price
+    if (rawCollected != null && expectedAmount != null && expectedAmount > 0) {
+      const collected = Math.round(Number(rawCollected))
+      if (collected !== expectedAmount) {
+        console.error(
+          `[webhooks/jkopay] SUCCESS rejected: amount mismatch for ${platformOrderId} ` +
+            `collected=${collected} expected=${expectedAmount} — needs manual review.`,
+        )
+        res.status(200).send("OK")
+        return
+      }
+    }
   }
 
   // Update payments row (insert one if we couldn't find it earlier — covers
