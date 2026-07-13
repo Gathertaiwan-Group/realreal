@@ -22,6 +22,7 @@ import {
   cancelOrderAction,
   deleteOrderAction,
   reissueInvoiceAction,
+  retryPostPaymentAction,
   retryShipmentAction,
   shipOrderAction,
   updateOrderStatusAction,
@@ -156,6 +157,11 @@ export function OrderActions({
   const showConfirmPayment =
     (status === "pending" || status === "failed") && paymentStatus !== "paid" && paymentMethod !== "cvs_cod"
   const showShip = status === "processing" || (status === "pending" && paymentMethod === "cvs_cod")
+  // 「補跑付款後流程」recovery — for orders that ARE paid but whose post-payment
+  // pipeline never completed (no 通知/發票/點數), e.g. manually confirmed before
+  // the confirm→enqueue fix, or a transient enqueue failure. Jobs are idempotent
+  // (完成的步驟自動略過); only the customer 付款確認信 re-sends, hence the confirm.
+  const showRetryPostPayment = paymentStatus === "paid"
   // Spec section 2: 「完成訂單」manual fallback only when shipped.
   const showComplete = status === "shipped"
   // Spec section 3: cancellation only allowed in pending / processing / shipped.
@@ -194,6 +200,32 @@ export function OrderActions({
         {showComplete && (
           <Button size="sm" variant="secondary" disabled={isPending} onClick={() => handleAction("completed")}>
             完成訂單
+          </Button>
+        )}
+        {showRetryPostPayment && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={isPending}
+            onClick={() => {
+              if (
+                !window.confirm(
+                  "補跑付款後流程？\n\n會重寄「付款確認信」給客人，並補開發票、補發點數/升等（皆為冪等，已完成的步驟自動略過）。\n\n用於「已付款但沒收到通知/沒開發票」的訂單。",
+                )
+              )
+                return
+              startTransition(async () => {
+                const result = await retryPostPaymentAction(orderId)
+                if (result?.error) {
+                  toast.error(`補跑失敗：${result.error}`)
+                } else {
+                  toast.success("已補跑付款後流程（通知／發票／點數／升等）")
+                }
+              })
+            }}
+          >
+            <RefreshCw className="mr-1 h-3.5 w-3.5" />
+            補跑付款後流程
           </Button>
         )}
         {showCancel && (

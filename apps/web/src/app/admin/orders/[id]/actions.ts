@@ -114,6 +114,29 @@ export async function retryShipmentAction(orderId: string): Promise<ActionResult
   }
 }
 
+// Re-run the full post-payment pipeline (customer 付款確認信 + admin 通知 + LINE +
+// 發票 + 點數 + 升等 + 物流) for an already-paid order. The API endpoint requires
+// payment_status='paid' and every job is idempotent (SELECT-first / sentinel),
+// so re-running only fills the gaps — EXCEPT the customer email, which re-sends.
+// Used to recover orders that were flipped to paid without the pipeline running
+// (e.g. manually confirmed before the confirm→enqueue fix, or a transient
+// enqueue failure on the 2026-07-12 pchomepay incident — order #10000038).
+export async function retryPostPaymentAction(orderId: string): Promise<ActionResult> {
+  try {
+    const supabase = await createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    await apiClient(`/admin/orders/${orderId}/retry-post-payment`, {
+      method: "POST",
+      body: JSON.stringify({}),
+      token: session?.access_token,
+    })
+    revalidatePath(`/admin/orders/${orderId}`)
+    return { ok: true }
+  } catch (e) {
+    return toErrorResult(e)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Cancel order — atomic multi-step server action that voids the invoice,
 // cancels the ECPay logistics shipment, flags the payment for refund, refunds
