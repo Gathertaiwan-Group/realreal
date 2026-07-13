@@ -148,7 +148,11 @@ jkopayWebhookRouter.post("/", async (req, res) => {
     raw_response: JSON.stringify({ ...body, tradeNo }),
   }
   if (paymentId) {
-    await supabase.from("payments").update(paymentPatch).eq("id", paymentId)
+    // On a fail callback, don't downgrade an already-captured payment (a late
+    // or forged fail for a repay-captured order can match this same row).
+    let pq = supabase.from("payments").update(paymentPatch).eq("id", paymentId)
+    if (!success) pq = pq.neq("status", "captured")
+    await pq
   } else {
     await supabase.from("payments").insert({
       order_id: orderId,
@@ -192,16 +196,42 @@ jkopayWebhookRouter.post("/", async (req, res) => {
   const alreadyPaid =
     (orderBefore as { payment_status?: string } | null)?.payment_status === "paid"
 
-  const { error: flipErr } = await supabase
-    .from("orders")
-    .update({
-      status: success ? "processing" : "failed",
-      payment_status: success ? "paid" : "failed",
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", orderId)
-  if (flipErr) {
-    console.error("[webhooks/jkopay] order status flip failed:", flipErr)
+  if (success) {
+    const { error: flipErr } = await supabase
+      .from("orders")
+      .update({
+        status: "processing",
+        payment_status: "paid",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId)
+    if (flipErr) {
+      console.error("[webhooks/jkopay] order paid-flip failed:", flipErr)
+    }
+  } else {
+    // Guard: a late / duplicate / forged FAIL callback must never clobber an
+    // order that is already paid. JKOPay supports 重新付款, so an abandoned
+    // first attempt's fail/expire callback can arrive AFTER a later attempt
+    // (or the order_number fallback above) resolved to a now-paid order. The
+    // atomic .neq(paid) leaves a paid order untouched — same guard as the
+    // pchomepay #10000035 fix.
+    const { data: flipped, error: flipErr } = await supabase
+      .from("orders")
+      .update({
+        status: "failed",
+        payment_status: "failed",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", orderId)
+      .neq("payment_status", "paid")
+      .select("id")
+    if (flipErr) {
+      console.error("[webhooks/jkopay] order fail-flip failed:", flipErr)
+    } else if (!flipped || flipped.length === 0) {
+      console.warn(
+        `[webhooks/jkopay] fail callback ignored for order ${orderId} (already paid) — platform_order_id=${platformOrderId}`,
+      )
+    }
   }
 
   if (success && !alreadyPaid) {
