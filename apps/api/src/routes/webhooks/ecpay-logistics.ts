@@ -93,11 +93,13 @@ ecpayLogisticsWebhookRouter.post("/", async (req, res) => {
     const currentOrderStatus = orderRow?.status
 
     if (mappedStatus === "arrived_cvs") {
-      // CVS 到店待取 → 訂單視為已出貨
+      // CVS 到店待取 → 訂單視為已出貨。守衛:遲到 / 亂序的到店 callback 不可把
+      // 已完成 / 已取消 / 失敗的訂單降級回 shipped —— 只從 pending / processing 前進。
       await supabase
         .from("orders")
         .update({ status: "shipped", updated_at: new Date().toISOString() })
         .eq("id", record.order_id)
+        .in("status", ["pending", "processing"])
     } else if (mappedStatus === "delivered") {
       const now = new Date().toISOString()
 
@@ -134,8 +136,12 @@ ecpayLogisticsWebhookRouter.post("/", async (req, res) => {
           .eq("id", record.order_id)
       }
     } else if (mappedStatus === "returned") {
-      // 超過期限未取 / 退件 → 訂單標記 failed + 寫入原因
-      await supabase
+      // 超過期限未取 / 退件 → 訂單標記 failed + 寫入原因。
+      // 守衛:已付款(預付已收款 / COD 已代收完成)或已完成的訂單,絕不能被退件
+      // callback 靜默改成 failed —— 那是「已收款但退貨」需人工走退款的情境,不是
+      // 付款失敗;只有「未付款」的訂單(例如 COD 取貨前逾期未取)退件才標 failed。
+      // 與 pchomepay #10000035 同一道防護:遲到 / 重複 callback 不覆蓋已付款單。
+      const { data: flipped } = await supabase
         .from("orders")
         .update({
           status: "failed",
@@ -143,6 +149,14 @@ ecpayLogisticsWebhookRouter.post("/", async (req, res) => {
           updated_at: new Date().toISOString(),
         })
         .eq("id", record.order_id)
+        .neq("payment_status", "paid")
+        .neq("status", "completed")
+        .select("id")
+      if (!flipped || flipped.length === 0) {
+        console.warn(
+          `[webhooks/ecpay-logistics] returned callback ignored for order ${record.order_id} (already paid/completed) — needs manual refund review`,
+        )
+      }
     } else if (mappedStatus === "in_transit" && currentOrderStatus === "processing") {
       // 物流商收件 / 配送中 → 從 processing 升級成 shipped
       // 已是 shipped/completed/failed/cancelled 就不動，避免覆寫更後面的狀態

@@ -84,7 +84,11 @@ linepayWebhookRouter.get("/confirm", async (req, res) => {
       .from("payments")
       .update({ status: "failed", updated_at: new Date().toISOString() })
       .eq("id", payment.id)
+      .neq("status", "captured")
 
+    // Guard: never let a confirm-failure clobber an order that is already paid
+    // (parity with pchomepay #10000035 — a captured order must survive a later
+    // failed / forged confirm attempt).
     await supabase
       .from("orders")
       .update({
@@ -93,6 +97,7 @@ linepayWebhookRouter.get("/confirm", async (req, res) => {
         updated_at: new Date().toISOString(),
       })
       .eq("id", payment.order_id)
+      .neq("payment_status", "paid")
 
     res.redirect(`${siteUrl}/checkout/confirm?order=${orderId}&status=failed`)
   }
@@ -114,15 +119,23 @@ linepayWebhookRouter.get("/cancel", async (req, res) => {
       .eq("order_number", orderId)
       .maybeSingle()
 
-    if (order && order.status === "pending" && order.payment_status !== "paid") {
-      const { error: cancelErr } = await supabase
+    if (order) {
+      // Atomic guard (was read-then-write): only cancel an order that is STILL
+      // pending + unpaid at write time. If a concurrent /confirm flipped it to
+      // paid/processing between our read and this write, these conditions match
+      // 0 rows so we neither cancel nor restore stock — preventing a
+      // paid-but-cancelled dirty state and a phantom stock restore (TOCTOU).
+      const { data: cancelled, error: cancelErr } = await supabase
         .from("orders")
         .update({ status: "cancelled", updated_at: new Date().toISOString() })
         .eq("id", order.id)
+        .eq("status", "pending")
+        .neq("payment_status", "paid")
+        .select("id")
       if (cancelErr) {
         console.error("[webhooks/linepay] cancel update failed:", cancelErr)
-      } else {
-        // Return the stock deducted at order creation.
+      } else if (cancelled && cancelled.length > 0) {
+        // Return the stock deducted at order creation (only when we actually cancelled).
         const { data: items } = await supabase
           .from("order_items")
           .select("variant_id, qty")

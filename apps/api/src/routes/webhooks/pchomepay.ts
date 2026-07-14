@@ -96,15 +96,16 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
   // queryPayment succeeded above but returned no status_code, falling back to
   // the (forgeable) notify_message lets an attacker mark unpaid orders paid
   // by sending a crafted notify. Drop the notifyMessage fallback.
+  //
+  // PChomePay 成功時實測 authoritative.status="S" & status_code=null。
+  // 舊 code 只認 status_code 導致 4 筆訂單卡在 pending(見 2026-07-12 事件),
+  // 現同時檢查 status(主要成功旗標)與 status_code(失敗細節碼),兩者任一為 paid 就算 paid。
+  const status = authoritative.status
   const statusCode = authoritative.status_code
-  // PChomePay status_code reference: "S" or "00" / numeric "1" / "success"
-  // generally mean paid; we accept several variants defensively.
-  // notifyType alone is NOT sufficient evidence of paid status — the
-  // authoritative status_code must agree.
+  const isPaidSignal = (s?: string) => s === "S" || s === "00" || s === "1"
   const notifyTypeIsPaid = notifyType === "order_paid" || notifyType === "order_confirm"
-  const statusCodeIsPaid = statusCode === "S" || statusCode === "00" || statusCode === "1"
-  const isPaid = notifyTypeIsPaid && statusCodeIsPaid
-  const isFailed = notifyType === "order_expired" || statusCode === "F"
+  const isPaid = notifyTypeIsPaid && (isPaidSignal(status) || isPaidSignal(statusCode))
+  const isFailed = notifyType === "order_expired" || status === "F" || statusCode === "F"
 
   // Find the payments row by gateway_tx_id (= order_number on PChomePay).
   const { data: tx } = await supabase
@@ -166,6 +167,14 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
         console.warn("[webhooks/pchomepay] enqueue jobs failed (non-fatal):", err)
       }
     } else if (isFailed) {
+      // Guard: NEVER let a failed/expired notify clobber an order that is already
+      // paid. This fires when a customer's abandoned "重新付款" second attempt
+      // expires AFTER the first attempt already succeeded — the order_expired
+      // notify would otherwise flip a real paid order to failed (2026-07 incident,
+      // order #10000035). Both guards are atomic (no read-then-write race):
+      //   - payments: don't downgrade a captured row (repay re-points its
+      //     gateway_tx_id, so the expired notify can match the captured row).
+      //   - orders: .neq("payment_status","paid") leaves a paid order untouched.
       await supabase
         .from("payments")
         .update({
@@ -173,7 +182,8 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
           raw_response: JSON.stringify({ notifyType, notifyMessage, authoritative }),
         })
         .eq("id", tx.id)
-      await supabase
+        .neq("status", "captured")
+      const { data: flipped } = await supabase
         .from("orders")
         .update({
           status: "failed",
@@ -181,6 +191,14 @@ pchomepayWebhookRouter.post("/", async (req, res) => {
           updated_at: new Date().toISOString(),
         })
         .eq("id", tx.order_id)
+        .neq("payment_status", "paid")
+        .select("id")
+      if (!flipped || flipped.length === 0) {
+        console.warn(
+          `[webhooks/pchomepay] ${notifyType} ignored for order ${tx.order_id} ` +
+            `(already paid or gone) — tx ${orderNumber}`,
+        )
+      }
     }
     // refund_* and order_audit just get logged via webhook_events; no order
     // status flip until you wire a real refund / audit workflow.
