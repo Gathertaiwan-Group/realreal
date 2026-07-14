@@ -34,6 +34,7 @@ export function ImageGallery({
           sizes="(max-width: 768px) 100vw, 50vw"
           className="object-contain"
           priority
+          unoptimized
         />
       </div>
 
@@ -57,6 +58,7 @@ export function ImageGallery({
                 fill
                 sizes="64px"
                 className="object-contain"
+                unoptimized
               />
             </button>
           ))}

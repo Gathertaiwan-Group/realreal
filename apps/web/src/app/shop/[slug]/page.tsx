@@ -243,6 +243,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 sizes="(max-width: 960px) 100vw, 960px"
                 style={{ width: "100%", height: "auto" }}
                 className="block"
+                unoptimized
               />
             ))}
           </div>

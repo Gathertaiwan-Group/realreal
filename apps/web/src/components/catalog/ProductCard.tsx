@@ -33,6 +33,7 @@ export function ProductCard({
               fill
               sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
               className="object-cover transition-transform duration-500 group-hover:scale-105"
+              unoptimized
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-zinc-400 text-sm">
