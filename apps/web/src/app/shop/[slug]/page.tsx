@@ -4,6 +4,7 @@ import Image from "next/image"
 import { ChevronRight } from "lucide-react"
 import { getProductBySlug, getCategories } from "@/lib/catalog"
 import { AddToCartSection } from "@/components/product/AddToCartSection"
+import { Badge } from "@/components/ui/badge"
 import { ImageGallery } from "@/components/product/ImageGallery"
 import { createClient } from "@/lib/supabase/server"
 
@@ -187,6 +188,11 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
 
           <div className="flex flex-col">
+            {minTierName && (
+              <Badge className="mb-2 w-fit" style={{ backgroundColor: "#10305a" }}>
+                {minTierName}限定
+              </Badge>
+            )}
             <h1
               className="text-2xl font-bold tracking-tight lg:text-3xl"
               style={{ color: "#10305a", fontFamily: "'Gill Sans', 'Gill Sans MT', sans-serif" }}

@@ -105,8 +105,8 @@ async function enrichProducts(products: any[]) {
         images = sorted.map((img: any) => img.url).filter(Boolean)
       }
     }
-    // Remap product_variants -> variants for frontend compatibility (Spec E: ProductPicker)
-    const { product_variants, ...rest } = p as typeof p & { product_variants?: unknown[] }
+    // Remap product_variants -> variants, membership_tiers -> min_tier for frontend compatibility
+    const { product_variants, membership_tiers: minTierRaw, ...rest } = p as typeof p & { product_variants?: unknown[]; membership_tiers?: unknown }
     return {
       ...rest,
       images,
@@ -115,6 +115,7 @@ async function enrichProducts(products: any[]) {
       min_sale_price: stats?.min_sale_price ?? null,
       total_stock: stats?.total_stock ?? 0,
       variants: product_variants ?? [],
+      min_tier: minTierRaw ?? null,
     }
   })
 }
@@ -145,7 +146,7 @@ productsRouter.get("/", async (req, res) => {
 
   let query = supabase
     .from("products")
-    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, is_recommended, display_priority, created_at, product_variants(id, sku, name, price, sale_price, addon_price, addon_limit, stock_qty)", { count: "exact" })
+    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, is_recommended, display_priority, created_at, min_tier_id, membership_tiers!min_tier_id(id, name, min_spend), product_variants(id, sku, name, price, sale_price, addon_price, addon_limit, stock_qty)", { count: "exact" })
     .eq("is_active", true)
     .is("deleted_at", null)
     .order("is_featured", { ascending: false })

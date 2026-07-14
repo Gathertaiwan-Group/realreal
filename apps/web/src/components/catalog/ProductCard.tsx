@@ -50,6 +50,16 @@ export function ProductCard({
             </div>
           )}
 
+          {/* Member-exclusive badge */}
+          {product.min_tier && (
+            <div
+              className="absolute top-2 right-2 px-2 py-0.5 text-xs font-bold text-white"
+              style={{ backgroundColor: "#10305a" }}
+            >
+              {product.min_tier.name}限定
+            </div>
+          )}
+
           {/* Sold out overlay */}
           {isSoldOut && (
             <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
