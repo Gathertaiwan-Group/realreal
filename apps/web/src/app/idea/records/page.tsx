@@ -45,6 +45,54 @@ const contentHtml = `
 <p>溫柔而堅定。</p>
 <p>讓善意流動，讓希望成真。</p>
 <p>每一次支持，都是愛的延續。</p>
+
+<hr style="border:none;border-top:1px solid #e5e0d8;margin:3rem 0;" />
+
+<div style="display:inline-block;background:#fff8e1;color:#8a6d00;padding:0.4rem 1.1rem;border-radius:999px;font-size:0.85rem;font-weight:700;margin-bottom:1.25rem;">🟡 品牌自發公益行動</div>
+
+<h2>第二站｜把夏日的水果，送給花蓮的孩子</h2>
+<p style="color:#a09080;margin-top:-0.5rem;margin-bottom:0.25rem;">2026.06.15｜品牌自發公益行動</p>
+<p style="color:#a09080;margin-top:0;margin-bottom:1.5rem;font-size:0.9rem;">本次行動由誠真生活自發投入，未使用會員公益存款。</p>
+
+<p>我們將凍乾水果捐贈至：</p>
+<ul>
+<li>基督教門諾會花蓮善牧中心</li>
+<li>花蓮縣私立原住民少年兒童之家</li>
+</ul>
+
+<p>這個夏天，我們挑選了草莓、水蜜桃與哈密瓜三種口味，希望把一份簡單的水果滋味，送到花蓮後山的孩子手中，也與他們一起慶祝誠真生活正式上線。</p>
+
+<h3>你可能不知道，誠真生活是從一顆水果開始的</h3>
+
+<p>很多人好奇：</p>
+<p>「為什麼誠真生活會賣凍乾水果？這和植物蛋白有什麼關係？」</p>
+<p>其實，凍乾水果才是誠真生活最初的起點。</p>
+<p>在創業以前，我曾經在街頭工作，販售凍乾水果。</p>
+<p>那段日子裡，我看過無數孩子吃到凍乾水果時，臉上藏不住的喜悅；也聽過許多爸爸媽媽、爺爺奶奶，一次次詢問成分、口感，只為了替孩子找到一份「好吃、單純，也能放心分享」的零食。</p>
+<p>那時候我慢慢發現：</p>
+<p>如果有一種食物，能代表單純的快樂與愛，凍乾水果或許就是其中之一。</p>
+<p>它不分年齡。</p>
+<p>小朋友喜歡，大人也能享受。</p>
+<p>而這份「全年齡友善」的初心，也延伸到了後來的植物蛋白。</p>
+<p>我們希望做的，不只是某一個年齡層或某一種生活方式的產品，而是讓更多人都能找到適合自己的選擇。</p>
+
+<h3>這個夏天，把喜歡的水果分享出去</h3>
+
+<p>因此，在誠真生活正式上線的這個夏天，我們想做的第一件事之一，就是把自己喜歡的東西分享出去。</p>
+<p>這一次，我們選擇了草莓、水蜜桃、蘋果與哈密瓜，送到花蓮善牧中心與原住民少年兒童之家。</p>
+<p>或許只是一份小小的水果零食，</p>
+<p>但我們希望孩子們收到時，也能像我們曾經看過的那些孩子一樣，露出單純而快樂的笑容。</p>
+
+<p>因為誠真生活相信，<br />有些美好，不需要太複雜。<br />一顆水果、一份分享、一個笑容，<br />就能讓平凡的一天，多一點甜。</p>
+
+<div style="background:#f9f8f5;border-radius:12px;padding:1.5rem 1.75rem;margin:2rem 0;text-align:left;">
+<h3 style="margin-top:0;">這次的善意行動</h3>
+<p style="margin:0.4rem 0;"><strong>行動日期</strong>｜2026.06.15</p>
+<p style="margin:0.4rem 0;"><strong>捐贈物資</strong>｜凍乾草莓、凍乾水蜜桃、凍乾哈密瓜</p>
+<p style="margin:0.4rem 0;"><strong>捐贈單位</strong>｜基督教門諾會花蓮善牧中心、花蓮縣私立原住民少年兒童之家</p>
+<p style="margin:0.4rem 0;"><strong>行動性質</strong>｜誠真生活品牌自發公益行動</p>
+<p style="margin:0.4rem 0;"><strong>公益存款</strong>｜本次未使用會員公益存款</p>
+</div>
 `
 
 export default function RecordsPage() {
