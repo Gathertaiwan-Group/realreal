@@ -28,17 +28,25 @@ export default async function StationPage({ params }: { params: Promise<{ slug: 
 
       <StationTabs />
 
-      <div className="text-center mb-2">
-        <Badge badge={station.badge} />
-      </div>
+      {station.badge && (
+        <div className="text-center mb-2">
+          <Badge badge={station.badge} />
+        </div>
+      )}
       <h2 className="text-2xl font-bold text-center text-[#10305a] mt-4 mb-1">
         {station.tabLabel}｜{station.title}
       </h2>
-      <p className="text-center text-[#a09080] text-sm mb-1">{station.dateLabel}</p>
-      {station.note && (
-        <p className="text-center text-[#a09080] text-sm mb-8">{station.note}</p>
+      {station.subtitle && (
+        <p className="text-center text-lg text-[#687279] mb-3">{station.subtitle}</p>
       )}
-      {!station.note && <div className="mb-8" />}
+      <p className="text-center text-[#a09080] text-sm mb-1">{station.dateLabel}</p>
+      {station.supportUnit && (
+        <p className="text-center text-[#a09080] text-sm mb-1">支持單位｜{station.supportUnit}</p>
+      )}
+      {station.note && (
+        <p className="text-center text-[#a09080] text-sm mb-1">{station.note}</p>
+      )}
+      <div className="mb-8" />
 
       <article>{station.content}</article>
     </div>

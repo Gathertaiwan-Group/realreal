@@ -24,8 +24,10 @@ export type Station = {
   slug: string
   tabLabel: string
   title: string
+  subtitle?: string
   dateLabel: string
-  badge: BadgeKey
+  badge?: BadgeKey
+  supportUnit?: string
   note?: string
   content: ReactNode
 }
@@ -43,9 +45,10 @@ export const STATIONS: Station[] = [
   {
     slug: "station-1",
     tabLabel: "第一站",
-    title: "為腦麻兒築一個遮風避雨的家",
-    dateLabel: "2024",
-    badge: "brand",
+    title: "善意的起點",
+    subtitle: "為腦麻兒築一個遮風避雨的家",
+    dateLabel: "2024｜誠真生活成立前・個人公益行動",
+    supportUnit: "屏東市私立磐石社會福利事業基金會",
     content: (
       <>
         <img
@@ -57,8 +60,6 @@ export const STATIONS: Station[] = [
         />
 
         <div className={`space-y-5 ${proseP} mb-10`}>
-          <p>屏東市私立磐石社會福利事業基金會</p>
-          <p className="font-medium text-[#10305a]">【為腦麻兒築一個遮風避雨的家】</p>
           <p>這個名字，你或許沒聽過。</p>
           <p>正因如此，我選擇了它。</p>
           <p>因為真正需要幫助的人，常常在角落被忽略，而我們想做的，正是雪中送炭的事。</p>
