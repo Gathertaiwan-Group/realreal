@@ -45,7 +45,7 @@ export const STATIONS: Station[] = [
     tabLabel: "第一站",
     title: "為腦麻兒築一個遮風避雨的家",
     dateLabel: "2024",
-    badge: "member",
+    badge: "brand",
     content: (
       <>
         <img
