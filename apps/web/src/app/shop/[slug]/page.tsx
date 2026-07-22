@@ -280,21 +280,31 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
         )}
 
-        {/* Product info images — protein only */}
+        {/* Product info images — protein only. Slot 7 is the nutrition-facts
+            sheet: the standalone 50克 single-serve products (product name
+            contains "50克") show the 1-serving version; every other protein
+            product (300克 bags, bundles) shows the 6-serving version. */}
         {isProtein && (
           <div className="mt-14 max-w-[960px] mx-auto">
-            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-              <Image
-                key={n}
-                src={`/product-info/protein/${n}.jpg`}
-                alt={`商品說明 ${n}`}
-                width={1800}
-                height={2700}
-                sizes="(max-width: 960px) 100vw, 960px"
-                style={{ width: "100%", height: "auto" }}
-                className="block"
-              />
-            ))}
+            {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => {
+              const src =
+                n === 7 && product.name.includes("50克")
+                  ? "/product-info/protein/7-single.png"
+                  : `/product-info/protein/${n}.jpg`
+              return (
+                <Image
+                  key={n}
+                  src={src}
+                  alt={`商品說明 ${n}`}
+                  width={1800}
+                  height={2700}
+                  sizes="(max-width: 960px) 100vw, 960px"
+                  style={{ width: "100%", height: "auto" }}
+                  className="block"
+                  unoptimized
+                />
+              )
+            })}
             {/* Image 10 is 使用者回饋 with 看更多真實回饋 button baked in */}
             <Link href="/testimonials" className="block">
               <Image
@@ -305,6 +315,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 sizes="(max-width: 960px) 100vw, 960px"
                 style={{ width: "100%", height: "auto" }}
                 className="block"
+                unoptimized
               />
             </Link>
             {/* Image 11 is 安心保證 */}
@@ -316,6 +327,7 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
               sizes="(max-width: 960px) 100vw, 960px"
               style={{ width: "100%", height: "auto" }}
               className="block"
+              unoptimized
             />
 
             {/* 三個並列按鈕 — protein */}
