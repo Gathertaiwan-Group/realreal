@@ -281,15 +281,18 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
         )}
 
         {/* Product info images — protein only. Slot 7 is the nutrition-facts
-            sheet: the standalone 50克 single-serve products (product name
-            contains "50克") show the 1-serving version; every other protein
-            product (300克 bags, bundles) shows the 6-serving version. */}
+            sheet: 300克/夾鏈袋 products (single 300克 bags, and the 3/10-入
+            bundles built from those bags) show the 6-serving sheet; every
+            other protein product — the standalone 50克 packs AND the
+            50克-pack bundles (一週任務包, 10/30/60天 組合) — is built from
+            1-serving packs, so it shows the 1-serving sheet. */}
         {isProtein && (
           <div className="mt-14 max-w-[960px] mx-auto">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => {
+              const is6Serving = product.name.includes("300克") || product.name.includes("夾鏈袋")
               const src =
-                n === 7 && product.name.includes("50克")
-                  ? "/product-info/protein/7-single.png"
+                n === 7 && !is6Serving
+                  ? "/product-info/protein/7-single.jpg"
                   : `/product-info/protein/${n}.jpg`
               return (
                 <Image
