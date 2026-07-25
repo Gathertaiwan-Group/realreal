@@ -1048,6 +1048,10 @@ export default function CheckoutPage() {
                         ))}
                     </div>
 
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      💡 全家偶有發生到貨漏未通知收件者的狀況，較建議選擇 7-11 取貨
+                    </p>
+
                     {/* CVS Store Selector */}
                     <div id="cvs-store-section" className="rounded-lg border-2 border-dashed border-zinc-300 bg-zinc-50 p-4">
                       {cvsStoreName ? (
@@ -1124,6 +1128,10 @@ export default function CheckoutPage() {
                           </label>
                         ))}
                     </div>
+
+                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      💡 全家偶有發生到貨漏未通知收件者的狀況，較建議選擇 7-11 取貨
+                    </p>
 
                     {/* CVS Store Selector */}
                     <div id="cvs-store-section" className="rounded-lg border-2 border-dashed border-zinc-300 bg-zinc-50 p-4">
