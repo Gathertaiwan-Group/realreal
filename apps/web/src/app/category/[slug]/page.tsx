@@ -65,6 +65,26 @@ const PROTEIN_SLIDES = [
   },
 ]
 
+// 植物蛋白粉分類頁的商品分組 — 風味軸（純粹／果實）+ 使用情境軸（穩定補給／多日體驗）。
+// 穩定補給／入門推薦 是既有商品名稱前綴，直接對應「組合包」；其餘單一口味商品
+// 依風味關鍵字分類。四組彼此互斥、涵蓋所有現行商品，無需另外標記資料庫欄位。
+type ProteinSeries = "pure" | "fruit" | "steady" | "trial"
+
+function classifyProteinProduct(name: string): ProteinSeries {
+  if (name.startsWith("穩定補給")) return "steady"
+  if (name.startsWith("入門推薦")) return "trial"
+  if (name.includes("原味") || name.includes("可可")) return "pure"
+  return "fruit"
+}
+
+const PROTEIN_SERIES_META: Record<ProteinSeries, { title: string; subtitle: string }> = {
+  pure: { title: "純粹系列", subtitle: "原味、可可——簡單純粹的日常之選" },
+  fruit: { title: "果實系列", subtitle: "草莓、杏仁火龍果、芝麻藍莓——真實水果的自然風味" },
+  steady: { title: "穩定補給", subtitle: "日常持續補充的完整組合" },
+  trial: { title: "多日體驗", subtitle: "初次嘗試的天數體驗組合" },
+}
+const PROTEIN_SERIES_ORDER: ProteinSeries[] = ["pure", "fruit", "steady", "trial"]
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
 type CategoryLanding = {
@@ -133,13 +153,41 @@ export default async function CategoryLandingPage({
       {!isFruit && blocks.length > 0 && <FeatureBlocks blocks={blocks} />}
 
       <section className="mx-auto max-w-7xl px-4 py-12">
-        <h2
-          className="text-2xl md:text-3xl font-semibold mb-8"
-          style={{ color: "#10305a" }}
-        >
-          {category.name}
-        </h2>
-        <ProductGrid products={products ?? []} categories={categories} />
+        {isProtein ? (
+          <>
+            {PROTEIN_SERIES_ORDER.map((series) => {
+              const group = (products ?? []).filter(
+                (p) => classifyProteinProduct(p.name) === series
+              )
+              if (group.length === 0) return null
+              const meta = PROTEIN_SERIES_META[series]
+              return (
+                <div key={series} className="mb-14 last:mb-0">
+                  <h2
+                    className="text-2xl md:text-3xl font-semibold"
+                    style={{ color: "#10305a" }}
+                  >
+                    {meta.title}
+                  </h2>
+                  <p className="text-sm md:text-base text-zinc-500 mt-1 mb-6">
+                    {meta.subtitle}
+                  </p>
+                  <ProductGrid products={group} categories={categories} />
+                </div>
+              )
+            })}
+          </>
+        ) : (
+          <>
+            <h2
+              className="text-2xl md:text-3xl font-semibold mb-8"
+              style={{ color: "#10305a" }}
+            >
+              {category.name}
+            </h2>
+            <ProductGrid products={products ?? []} categories={categories} />
+          </>
+        )}
       </section>
 
       {posts && posts.length > 0 && (
