@@ -18,13 +18,14 @@ export async function getShippingRule(
   // 海外到付：運費由司機收取，線上顯示 0
   if (method === "overseas_cod") return { fee: 0, free_threshold: 0 }
 
-  // 超商取貨付款（代收貨款）：使用專屬費率，不提供免運
+  // 超商取貨付款（代收貨款）：使用專屬費率，滿專屬門檻同樣享免運
   if (
     (method === "cvs_711" || method === "cvs_family") &&
     paymentMethod === "cvs_cod"
   ) {
     const fee = Number((await getSetting("shipping.fee_cvs_cod")) ?? "80")
-    return { fee, free_threshold: 0 }
+    const threshold = Number((await getSetting("shipping.free_threshold_cvs_cod")) ?? "999")
+    return { fee, free_threshold: threshold }
   }
 
   const isHome = method === "home_delivery"
