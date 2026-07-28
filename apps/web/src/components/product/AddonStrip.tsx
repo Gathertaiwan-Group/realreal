@@ -1,8 +1,8 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
-import { Plus } from "lucide-react"
+import { ChevronLeft, ChevronRight, Plus } from "lucide-react"
 import { useCart } from "@/lib/cart"
 
 interface AddonProduct {
@@ -108,6 +108,9 @@ export function AddonStrip({
   highlight?: boolean
 }) {
   const [products, setProducts] = useState<AddonProduct[]>([])
+  const [canScrollPrev, setCanScrollPrev] = useState(false)
+  const [canScrollNext, setCanScrollNext] = useState(false)
+  const scrollerRef = useRef<HTMLDivElement>(null)
   const addItem = useCart((s) => s.addItem)
   const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 
@@ -117,25 +120,75 @@ export function AddonStrip({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiUrl, excludeKey, limit, onlyAddon])
 
+  function updateScrollState() {
+    const el = scrollerRef.current
+    if (!el) return
+    setCanScrollPrev(el.scrollLeft > 4)
+    setCanScrollNext(el.scrollLeft + el.clientWidth < el.scrollWidth - 4)
+  }
+
+  // Re-measure once cards have actually rendered (after products load).
+  useEffect(() => {
+    updateScrollState()
+  }, [products])
+
+  function scrollByPage(dir: 1 | -1) {
+    const el = scrollerRef.current
+    if (!el) return
+    // Advance by roughly one viewport width so "上一頁/下一頁" feels like
+    // paging through the carousel rather than nudging by a few pixels.
+    el.scrollBy({ left: dir * el.clientWidth * 0.9, behavior: "smooth" })
+  }
+
   if (products.length === 0) return null
+
+  const showArrows = canScrollPrev || canScrollNext
 
   return (
     <div className={highlight ? "border-t bg-amber-50/40 px-6 py-4 space-y-2" : "mt-6 space-y-3"}>
-      <p
-        className={
-          highlight
-            ? "text-sm font-semibold text-[#10305a]"
-            : "text-sm font-semibold text-zinc-500 border-t pt-4"
-        }
-      >
-        {title}
-      </p>
+      <div className="flex items-center justify-between gap-2">
+        <p
+          className={
+            highlight
+              ? "text-sm font-semibold text-[#10305a]"
+              : "text-sm font-semibold text-zinc-500 border-t pt-4 flex-1"
+          }
+        >
+          {title}
+        </p>
+        {showArrows && (
+          <div className="flex shrink-0 gap-1">
+            <button
+              type="button"
+              onClick={() => scrollByPage(-1)}
+              disabled={!canScrollPrev}
+              aria-label="上一頁"
+              className="flex h-6 w-6 items-center justify-center rounded-full border border-[#10305a]/30 text-[#10305a] transition-colors hover:bg-[#10305a] hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[#10305a]"
+            >
+              <ChevronLeft className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollByPage(1)}
+              disabled={!canScrollNext}
+              aria-label="下一頁"
+              className="flex h-6 w-6 items-center justify-center rounded-full border border-[#10305a]/30 text-[#10305a] transition-colors hover:bg-[#10305a] hover:text-white disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-[#10305a]"
+            >
+              <ChevronRight className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
       {notice && <p className="text-xs font-medium text-amber-600">{notice}</p>}
-      <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2 scrollbar-thin">
+      <div
+        ref={scrollerRef}
+        onScroll={updateScrollState}
+        className="-mx-1 flex gap-3 overflow-x-auto scroll-smooth snap-x snap-mandatory px-1 pb-2 scrollbar-thin"
+      >
         {products.map((p) => (
           <div
             key={p.id}
-            className="flex shrink-0 w-[140px] flex-col gap-2 rounded-xl border bg-white p-2"
+            className="flex shrink-0 w-[180px] snap-start flex-col gap-2 rounded-xl border bg-white p-2"
           >
             <Link href={`/shop/${p.slug}`}>
               {p.imageUrl ? (
@@ -143,10 +196,10 @@ export function AddonStrip({
                 <img
                   src={p.imageUrl}
                   alt={p.name}
-                  className="h-[116px] w-full rounded-lg object-cover"
+                  className="h-[150px] w-full rounded-lg object-cover"
                 />
               ) : (
-                <div className="h-[116px] w-full rounded-lg bg-zinc-100 flex items-center justify-center text-xs text-zinc-400">
+                <div className="h-[150px] w-full rounded-lg bg-zinc-100 flex items-center justify-center text-xs text-zinc-400">
                   無圖
                 </div>
               )}
