@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import type { Metadata } from "next"
-import { getProducts, type Product } from "@/lib/catalog"
+import type { Product } from "@/lib/catalog"
 import { KolLandingClient } from "./_client"
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
@@ -9,10 +9,15 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
  * KOL landing page  —  /k/<slug>
  *
  * Spec: docs/superpowers/specs/2026-05-31-I-kol-affiliate-design.md (Section 5).
+ * Recommended-products behaviour updated per
+ * docs/superpowers/specs/2026-07-28-kol-recommended-products-design.md —
+ * products now come from the KOL's own `recommended_product_ids`
+ * (already resolved server-side by GET /kols/:slug), not a global
+ * is_featured fetch.
  *
- * Server component: fetch the public KOL record + a small batch of featured
- * products and pass everything to <KolLandingClient /> for rendering and the
- * fire-and-forget click-tracking POST.
+ * Server component: fetch the public KOL record (which now includes its
+ * recommended products) and pass everything to <KolLandingClient /> for
+ * rendering and the fire-and-forget click-tracking POST.
  */
 
 export type KolCoupon = {
@@ -34,6 +39,7 @@ export type Kol = {
     tiktok: string | null
   }
   coupon: KolCoupon | null
+  products: Product[]
 }
 
 async function getKol(slug: string): Promise<Kol | null> {
@@ -47,19 +53,6 @@ async function getKol(slug: string): Promise<Kol | null> {
     return json.data ?? null
   } catch {
     return null
-  }
-}
-
-async function getFeaturedProducts(): Promise<Product[]> {
-  try {
-    const res = await fetch(`${API_URL}/products?featured_only=true&limit=8`, {
-      next: { revalidate: 60 },
-    })
-    if (!res.ok) return []
-    const json = (await res.json()) as { data?: Product[] }
-    return json.data ?? []
-  } catch {
-    return []
   }
 }
 
@@ -90,7 +83,5 @@ export default async function KolLandingPage({
     notFound()
   }
 
-  const products = await getFeaturedProducts()
-
-  return <KolLandingClient kol={kol} products={products} />
+  return <KolLandingClient kol={kol} products={kol.products} />
 }
