@@ -48,6 +48,7 @@ const kolCreateSchema = z.object({
   commission_rate: z.number().min(0).max(100).optional().default(10),
   is_active: z.boolean().optional().default(true),
   notes: z.string().max(2000).optional().nullable(),
+  recommended_product_ids: z.array(z.string().uuid()).optional(),
 })
 
 const kolUpdateSchema = kolCreateSchema.partial()
@@ -87,6 +88,27 @@ async function aggregateOrders(
 }
 
 // ---------------------------------------------------------------------------
+// Helper — filter recommended_product_ids down to existing, active products,
+// preserving the caller's ordering (order = display order on /k/[slug]).
+// ---------------------------------------------------------------------------
+
+async function filterValidProductIds(ids: string[]): Promise<string[]> {
+  if (ids.length === 0) return []
+
+  const { data, error } = await supabase
+    .from("products")
+    .select("id")
+    .in("id", ids)
+    .eq("is_active", true)
+    .is("deleted_at", null)
+
+  if (error) throw new Error(error.message)
+
+  const validSet = new Set((data ?? []).map((p) => (p as { id: string }).id))
+  return ids.filter((id) => validSet.has(id))
+}
+
+// ---------------------------------------------------------------------------
 // GET /admin/kols — list with aggregate stats
 // ---------------------------------------------------------------------------
 
@@ -95,7 +117,7 @@ adminKolsRouter.get("/", async (_req, res) => {
     .from("kols")
     .select(
       "id, slug, name, avatar_url, bio, instagram_handle, youtube_handle, tiktok_handle, " +
-        "coupon_id, user_id, commission_rate, is_active, notes, created_at, updated_at, " +
+        "coupon_id, user_id, commission_rate, is_active, notes, recommended_product_ids, created_at, updated_at, " +
         "coupons(id, code, type, value)",
     )
     .order("created_at", { ascending: false })
@@ -144,7 +166,7 @@ adminKolsRouter.get("/:id", async (req, res) => {
     .from("kols")
     .select(
       "id, slug, name, avatar_url, bio, instagram_handle, youtube_handle, tiktok_handle, " +
-        "coupon_id, user_id, commission_rate, is_active, notes, created_at, updated_at, " +
+        "coupon_id, user_id, commission_rate, is_active, notes, recommended_product_ids, created_at, updated_at, " +
         "coupons(id, code, type, value)",
     )
     .eq("id", req.params.id)
@@ -219,6 +241,17 @@ adminKolsRouter.post("/", async (req, res) => {
     }
   }
 
+  if (parsed.data.recommended_product_ids) {
+    try {
+      parsed.data.recommended_product_ids = await filterValidProductIds(
+        parsed.data.recommended_product_ids,
+      )
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) })
+      return
+    }
+  }
+
   const { data, error } = await supabase
     .from("kols")
     .insert(parsed.data)
@@ -256,6 +289,17 @@ adminKolsRouter.put("/:id", async (req, res) => {
       .maybeSingle()
     if (!coupon) {
       res.status(400).json({ error: "Coupon not found" })
+      return
+    }
+  }
+
+  if (parsed.data.recommended_product_ids) {
+    try {
+      parsed.data.recommended_product_ids = await filterValidProductIds(
+        parsed.data.recommended_product_ids,
+      )
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) })
       return
     }
   }
