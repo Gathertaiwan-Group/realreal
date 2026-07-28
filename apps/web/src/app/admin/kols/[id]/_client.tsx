@@ -41,6 +41,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { adminFetch } from "@/lib/admin-fetch"
 import { CouponPicker } from "../CouponPicker"
+import { RecommendedProductsPicker } from "../RecommendedProductsPicker"
 import {
   deleteKolAction,
   updateKolAction,
@@ -65,6 +66,7 @@ export interface KolDetailData {
   commission_rate: number | string
   is_active: boolean
   notes: string | null
+  recommended_product_ids?: string[] | null
   created_at: string
   updated_at?: string
   coupon?: {
@@ -387,6 +389,7 @@ function EditFormCard({
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData(e.currentTarget)
+    const recommendedRaw = (fd.get("recommended_product_ids") as string) || ""
     const input: KolUpdateInput = {
       slug: ((fd.get("slug") as string) || "").trim().toLowerCase(),
       name: ((fd.get("name") as string) || "").trim(),
@@ -402,6 +405,9 @@ function EditFormCard({
       commission_rate: Number(fd.get("commission_rate")) || 0,
       is_active: fd.get("is_active") === "on",
       notes: ((fd.get("notes") as string) || "").trim() || null,
+      recommended_product_ids: recommendedRaw
+        ? recommendedRaw.split(",").filter(Boolean)
+        : [],
     }
 
     startTransition(async () => {
@@ -504,6 +510,13 @@ function EditFormCard({
             <div className="space-y-1.5 sm:col-span-2">
               <Label className="text-xs">綁定 coupon</Label>
               <CouponPicker name="coupon_id" defaultValue={kol.coupon_id ?? ""} />
+            </div>
+            <div className="space-y-1.5 sm:col-span-2 md:col-span-3">
+              <Label className="text-xs">推薦商品</Label>
+              <RecommendedProductsPicker
+                name="recommended_product_ids"
+                defaultValue={kol.recommended_product_ids ?? []}
+              />
             </div>
             <div className="space-y-1.5 sm:col-span-2 md:col-span-3">
               <Label htmlFor="f-user-id" className="text-xs">
