@@ -95,7 +95,7 @@ kolsRouter.get("/:slug", async (req, res) => {
     const { data: productRows, error: productsError } = await supabase
       .from("products")
       .select(
-        "id, name, slug, description, category_id, images, is_active, is_featured, " +
+        "id, name, slug, description, excerpt, category_id, images, is_active, is_featured, " +
           "is_addon, display_priority, created_at, min_tier_id, " +
           "membership_tiers!min_tier_id(id, name, min_spend)",
       )

@@ -363,6 +363,8 @@ git commit -m "feat(api): accept and validate kols.recommended_product_ids"
 
 ### Task 3: `kols.ts` — 公開 API 依序回傳推薦商品
 
+> **實作後補記（code review 發現）：** 下面 Step 1/5 原本寫的是「把 `enrichProducts` 加 `export`，`kols.ts` 直接 `import { enrichProducts } from "./products"`」——這個做法後來在 code review 被抓出來：整個 `apps/api/src/routes/*.ts` 只有這裡會出現「route 檔案互相 import」，不符合這個 codebase 的慣例（共用邏輯一律放 `apps/api/src/lib/`，例如 `addon-pricing.ts`、`tier.ts`）。實際上線的版本是把 `enrichProducts` 移到新檔案 `apps/api/src/lib/enrich-products.ts`，`products.ts` 跟 `kols.ts` 都從那裡 import。下面 Step 1/5 的程式碼片段保留原樣（作為當時的實作紀錄），但**請以 `apps/api/src/lib/enrich-products.ts` 實際存在為準**，不要照著下面過時的 route-to-route import 寫法重做一次。
+
 **重要：`products` 資料表本身沒有 `min_price` / `max_price` / `min_sale_price` / `total_stock` 這幾個欄位。** 這些是 `apps/api/src/routes/products.ts` 裡的私有函式 `enrichProducts()` 從 `product_variants` 表即時算出來的（`GET /products` 就是這樣做的）。`ProductCard`（`apps/web/src/components/catalog/ProductCard.tsx`）會讀這些欄位來顯示價格區間跟是否售完。如果 `kols.ts` 自己選了不存在的欄位或漏算這些值，商品卡片會整組顯示壞掉的價格/庫存狀態。所以這個 Task 要先把 `enrichProducts` 從 `products.ts` 匯出，`kols.ts` 直接重用它，而不是自己重造一次價格計算邏輯。
 
 **Files:**
