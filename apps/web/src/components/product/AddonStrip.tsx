@@ -183,7 +183,11 @@ export function AddonStrip({
       <div
         ref={scrollerRef}
         onScroll={updateScrollState}
-        className="-mx-1 flex gap-3 overflow-x-auto scroll-smooth snap-x snap-mandatory px-1 pb-2 scrollbar-thin"
+        // Capped width (~2.5 cards) so the row always has to be paged through
+        // instead of stretching to fit every item side by side — otherwise on
+        // a wide desktop viewport all the cards fit at once and the arrows
+        // never activate, defeating the point of a carousel.
+        className="-mx-1 flex max-w-full gap-3 overflow-x-auto scroll-smooth snap-x snap-mandatory px-1 pb-2 scrollbar-thin sm:max-w-[500px]"
       >
         {products.map((p) => (
           <div
