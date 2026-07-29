@@ -346,13 +346,20 @@ function RetailSection() {
   const entries = [
     // 出攤活動（最新活動排最前）
     {
-      name: "台北閱野假期閱讀節",
+      name: "緯創竹北廠",
       type: "出攤活動",
-      address: "台北市中正區永綏街7號街道（中山堂對面）",
-      dates: "2026/7/18–19（六、日）",
-      hours: "13:00–18:00",
-      mapUrl: "https://maps.app.goo.gl/jdv9rmJ1sFTz8Qbe7",
-      icon: "📚",
+      address: "新竹縣竹北市 緯創竹北廠",
+      dates: "2026/8/5（三）",
+      hours: "11:00–14:00",
+      icon: "🏭",
+    },
+    {
+      name: "中華電信信義園區",
+      type: "出攤活動",
+      address: "台北市信義區 中華電信信義園區",
+      dates: "2026/8/12、19（三）",
+      hours: "11:00–14:00",
+      icon: "🏢",
     },
     {
       name: "南港軟體園區樂購商場",
