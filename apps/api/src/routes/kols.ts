@@ -3,6 +3,7 @@ import { createHash } from "crypto"
 import { z } from "zod"
 import { supabase } from "../lib/supabase"
 import { optionalAuth } from "../middleware/auth"
+import { enrichProducts } from "../lib/enrich-products"
 
 /**
  * Public KOL / affiliate routes.
@@ -41,7 +42,7 @@ kolsRouter.get("/:slug", async (req, res) => {
     .from("kols")
     .select(
       "id, slug, name, avatar_url, bio, instagram_handle, youtube_handle, tiktok_handle, " +
-        "coupon_id, commission_rate, is_active, " +
+        "coupon_id, commission_rate, is_active, recommended_product_ids, " +
         "coupons(id, code, type, value)",
     )
     .eq("slug", slug)
@@ -66,6 +67,7 @@ kolsRouter.get("/:slug", async (req, res) => {
     instagram_handle: string | null
     youtube_handle: string | null
     tiktok_handle: string | null
+    recommended_product_ids: string[] | null
     coupons?: unknown
   }
 
@@ -78,6 +80,42 @@ kolsRouter.get("/:slug", async (req, res) => {
 
   const couponRaw = kol.coupons as CouponRow | CouponRow[] | null | undefined
   const coupon = Array.isArray(couponRaw) ? (couponRaw[0] ?? null) : couponRaw ?? null
+
+  // Fetch this KOL's recommended products. Reuses the same enrichProducts()
+  // helper GET /products uses, so these objects carry min_price / max_price /
+  // min_sale_price / total_stock exactly like every other product card on
+  // the site — those aren't real columns on `products`, they're computed
+  // from product_variants. Products deactivated/deleted after being picked
+  // are silently dropped (admin picker already filters on write; this
+  // covers drift since then). Order is re-applied after the fetch because
+  // Supabase's `.in()` does not preserve the input array's ordering.
+  const productIds = kol.recommended_product_ids ?? []
+  let products: Array<Record<string, unknown> & { id: string }> = []
+  if (productIds.length > 0) {
+    const { data: productRows, error: productsError } = await supabase
+      .from("products")
+      .select(
+        "id, name, slug, description, excerpt, category_id, images, is_active, is_featured, " +
+          "is_addon, display_priority, created_at, min_tier_id, " +
+          "membership_tiers!min_tier_id(id, name, min_spend)",
+      )
+      .in("id", productIds)
+      .eq("is_active", true)
+      .is("deleted_at", null)
+
+    if (productsError) {
+      res.status(500).json({ error: productsError.message })
+      return
+    }
+
+    const enriched = await enrichProducts(productRows ?? [])
+    const byId = new Map(
+      (enriched as Array<{ id: string }>).map((p) => [p.id, p]),
+    )
+    products = productIds
+      .map((id) => byId.get(id))
+      .filter((p): p is Record<string, unknown> & { id: string } => Boolean(p))
+  }
 
   res.json({
     data: {
@@ -99,6 +137,7 @@ kolsRouter.get("/:slug", async (req, res) => {
             value: Number(coupon.value),
           }
         : null,
+      products,
     },
   })
 })

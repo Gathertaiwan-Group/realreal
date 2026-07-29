@@ -29,6 +29,7 @@ export interface KolUpsertInput {
   commission_rate: number
   is_active: boolean
   notes?: string | null
+  recommended_product_ids?: string[]
 }
 
 export interface KolUpdateInput {
@@ -44,6 +45,7 @@ export interface KolUpdateInput {
   commission_rate?: number
   is_active?: boolean
   notes?: string | null
+  recommended_product_ids?: string[]
 }
 
 interface KolEnvelope {

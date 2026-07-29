@@ -183,29 +183,28 @@ export function KolLandingClient({
         )}
 
         {/* ====================== Recommended products ====================== */}
-        <section className="mt-12">
-          <h2
-            className="text-2xl font-bold text-center mb-2 tracking-tight"
-            style={{ color: BRAND }}
-          >
-            {kol.name} 推薦商品
-          </h2>
-          <p className="text-center text-sm mb-8" style={{ color: "#687279" }}>
-            精選熱賣商品，立即下單享 KOL 專屬折扣
-          </p>
-
-          {products.length === 0 ? (
-            <p className="text-center text-sm text-zinc-500 py-12">
-              暫無推薦商品
+        {/* Spec 2026-07-28: hide the whole section (incl. heading) when this
+            KOL has no recommended_product_ids set, instead of showing an
+            empty-state message. */}
+        {products.length > 0 && (
+          <section className="mt-12">
+            <h2
+              className="text-2xl font-bold text-center mb-2 tracking-tight"
+              style={{ color: BRAND }}
+            >
+              {kol.name} 推薦商品
+            </h2>
+            <p className="text-center text-sm mb-8" style={{ color: "#687279" }}>
+              精選熱賣商品，立即下單享 KOL 專屬折扣
             </p>
-          ) : (
+
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
               {products.map(product => (
                 <ProductCard key={product.id} product={product} />
               ))}
             </div>
-          )}
-        </section>
+          </section>
+        )}
       </div>
     </div>
   )
