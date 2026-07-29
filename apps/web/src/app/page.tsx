@@ -351,6 +351,7 @@ function RetailSection() {
       address: "新竹縣竹北市 緯創竹北廠",
       dates: "2026/8/5（三）",
       hours: "11:00–14:00",
+      mapUrl: "https://share.google/yzGyjFGeQ1YAE1o9r",
       icon: "🏭",
     },
     {
@@ -359,6 +360,7 @@ function RetailSection() {
       address: "台北市信義區 中華電信信義園區",
       dates: "2026/8/12、19（三）",
       hours: "11:00–14:00",
+      mapUrl: "https://share.google/Wy0bHclnkgfaVtxD1",
       icon: "🏢",
     },
     {
