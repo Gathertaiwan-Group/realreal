@@ -5,7 +5,13 @@ vi.mock("../../lib/supabase", () => ({
   supabase: {
     from: vi.fn(),
     auth: { getUser: vi.fn() },
-    rpc: vi.fn().mockResolvedValue({ data: true, error: null }),
+    // next_order_number returns the 8-digit sequence string (migration 0045);
+    // every other RPC in this route keeps the boolean-success shape.
+    rpc: vi.fn().mockImplementation((fn: string) =>
+      fn === "next_order_number"
+        ? Promise.resolve({ data: "10000001", error: null })
+        : Promise.resolve({ data: true, error: null })
+    ),
   },
 }))
 
@@ -17,6 +23,11 @@ vi.mock("../../lib/linepay", () => ({
 }))
 vi.mock("../../lib/jkopay", () => ({
   initiatePayment: vi.fn().mockResolvedValue({ paymentUrl: "https://sandbox.jkopay.example/pay", merchantTradeNo: "jko-tx-1" }),
+}))
+vi.mock("../../lib/queue", () => ({ inventoryQueue: { add: vi.fn() } }))
+vi.mock("../../lib/enqueue-post-payment", () => ({
+  enqueuePostPaymentJobs: vi.fn(),
+  notifyOrderPlacedCod: vi.fn(),
 }))
 
 import { app } from "../../app"
