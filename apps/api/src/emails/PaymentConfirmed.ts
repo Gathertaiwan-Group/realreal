@@ -30,8 +30,7 @@ export function renderPaymentConfirmed(data: {
     <p style="font-size:13px;color:#555;line-height:2">
       誠真生活 | <a href="https://realreal.cc" style="color:#10305a">realreal.cc</a><br>
       Email: <a href="mailto:love@realreal.cc" style="color:#10305a">love@realreal.cc</a><br>
-      Line 真人客服: @900kevgi<br>
-      Tel: 02-66093066
+      Line 真人客服: @900kevgi
     </p>
   </body></html>`
 }
