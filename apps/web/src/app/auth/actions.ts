@@ -139,6 +139,28 @@ export async function resetPasswordAction(_prev: unknown, formData: FormData) {
   }
 
   const supabase = await createClient()
+
+  // The recovery token is redeemed HERE, not when the emailed link is opened.
+  // Link scanners (Outlook/Hotmail "Safe Links") GET every URL in a delivered
+  // message; if the token were burned on that GET the customer's own click
+  // would always hit an already-used token and bounce back to forgot-password
+  // forever. A form POST is never issued by a scanner, so redeeming at submit
+  // time is what makes the flow survive those inboxes.
+  const tokenHash = formData.get("token_hash")
+  if (typeof tokenHash === "string" && tokenHash.length > 0) {
+    const { error: otpError } = await supabase.auth.verifyOtp({
+      type: "recovery",
+      token_hash: tokenHash,
+    })
+    if (otpError) {
+      return { error: "重設密碼連結已失效或已使用，請重新寄送連結" }
+    }
+  }
+  // No token_hash → the caller already holds a recovery session (legacy links
+  // that were verified by /auth/confirm, or a logged-in user changing their
+  // password). updateUser below still requires that session, so an anonymous
+  // request without a token simply fails with Supabase's own auth error.
+
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password })
   if (error) return { error: error.message }
 
