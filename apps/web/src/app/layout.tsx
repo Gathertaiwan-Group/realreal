@@ -18,7 +18,7 @@ export const metadata: Metadata = {
     apple: "/favicon.png",
   },
   title: {
-    default: "誠真生活 RealReal | 純淨植物力健康食品",
+    default: "誠真生活 RealReal | 純淨植物力食品",
     template: "%s",
   },
   description:
@@ -38,7 +38,7 @@ export const metadata: Metadata = {
     type: "website",
     locale: "zh_TW",
     siteName: "誠真生活 RealReal",
-    title: "誠真生活 RealReal | 純淨植物力健康食品",
+    title: "誠真生活 RealReal | 純淨植物力食品",
     description:
       "來自台灣的純素健康食品品牌，嚴選天然植物原料，純粹投入，誠真健康。",
     images: [
