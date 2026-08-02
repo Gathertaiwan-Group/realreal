@@ -55,6 +55,29 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(errorRedirect)
   }
 
+  // ── Recovery: DON'T consume the token here ───────────────────────────────
+  //
+  // Supabase recovery tokens are single-use. Outlook / Hotmail (and several
+  // corporate mail gateways) run "Safe Links": on delivery they FETCH every
+  // URL in the message to scan it. That GET lands here, verifyOtp() burns the
+  // token, and by the time the human clicks, the link is already spent — they
+  // bounce to /auth/forgot-password?error=link_expired, request a new link,
+  // and the scanner eats that one too. Infinite loop. (Reported 2026-07 by a
+  // @hotmail.com customer; reproduced: 1st GET → reset-password, 2nd GET →
+  // link_expired.)
+  //
+  // Fix: hand the token straight to the reset-password form WITHOUT verifying.
+  // The token is only redeemed when the user actually submits a new password
+  // (see resetPasswordAction) — a POST, which link scanners never perform.
+  // Old-format emails still in inboxes keep working because they route through
+  // here and get forwarded.
+  if (isRecovery) {
+    const forward = new URL(`${origin}/auth/reset-password`)
+    forward.searchParams.set("token_hash", tokenHash)
+    forward.searchParams.set("type", "recovery")
+    return NextResponse.redirect(forward.toString())
+  }
+
   const supabase = await createClient()
   // verifyOtp({ token_hash, type }) verifies the link and, on success, persists
   // the session through the cookie-backed server client — no PKCE verifier

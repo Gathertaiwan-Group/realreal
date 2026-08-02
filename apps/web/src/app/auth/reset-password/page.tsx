@@ -1,6 +1,7 @@
 "use client"
 
 import { useActionState, useEffect } from "react"
+import { useSearchParams } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,6 +20,10 @@ import Image from "next/image"
 
 export default function ResetPasswordPage() {
   const [state, formAction, isPending] = useActionState(resetPasswordAction, null)
+  const searchParams = useSearchParams()
+  // Carried from the emailed link and redeemed only on submit — see
+  // resetPasswordAction for why the token is not verified on page load.
+  const tokenHash = searchParams.get("token_hash") ?? ""
 
   useEffect(() => {
     if (state?.error) {
@@ -40,6 +45,7 @@ export default function ResetPasswordPage() {
           </CardHeader>
           <CardContent>
             <form action={formAction} className="space-y-4">
+              <input type="hidden" name="token_hash" value={tokenHash} />
               <div className="space-y-2">
                 <Label htmlFor="password">新密碼</Label>
                 <Input
