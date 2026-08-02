@@ -380,15 +380,6 @@ function RetailSection() {
       mapUrl: "https://maps.app.goo.gl/Ug2Jy4SVUDupV4TN8?g_st=ic",
       icon: "💊",
     },
-    // 生機店
-    {
-      name: "仙卉生機園地",
-      type: "生機店",
-      address: "彰化縣溪湖鎮郵政街27號",
-      phone: "(04) 882-1260",
-      fbUrl: "https://www.facebook.com/share/1C9Wk8UDW8/?mibextid=wwXIfr",
-      icon: "🌿",
-    },
     // 蔬食店
     {
       name: "原粹蔬食作",
@@ -397,6 +388,15 @@ function RetailSection() {
       phone: "(02) 8914-7185",
       mapUrl: "https://maps.app.goo.gl/zUmLshtYtRhnmLp87",
       icon: "🥗",
+    },
+    // 生機店
+    {
+      name: "仙卉生機園地",
+      type: "生機店",
+      address: "彰化縣溪湖鎮郵政街27號",
+      phone: "(04) 882-1260",
+      fbUrl: "https://www.facebook.com/share/1C9Wk8UDW8/?mibextid=wwXIfr",
+      icon: "🌿",
     },
   ]
 
