@@ -344,7 +344,7 @@ function BlogSection({ posts }: { posts: Post[] }) {
 
 function RetailSection() {
   const entries = [
-    // 出攤活動（最新活動排最前）
+    // 擺攤活動（最新活動排最前）
     {
       name: "緯創竹北廠",
       type: "出攤活動",
@@ -363,24 +363,7 @@ function RetailSection() {
       mapUrl: "https://share.google/Wy0bHclnkgfaVtxD1",
       icon: "🏢",
     },
-    {
-      name: "南港軟體園區樂購商場",
-      type: "出攤活動",
-      address: "南港軟體園區樂購商場",
-      dates: "2026/7/9、16、23、30（每週四）",
-      hours: "11:30–14:00",
-      mapUrl: "https://share.google/h4UonhL1F99N77ut2",
-      icon: "🛍️",
-    },
-    // 實體通路（由南至北）
-    {
-      name: "仙卉生機園地",
-      type: "生機店",
-      address: "彰化縣溪湖鎮郵政街27號",
-      phone: "(04) 882-1260",
-      fbUrl: "https://www.facebook.com/share/1C9Wk8UDW8/?mibextid=wwXIfr",
-      icon: "🌿",
-    },
+    // 藥局
     {
       name: "夢田藥局",
       type: "藥局",
@@ -390,20 +373,30 @@ function RetailSection() {
       icon: "💊",
     },
     {
-      name: "原粹蔬食作",
-      type: "蔬食店",
-      address: "新北市新店區北新路三段206巷1弄7號",
-      phone: "(02) 8914-7185",
-      mapUrl: "https://maps.app.goo.gl/zUmLshtYtRhnmLp87",
-      icon: "🥗",
-    },
-    {
       name: "新埔健保藥局",
       type: "藥局",
       address: "新北市板橋區自由路2號",
       phone: "(02) 2255-8878",
       mapUrl: "https://maps.app.goo.gl/Ug2Jy4SVUDupV4TN8?g_st=ic",
       icon: "💊",
+    },
+    // 生機店
+    {
+      name: "仙卉生機園地",
+      type: "生機店",
+      address: "彰化縣溪湖鎮郵政街27號",
+      phone: "(04) 882-1260",
+      fbUrl: "https://www.facebook.com/share/1C9Wk8UDW8/?mibextid=wwXIfr",
+      icon: "🌿",
+    },
+    // 蔬食店
+    {
+      name: "原粹蔬食作",
+      type: "蔬食店",
+      address: "新北市新店區北新路三段206巷1弄7號",
+      phone: "(02) 8914-7185",
+      mapUrl: "https://maps.app.goo.gl/zUmLshtYtRhnmLp87",
+      icon: "🥗",
     },
   ]
 
