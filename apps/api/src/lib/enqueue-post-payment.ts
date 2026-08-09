@@ -7,6 +7,15 @@ import { invoiceQueue } from "../workers/invoice-issuer"
 import { getSetting } from "./settings"
 import { grantPoints, redeemPoints } from "./points"
 
+/** Escape customer-supplied values before interpolating them into admin email HTML. */
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
+
 /**
  * After a successful payment, send confirmation email, create invoice,
  * and update membership. No BullMQ/Redis needed — all direct calls.
@@ -180,12 +189,12 @@ export async function enqueuePostPaymentJobs(orderId: string) {
             <table style="border-collapse:collapse;width:100%;font-size:14px;">
               <tr><td style="padding:6px 0;color:#687279;width:120px">訂單編號</td><td style="font-family:monospace;font-weight:600">${order.order_number}</td></tr>
               <tr><td style="padding:6px 0;color:#687279">總金額</td><td style="font-weight:600;color:#10305a">NT$ ${totalTwd}</td></tr>
-              <tr><td style="padding:6px 0;color:#687279">顧客</td><td>${userEmail ?? "guest"}</td></tr>
+              <tr><td style="padding:6px 0;color:#687279">顧客</td><td>${esc(userEmail ?? "guest")}</td></tr>
               <tr><td style="padding:6px 0;color:#687279">收件人</td><td>${customerName}</td></tr>
               <tr><td style="padding:6px 0;color:#687279">電話</td><td><a href="tel:${s.phone ?? ""}">${s.phone ?? "—"}</a></td></tr>
               <tr><td style="padding:6px 0;color:#687279;vertical-align:top">取貨</td><td>${pickupInfo}</td></tr>
               <tr><td style="padding:6px 0;color:#687279;vertical-align:top">商品</td><td style="white-space:pre-line">${itemLines || "—"}</td></tr>
-              ${kolSlug ? `<tr><td style="padding:6px 0;color:#687279">來自 KOL</td><td style="font-weight:600">${kolSlug}</td></tr>` : ""}
+              ${kolSlug ? `<tr><td style="padding:6px 0;color:#687279">來自 KOL</td><td style="font-weight:600">${esc(kolSlug)}</td></tr>` : ""}
               ${(order as any).notes ? `<tr><td style="padding:6px 0;color:#687279;vertical-align:top">顧客備註</td><td style="white-space:pre-line;color:#b45309;font-weight:600">${(order as any).notes}</td></tr>` : ""}
             </table>
             <p style="margin:24px 0 0;font-size:13px;color:#687279">進管理後台處理 → <a href="https://realreal-store.vercel.app/admin/orders" style="color:#10305a">/admin/orders</a></p>
@@ -437,12 +446,12 @@ export async function notifyOrderPlacedCod(orderId: string) {
           <table style="border-collapse:collapse; width:100%; font-size:14px;">
             <tr><td style="padding:6px 0; color:#687279; width:120px;">訂單編號</td><td style="font-family:monospace; font-weight:600;">${order.order_number}</td></tr>
             <tr><td style="padding:6px 0; color:#687279;">應收金額（COD）</td><td style="font-weight:600; color:#10305a;">NT$ ${totalTwd}</td></tr>
-            <tr><td style="padding:6px 0; color:#687279;">顧客</td><td>${userEmail ?? "guest"}</td></tr>
+            <tr><td style="padding:6px 0; color:#687279;">顧客</td><td>${esc(userEmail ?? "guest")}</td></tr>
             <tr><td style="padding:6px 0; color:#687279;">收件人</td><td>${s.name ?? "—"}</td></tr>
             <tr><td style="padding:6px 0; color:#687279;">電話</td><td><a href="tel:${s.phone ?? ""}">${s.phone ?? "—"}</a></td></tr>
             <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">取件門市</td><td>${cvsLine}</td></tr>
             <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">商品</td><td style="white-space:pre-line;">${itemLines || "—"}</td></tr>
-            ${kolSlug ? `<tr><td style="padding:6px 0; color:#687279;">來自 KOL</td><td style="font-weight:600;">${kolSlug}</td></tr>` : ""}
+            ${kolSlug ? `<tr><td style="padding:6px 0; color:#687279;">來自 KOL</td><td style="font-weight:600;">${esc(kolSlug)}</td></tr>` : ""}
             ${(order as any).notes ? `<tr><td style="padding:6px 0; color:#687279; vertical-align:top;">顧客備註</td><td style="white-space:pre-line; color:#b45309; font-weight:600;">${(order as any).notes}</td></tr>` : ""}
           </table>
           <p style="margin:24px 0 0; font-size:13px; color:#687279;">進管理後台處理 → <a href="https://realreal-store.vercel.app/admin/orders" style="color:#10305a;">/admin/orders</a></p>

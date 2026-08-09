@@ -15,14 +15,19 @@ import * as Sentry from "@sentry/nextjs"
  * `onRequestError` is the Next 15+/16 hook that forwards server-side render and
  * route-handler errors into Sentry. It is separate from `register()` — having
  * the SDK initialised is necessary but not sufficient.
+ *
+ * Lives in `src/` because this app uses the src layout. Turbopack resolves the
+ * hook from either the project root or `src/`, but the webpack builder only
+ * scans one directory level next to `app/` — so a root-level copy would be
+ * silently ignored under `next build --webpack`. `src/` is safe under both.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
-    await import("./sentry.server.config")
+    await import("../sentry.server.config")
   }
 
   if (process.env.NEXT_RUNTIME === "edge") {
-    await import("./sentry.edge.config")
+    await import("../sentry.edge.config")
   }
 }
 
