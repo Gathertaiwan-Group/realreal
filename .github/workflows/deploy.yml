@@ -5,8 +5,80 @@ on:
     branches:
       - main
 
+# ─────────────────────────────────────────────────────────────────────────────
+# 部署閘門 (deploy gate) — 2026-08 建立
+#
+# 這個 repo 有 41 支測試檔,但在這之前本 workflow 只做 checkout + npm install +
+# `vercel --prod`,一支測試都沒跑過 —— 壞掉的程式碼可以直接上線到正在收錢的
+# 系統。現在把測試接進來當出貨閘門。
+#
+# ■ 必須綠才准部署(blocking)
+#     `test` job 的每一步。deploy job 的 `needs: test` 就是閘門本身:
+#     test 一紅 → deploy 整個不執行 → Vercel 拿不到新版本。
+#     `test` job 與其步驟都刻意「沒有」continue-on-error、也沒有任何 if 條件,
+#     不會被靜默跳過。涵蓋範圍:
+#       - apps/web    14 檔 /  91 tests
+#       - apps/api    23 檔 / 190 tests
+#     (2026-08-10 於 ac6012c 實測:281 tests 全綠、0 skipped,故全部設為 blocking。)
+#
+# ■ 先跑但不擋(non-blocking)
+#     目前「沒有」。上面那 281 支全綠,不需要隔離區。
+#     日後若有測試落後於程式碼而變紅,請新增一個獨立的
+#     `test-quarantine` job(continue-on-error: true、且**不要**放進 deploy 的
+#     needs),把該檔案獨立跑起來並在此處留 TODO。
+#     ⚠️ 不要用刪測試 / .skip / .todo / 改斷言的方式讓 CI 變綠。
+#
+# ■ CI 不跑、且已知是紅的(明確標示,不讓它假裝通過)
+#     apps/api/test/ 底下 4 支檔案:
+#       admin-customers / admin-orders.cancel / campaigns-evaluator / points
+#     它們被 apps/api/vitest.config.ts 的 `include: ["src/**/*.test.ts"]` 排除,
+#     所以本機 `npm test` 也跑不到 —— 不是這次 CI 才漏掉的。
+#     2026-08-10 手動放行實測:65 tests 中 8 fail(admin-orders.cancel 6 紅、
+#     campaigns-evaluator 2 紅),是真的紅,不是設定問題。
+#     這次改動的範圍不含 vitest.config.ts,所以維持不跑 —— 與其讓它們在 CI 裡
+#     被 include 靜默濾掉、看起來像通過,不如明講「沒跑」。
+#     TODO: 修好那 8 個 case 後,把 include 補上 `test/**/*.test.ts`,它們就會
+#           自動落進上面的 blocking 範圍。
+#
+# ■ 這個閘門擋不到的東西(重要)
+#     apps/api 與 worker 走 Railway 自己的 GitHub 整合部署(見 railway.toml),
+#     完全不經過 GitHub Actions,所以這裡任何 job 都無法阻止 Railway 部署 API。
+#     本閘門目前實際只擋得住 Vercel(apps/web)。
+#     TODO: 若要讓 API 也受測試把關,需在 Railway 關掉自動部署,改成由這個
+#           workflow 在 test 綠之後用 `railway up` 推送。
+#
+# ■ 外部相依
+#     不需要。所有測試都是 hermetic 的:supabase / redis / 金流與物流外部 API
+#     一律 vi.mock 假掉,apps/api/vitest.config.ts 內建假的 env,因此 CI 不需要
+#     DB、Redis 或任何 service container。
+# ─────────────────────────────────────────────────────────────────────────────
+
 jobs:
+  test:
+    name: 測試(閘門 / 必須全綠才准部署)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # monorepo root 裝一次,workspaces(apps/web、apps/api、packages/db)全部到位。
+      - name: Install dependencies (monorepo root)
+        run: npm ci
+
+      - name: apps/web 測試(14 檔 / 91 tests,全部必須綠)
+        run: npm run test --workspace=web
+
+      - name: apps/api 測試(23 檔 / 190 tests,全部必須綠)
+        run: npm run test --workspace=api
+
   deploy:
+    name: 部署 Vercel (apps/web)
+    # ↓↓↓ 閘門在這一行:test 沒綠就不部署。
+    needs: test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
