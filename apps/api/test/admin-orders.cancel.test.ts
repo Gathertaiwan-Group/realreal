@@ -5,6 +5,9 @@ import request from "supertest"
 vi.mock("../src/lib/supabase", () => ({
   supabase: {
     from: vi.fn(),
+    // restoreOrderStock + refundCouponUsage (step 5 of the choreography) call
+    // supabase.rpc directly.
+    rpc: vi.fn(),
     auth: { getUser: vi.fn() },
   },
 }))
@@ -25,12 +28,22 @@ vi.mock("../src/lib/points", () => ({
   refundOrderPoints: vi.fn(),
 }))
 
+// The tier spend-mirror decrement is a separate concern with its own suite
+// (src/lib/__tests__/tier.test.ts). Stub just that export — keeping the rest of
+// the module real, since other routes mounted on `app` import from it — so this
+// suite stays focused on the cancel choreography.
+vi.mock("../src/lib/tier", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  decrementSpendOnRefund: vi.fn(),
+}))
+
 import { app } from "../src/app"
 import { supabase } from "../src/lib/supabase"
 import { voidInvoice } from "../src/lib/amego"
 import { cancelEcpayLogistics } from "../src/lib/ecpay-logistics"
 import { refundPayment } from "../src/lib/refund-payment"
 import { refundOrderPoints } from "../src/lib/points"
+import { decrementSpendOnRefund } from "../src/lib/tier"
 
 // ---------------------------------------------------------------------------
 // Shared test helpers
@@ -76,7 +89,10 @@ interface OrderFixture {
  * Captures the invoices/logistics/orders update calls so tests can assert
  * the cancelled status flip happened with the right payload.
  */
-function setupSupabaseMocks(order: OrderFixture = {}) {
+function setupSupabaseMocks(
+  order: OrderFixture = {},
+  opts: { orderItemsThrows?: boolean } = {},
+) {
   const orderRow = {
     id: ORDER_ID,
     user_id: order.user_id === undefined ? "user-customer-1" : order.user_id,
@@ -159,6 +175,35 @@ function setupSupabaseMocks(order: OrderFixture = {}) {
         }),
       } as never
     }
+    if (table === "order_items") {
+      // restoreOrderStock: .select("variant_id, qty").eq("order_id", …)
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: opts.orderItemsThrows
+            ? vi.fn().mockImplementation(() => {
+                throw new TypeError("order_items unavailable")
+              })
+            : vi.fn().mockResolvedValue({
+                data: [{ variant_id: "var-1", qty: 2 }],
+                error: null,
+              }),
+        }),
+      } as never
+    }
+    if (table === "coupon_uses") {
+      // refundCouponUsage: .select("id, coupon_id").eq(…) then .delete().eq(…)
+      return {
+        select: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({
+            data: [{ id: "cu-1", coupon_id: "coupon-1" }],
+            error: null,
+          }),
+        }),
+        delete: vi.fn().mockReturnValue({
+          eq: vi.fn().mockResolvedValue({ error: null }),
+        }),
+      } as never
+    }
     return {} as never
   })
 
@@ -185,6 +230,14 @@ beforeEach(() => {
     earned_reverted: 50,
     redeemed_returned: 30,
   })
+  vi.mocked(decrementSpendOnRefund).mockResolvedValue({
+    decremented: true,
+    total_spend_delta: 1000,
+    period_spend_delta: 1000,
+    charity_delta: 0,
+  })
+  // Step 5 RPCs (atomic_restore_stock / atomic_decrement_coupon_usage).
+  vi.mocked(supabase.rpc).mockResolvedValue({ data: null, error: null } as never)
 })
 
 // ---------------------------------------------------------------------------
@@ -257,6 +310,15 @@ describe("POST /admin/orders/:id/cancel", () => {
         status: "cancelled",
         payment_status: "refunded",
         cancel_reason: "客戶要求取消",
+      })
+
+      // Step 5 rides on the back of a successful status flip: reserved stock
+      // goes back and the coupon use stops counting against max_uses.
+      expect(supabase.rpc).toHaveBeenCalledWith("atomic_restore_stock", {
+        p_variants: [{ id: "var-1", qty: 2 }],
+      })
+      expect(supabase.rpc).toHaveBeenCalledWith("atomic_decrement_coupon_usage", {
+        p_coupon_id: "coupon-1",
       })
     })
   })
@@ -416,6 +478,42 @@ describe("POST /admin/orders/:id/cancel", () => {
       expect(res.body.actions.logistics_cancel.ok).toBe(true)
       expect(res.body.actions.payment_refund.ok).toBe(true)
       expect(res.body.actions.status_update.ok).toBe(true)
+    })
+  })
+
+  // Regression guard for the bug this suite exposed the moment it was finally
+  // wired into vitest. restoreOrderStock / refundCouponUsage are documented
+  // non-fatal ("logs and continues"), but they used to sit INSIDE the
+  // status_update try/catch — so a throw escaping either one overwrote the
+  // already-set { ok: true, "訂單狀態已標記取消" } with { ok: false, <error> },
+  // telling the admin the cancellation had failed when the orders row had in
+  // fact already been flipped to cancelled/refunded and committed.
+  describe("case 8 — a non-fatal step-5 helper throws after the status flip", () => {
+    it("still reports status_update.ok=true, because the flip did land", async () => {
+      mockAdminAuth()
+      const { orderUpdates } = setupSupabaseMocks({}, { orderItemsThrows: true })
+
+      const res = await request(app)
+        .post(`/admin/orders/${ORDER_ID}/cancel`)
+        .set("Authorization", "Bearer valid-token")
+        .send({ reason: "test" })
+
+      expect(res.status).toBe(200)
+      // The orders row really was flipped to cancelled …
+      expect(orderUpdates[0]).toMatchObject({
+        status: "cancelled",
+        payment_status: "refunded",
+      })
+      // … so the admin must be told that, not a stock-restore error.
+      expect(res.body.actions.status_update).toEqual({
+        ok: true,
+        message: "訂單狀態已標記取消",
+      })
+      // The other four steps are untouched by the step-5 failure.
+      expect(res.body.actions.invoice_void.ok).toBe(true)
+      expect(res.body.actions.logistics_cancel.ok).toBe(true)
+      expect(res.body.actions.payment_refund.ok).toBe(true)
+      expect(res.body.actions.points_refund.ok).toBe(true)
     })
   })
 })

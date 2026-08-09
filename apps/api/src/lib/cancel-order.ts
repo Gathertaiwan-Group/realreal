@@ -266,6 +266,7 @@ export async function cancelOrderById(
   }
 
   // Step 4 — 翻 status（always runs, even if every previous step failed）
+  let statusFlipped = false
   try {
     const update: Record<string, unknown> = {
       status: "cancelled",
@@ -278,13 +279,35 @@ export async function cancelOrderById(
     }
     const { error: statusError } = await supabase.from("orders").update(update).eq("id", orderId)
     if (statusError) throw new Error(statusError.message)
+    statusFlipped = true
     actions.status_update = { ok: true, message: "訂單狀態已標記取消" }
-    // order.status was guaranteed non-cancelled (allowedStatuses gate above), so
-    // restoring stock + returning coupon usage here each run exactly once.
-    await restoreOrderStock(orderId)
-    await refundCouponUsage(orderId)
   } catch (err) {
     actions.status_update = { ok: false, message: err instanceof Error ? err.message : String(err) }
+  }
+
+  // Step 5 — stock restore + coupon-usage reversal.
+  //
+  // These two are documented non-fatal (they log and continue), so they MUST NOT
+  // share the status_update try/catch: a throw escaping either one used to
+  // overwrite the already-set { ok: true, "訂單狀態已標記取消" } with { ok: false },
+  // reporting a failed cancellation to the admin even though the orders row had
+  // already been flipped and committed. Each gets its own guard instead.
+  //
+  // Gated on statusFlipped so the previous behaviour is preserved exactly: when
+  // the status flip fails the order is NOT cancelled, and restoring its stock
+  // would oversell.  order.status was guaranteed non-cancelled by the
+  // allowedStatuses gate above, so each of these runs exactly once per order.
+  if (statusFlipped) {
+    try {
+      await restoreOrderStock(orderId)
+    } catch (err) {
+      console.warn(`[cancel-order] restoreOrderStock threw for ${orderId} (non-fatal):`, err)
+    }
+    try {
+      await refundCouponUsage(orderId)
+    } catch (err) {
+      console.warn(`[cancel-order] refundCouponUsage threw for ${orderId} (non-fatal):`, err)
+    }
   }
 
   return {

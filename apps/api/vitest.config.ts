@@ -5,7 +5,13 @@ export default defineConfig({
     environment: "node",
     // Only run TS sources — `tsc` (build) emits compiled *.test.js into dist/,
     // which vitest would otherwise pick up as duplicate, broken suites.
-    include: ["src/**/*.test.ts"],
+    //
+    // BOTH roots must be listed: suites live in src/**/__tests__/ AND in this
+    // package's top-level test/ dir. The glob used to be "src/**/*.test.ts"
+    // only, which silently skipped all four test/*.test.ts suites (65 cases,
+    // covering order cancellation + campaign evaluation) — they had never run,
+    // locally or in CI, because a non-matching include is not an error.
+    include: ["src/**/*.test.ts", "test/**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/dist/**"],
     env: {
       SUPABASE_URL: "http://localhost:54321",
