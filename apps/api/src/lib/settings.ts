@@ -167,7 +167,7 @@ export const ALLOWED_KEYS = new Set<string>([
   "resend.from_name",
   // Notifications
   "notifications.admin_email",
-  "notifications.line_notify_token",
+  "notifications.alert_email",
   // Analytics
   "analytics.ga4_measurement_id",
   "analytics.gtm_id",
@@ -216,7 +216,6 @@ export const SECRET_KEYS = new Set<string>([
   "amego.app_key",
   "amego.webhook_secret",
   "resend.api_key",
-  "notifications.line_notify_token",
 ])
 
 export function maskPreview(value: string): string {
@@ -279,7 +278,7 @@ export const SECTIONS: Record<string, { label: string; keys: string[] }> = {
   },
   notifications: {
     label: "通知收件人",
-    keys: ["notifications.admin_email", "notifications.line_notify_token"],
+    keys: ["notifications.admin_email", "notifications.alert_email"],
   },
   analytics: {
     label: "分析追蹤 (Analytics)",

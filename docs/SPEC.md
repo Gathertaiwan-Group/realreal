@@ -30,7 +30,7 @@
 | 金流 | PChomePay、LINE Pay、JKOPay、超商取貨付款 (ECPay COD) |
 | 物流 | ECPay 綠界（超商 C2C + 宅配 + COD 代收）|
 | 電子發票 | Amego |
-| 通知 | Resend (email)、LINE Notify |
+| 通知 | Resend (email)。訂單通知與系統告警都走 email；LINE Notify 已於 2025-03-31 停止服務，2026-08-10 移除 |
 
 ### 1.2 規模
 API ~12k 行 / 25 路由檔 / 7 worker；Web ~29k 行；37 個 migration；33 張表；後台 17 個功能區。
