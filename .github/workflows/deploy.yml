@@ -18,8 +18,9 @@ on:
 #     `test` job 與其步驟都刻意「沒有」continue-on-error、也沒有任何 if 條件,
 #     不會被靜默跳過。涵蓋範圍:
 #       - apps/web    14 檔 /  91 tests
-#       - apps/api    23 檔 / 190 tests
-#     (2026-08-10 於 ac6012c 實測:281 tests 全綠、0 skipped,故全部設為 blocking。)
+#       - apps/api    27 檔 / 256 tests
+#     (2026-08-10 於 a6f4c91 實測:347 tests 全綠、0 skipped,故全部設為 blocking。
+#      磁碟上的 41 支測試檔到此全部納入,沒有任何一支落在閘門之外。)
 #
 # ■ 先跑但不擋(non-blocking)
 #     目前「沒有」。上面那 281 支全綠,不需要隔離區。
@@ -28,17 +29,14 @@ on:
 #     needs),把該檔案獨立跑起來並在此處留 TODO。
 #     ⚠️ 不要用刪測試 / .skip / .todo / 改斷言的方式讓 CI 變綠。
 #
-# ■ CI 不跑、且已知是紅的(明確標示,不讓它假裝通過)
-#     apps/api/test/ 底下 4 支檔案:
-#       admin-customers / admin-orders.cancel / campaigns-evaluator / points
-#     它們被 apps/api/vitest.config.ts 的 `include: ["src/**/*.test.ts"]` 排除,
-#     所以本機 `npm test` 也跑不到 —— 不是這次 CI 才漏掉的。
-#     2026-08-10 手動放行實測:65 tests 中 8 fail(admin-orders.cancel 6 紅、
-#     campaigns-evaluator 2 紅),是真的紅,不是設定問題。
-#     這次改動的範圍不含 vitest.config.ts,所以維持不跑 —— 與其讓它們在 CI 裡
-#     被 include 靜默濾掉、看起來像通過,不如明講「沒跑」。
-#     TODO: 修好那 8 個 case 後,把 include 補上 `test/**/*.test.ts`,它們就會
-#           自動落進上面的 blocking 範圍。
+# ■ CI 不跑的東西
+#     目前「沒有」。
+#     (歷史:apps/api/test/ 底下 4 支檔案曾被 apps/api/vitest.config.ts 的
+#      `include: ["src/**/*.test.ts"]` 排除,連本機 `npm test` 都跑不到 ——
+#      vitest 對「沒對到任何檔案的 glob」不報錯,所以是靜默漏掉的。手動放行後
+#      實測 65 tests 中 8 fail,而且其中 6 個紅的是 apps/api/src/lib/cancel-order.ts
+#      的真 bug,不是測試過時。已於 a6f4c91 修好實作、補上 include,現全數納入
+#      blocking 範圍。這件事的教訓:glob 沒對到檔案時不會有人告訴你。)
 #
 # ■ 這個閘門擋不到的東西(重要)
 #     apps/api 與 worker 走 Railway 自己的 GitHub 整合部署(見 railway.toml),
@@ -72,7 +70,7 @@ jobs:
       - name: apps/web 測試(14 檔 / 91 tests,全部必須綠)
         run: npm run test --workspace=web
 
-      - name: apps/api 測試(23 檔 / 190 tests,全部必須綠)
+      - name: apps/api 測試(27 檔 / 256 tests,全部必須綠)
         run: npm run test --workspace=api
 
   deploy:
