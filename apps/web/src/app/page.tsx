@@ -389,6 +389,14 @@ function RetailSection() {
       mapUrl: "https://maps.app.goo.gl/zUmLshtYtRhnmLp87",
       icon: "🥗",
     },
+    {
+      name: "圓緣園素食店",
+      type: "蔬食店",
+      address: "臺中市沙鹿區鹿寮里福鹿街14號",
+      phone: "(04) 2665-5311",
+      mapUrl: "https://share.google/VM7uWkRgKLyoWKukW",
+      icon: "🥗",
+    },
     // 生機店
     {
       name: "仙卉生機園地",
