@@ -6,7 +6,15 @@ import { inventoryQueue } from "./queue"
 import { invoiceQueue } from "../workers/invoice-issuer"
 import { getSetting } from "./settings"
 import { grantPoints, redeemPoints } from "./points"
-import { sendLineNotify } from "./line-notify"
+
+/** Escape customer-supplied values before interpolating them into admin email HTML. */
+function esc(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+}
 
 /**
  * After a successful payment, send confirmation email, create invoice,
@@ -162,9 +170,17 @@ export async function enqueuePostPaymentJobs(orderId: string) {
     }
 
     // 1b) Admin notification
+    //
+    // This is the ONLY admin-facing notification for a new order. It used to be
+    // followed by a second LINE Notify push carrying 顧客 email + KOL slug, but
+    // LINE Notify was shut down on 2025-03-31 and that push has been silently
+    // going nowhere since. Those two fields are now rows in this email instead,
+    // so no information was lost and the admin still gets exactly one message.
     try {
       const adminEmails = parseRecipients(await getSetting("notifications.admin_email"))
       if (adminEmails.length > 0) {
+        const kolSlug = (order as { attributed_kol_slug?: string | null })
+          .attributed_kol_slug ?? null
         const subject = `【誠真生活】新訂單 ${order.order_number} — NT$ ${totalTwd}`
         const html = `
           <div style="font-family: -apple-system, sans-serif; max-width:600px;">
@@ -173,10 +189,12 @@ export async function enqueuePostPaymentJobs(orderId: string) {
             <table style="border-collapse:collapse;width:100%;font-size:14px;">
               <tr><td style="padding:6px 0;color:#687279;width:120px">訂單編號</td><td style="font-family:monospace;font-weight:600">${order.order_number}</td></tr>
               <tr><td style="padding:6px 0;color:#687279">總金額</td><td style="font-weight:600;color:#10305a">NT$ ${totalTwd}</td></tr>
+              <tr><td style="padding:6px 0;color:#687279">顧客</td><td>${esc(userEmail ?? "guest")}</td></tr>
               <tr><td style="padding:6px 0;color:#687279">收件人</td><td>${customerName}</td></tr>
               <tr><td style="padding:6px 0;color:#687279">電話</td><td><a href="tel:${s.phone ?? ""}">${s.phone ?? "—"}</a></td></tr>
               <tr><td style="padding:6px 0;color:#687279;vertical-align:top">取貨</td><td>${pickupInfo}</td></tr>
               <tr><td style="padding:6px 0;color:#687279;vertical-align:top">商品</td><td style="white-space:pre-line">${itemLines || "—"}</td></tr>
+              ${kolSlug ? `<tr><td style="padding:6px 0;color:#687279">來自 KOL</td><td style="font-weight:600">${esc(kolSlug)}</td></tr>` : ""}
               ${(order as any).notes ? `<tr><td style="padding:6px 0;color:#687279;vertical-align:top">顧客備註</td><td style="white-space:pre-line;color:#b45309;font-weight:600">${(order as any).notes}</td></tr>` : ""}
             </table>
             <p style="margin:24px 0 0;font-size:13px;color:#687279">進管理後台處理 → <a href="https://realreal-store.vercel.app/admin/orders" style="color:#10305a">/admin/orders</a></p>
@@ -187,21 +205,6 @@ export async function enqueuePostPaymentJobs(orderId: string) {
     } catch (err) {
       console.warn("[post-payment] admin notification failed (non-fatal):", err)
     }
-  }
-
-  // 1c) LINE Notify push — spec M Section 2. Goes to whoever holds the
-  // configured access token (typically the admin's personal LINE via 1-on-1
-  // Notify). Fire-and-forget semantics live inside sendLineNotify itself.
-  // Skipped for COD: admin's LINE got pinged at checkout time.
-  if (!isCod) {
-    const kolSlug = (order as { attributed_kol_slug?: string | null })
-      .attributed_kol_slug ?? null
-    await sendLineNotify(
-      `🛒 新訂單 #${order.order_number}\n` +
-        `顧客：${userEmail ?? "guest"}\n` +
-        `金額：NT$ ${totalTwd}` +
-        (kolSlug ? `\n來自 KOL：${kolSlug}` : ""),
-    )
   }
 
   // 2) Create an invoice record (if not already present) and enqueue Amego
@@ -426,9 +429,15 @@ export async function notifyOrderPlacedCod(orderId: string) {
   }
 
   // --- Admin "new order — COD" notification ---
+  //
+  // Single admin message per order. The former LINE Notify push that followed
+  // this email died with the LINE Notify service (2025-03-31); its two unique
+  // fields (顧客 email, KOL slug) are rows in this email now.
   try {
     const adminEmails = parseRecipients(await getSetting("notifications.admin_email"))
     if (adminEmails.length > 0) {
+      const kolSlug = (order as { attributed_kol_slug?: string | null })
+        .attributed_kol_slug ?? null
       const subject = `【誠真生活】新訂單 ${order.order_number}（超商取貨付款）— NT$ ${totalTwd}`
       const html = `
         <div style="font-family: -apple-system, sans-serif; max-width:600px;">
@@ -437,10 +446,12 @@ export async function notifyOrderPlacedCod(orderId: string) {
           <table style="border-collapse:collapse; width:100%; font-size:14px;">
             <tr><td style="padding:6px 0; color:#687279; width:120px;">訂單編號</td><td style="font-family:monospace; font-weight:600;">${order.order_number}</td></tr>
             <tr><td style="padding:6px 0; color:#687279;">應收金額（COD）</td><td style="font-weight:600; color:#10305a;">NT$ ${totalTwd}</td></tr>
+            <tr><td style="padding:6px 0; color:#687279;">顧客</td><td>${esc(userEmail ?? "guest")}</td></tr>
             <tr><td style="padding:6px 0; color:#687279;">收件人</td><td>${s.name ?? "—"}</td></tr>
             <tr><td style="padding:6px 0; color:#687279;">電話</td><td><a href="tel:${s.phone ?? ""}">${s.phone ?? "—"}</a></td></tr>
             <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">取件門市</td><td>${cvsLine}</td></tr>
             <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">商品</td><td style="white-space:pre-line;">${itemLines || "—"}</td></tr>
+            ${kolSlug ? `<tr><td style="padding:6px 0; color:#687279;">來自 KOL</td><td style="font-weight:600;">${esc(kolSlug)}</td></tr>` : ""}
             ${(order as any).notes ? `<tr><td style="padding:6px 0; color:#687279; vertical-align:top;">顧客備註</td><td style="white-space:pre-line; color:#b45309; font-weight:600;">${(order as any).notes}</td></tr>` : ""}
           </table>
           <p style="margin:24px 0 0; font-size:13px; color:#687279;">進管理後台處理 → <a href="https://realreal-store.vercel.app/admin/orders" style="color:#10305a;">/admin/orders</a></p>
@@ -451,14 +462,4 @@ export async function notifyOrderPlacedCod(orderId: string) {
   } catch (err) {
     console.warn("[order-placed-cod] admin notification failed (non-fatal):", err)
   }
-
-  // --- LINE Notify ---
-  const kolSlug = (order as { attributed_kol_slug?: string | null })
-    .attributed_kol_slug ?? null
-  await sendLineNotify(
-    `📦 新訂單（COD）#${order.order_number}\n` +
-      `顧客：${userEmail ?? "guest"}\n` +
-      `應收：NT$ ${totalTwd}（取貨付款）` +
-      (kolSlug ? `\n來自 KOL：${kolSlug}` : ""),
-  )
 }

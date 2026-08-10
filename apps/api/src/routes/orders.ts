@@ -967,7 +967,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   }
 
   // ---- test_paid：沙盒付款，跳過金流但跑完整 post-payment pipeline ----
-  // 用途：驗證發票 / 訂單通知 / 庫存扣 / 點數累積 / LINE Notify 全鏈路是否
+  // 用途：驗證發票 / 訂單通知 / 庫存扣 / 點數累積全鏈路是否
   // 正常，不用每次真的刷卡。Production 預設只允許 admin 使用；若測試環境
   // 真的需要開給一般登入用戶，必須顯式設定 ALLOW_NON_ADMIN_TEST_PAID=true。
   if (paymentMethod === "test_paid") {

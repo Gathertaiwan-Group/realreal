@@ -147,7 +147,7 @@ export default function PaymentPage() {
 
   // Admin detection — gates visibility of the "test_paid" sandbox payment
   // method (skips gateway but runs the full post-payment pipeline: invoice /
-  // email / stock / points / LINE Notify). The server restricts test_paid to
+  // email / stock / points). The server restricts test_paid to
   // role==="admin" (403 otherwise), so a normal customer must NOT see it.
   // Mirror the server check (orders.ts) + admin layout: read user_profiles.role
   // for the logged-in user and require "admin".
@@ -201,7 +201,7 @@ export default function PaymentPage() {
           note: "到店取貨時付款，由綠界代收"
         }] : []),
         // Sandbox: skip gateway, run full pipeline (invoice / email / stock /
-        // points / LINE Notify). ADMIN ONLY — 一般會員絕不會看到此選項。
+        // points). ADMIN ONLY — 一般會員絕不會看到此選項。
         // ⚠️ test_paid marks an order paid WITHOUT real payment.
         ...(allowTestPaid ? [{
           value: "test_paid" as PaymentMethod,

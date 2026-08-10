@@ -1,9 +1,14 @@
 import * as Sentry from "@sentry/nextjs"
 
+// Loaded by instrumentation.ts → register() when NEXT_RUNTIME === "edge".
+// Applies to middleware and any route handler with `export const runtime = "edge"`.
+const dsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN
+
 Sentry.init({
-  dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+  dsn,
   tracesSampleRate: 0.1,
-  enabled: process.env.NODE_ENV === "production",
+  // Gate on DSN presence, not NODE_ENV — see sentry.server.config.ts.
+  enabled: Boolean(dsn),
   beforeSend(event) {
     // Scrub PII before sending to Sentry
     if (event.user) {

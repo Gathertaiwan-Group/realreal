@@ -82,10 +82,10 @@ const FIELD_META: Record<
     hint: "兩個都會寄到這裡：① 新訂單成立通知信 ② 首頁底部「聯絡我們」表單送出的訊息。可填多位收件人，用逗號分隔。改完 30 秒內全站生效，不需重新部署。",
     placeholder: "orders@realreal.cc, manager@realreal.cc",
   },
-  "notifications.line_notify_token": {
-    label: "LINE Notify Token",
-    hint: "用於新訂單通知 + 線上錯誤即時提醒",
-    placeholder: "xxxxxxxxxxxx",
+  "notifications.alert_email": {
+    label: "系統告警收件 Email（線上錯誤通知）",
+    hint: "線上發生錯誤時寄到這裡。留空則沿用上面的「管理員收件 Email」。同一個錯誤 15 分鐘內只寄一次、每小時最多 10 封，避免錯誤風暴洗爆寄信額度。（原本的 LINE Notify 已於 2025-03-31 停止服務，改用 Email。）",
+    placeholder: "alert@realreal.cc",
   },
   // Analytics
   "analytics.ga4_measurement_id": {

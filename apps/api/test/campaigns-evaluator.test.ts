@@ -282,14 +282,15 @@ describe("evalFreeShipping", () => {
 // ===========================================================================
 
 describe("evalBundle", () => {
-  it("returns discount_amount summing freed units (lowest_price rule)", () => {
+  it("returns discount_amount summing freed units (lowest_price rule)", async () => {
     const c = campaign("bundle", {
       buy_quantity: 3,
       free_quantity: 1,
       free_item_rule: "lowest_price",
     })
-    // Cart: 2 × $500 + 2 × $200 = 4 items total ≥ 3, free 1 cheapest = $200
-    const result = evalBundle(
+    // Cart: 2 × $500 + 2 × $200 = 4 units, which meets buy 3 + free 1 = 4.
+    // lowest_price frees the single cheapest unit = $200.
+    const result = await evalBundle(
       c,
       ctx([
         item({ unit_price: 500, qty: 2, product_id: "p-a" }),
@@ -300,13 +301,13 @@ describe("evalBundle", () => {
     expect(result.discount_amount).toBe(200)
   })
 
-  it("returns notApplied when totalQty below buy_quantity", () => {
+  it("returns notApplied when totalQty below buy_quantity", async () => {
     const c = campaign("bundle", {
       buy_quantity: 5,
       free_quantity: 1,
       free_item_rule: "lowest_price",
     })
-    const result = evalBundle(c, ctx([item({ qty: 2 })]))
+    const result = await evalBundle(c, ctx([item({ qty: 2 })]))
     expect(result.applied).toBe(false)
     expect(result.reason).toMatch(/總件數/)
   })
