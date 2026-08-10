@@ -13,7 +13,7 @@ type Invoice = {
 
 export function InvoiceCard({ invoice }: { invoice: Invoice }) {
   const statusLabel =
-    ({ pending: "開立中", issued: "已開立", voided: "已作廢" } as Record<string, string>)[invoice.status] ??
+    ({ pending: "開立中", issuing: "開立中", issued: "已開立", voided: "已作廢" } as Record<string, string>)[invoice.status] ??
     invoice.status
   const typeLabel =
     ({ B2C_2: "雲端發票", B2C_3: "載具發票", B2B: "統編發票" } as Record<string, string>)[invoice.type] ??

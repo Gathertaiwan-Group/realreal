@@ -140,16 +140,58 @@ healthServer.listen(Number(process.env.PORT ?? 4001), () =>
 
 logger.info("Worker process started (inventory, invoice, points-expire, subscription-billing, tier-expire)")
 
+/**
+ * Graceful shutdown.
+ *
+ * `worker.close()` (no argument) is the *graceful* form: BullMQ stops taking new
+ * jobs and waits for the active one to finish. That is what keeps a deploy from
+ * severing an in-flight Amego call.
+ *
+ * The timeout is not optional. Amego's HTTP timeout is 45s (lib/amego.ts) while
+ * Railway's grace period before SIGKILL is far shorter, so an unbounded wait
+ * guarantees the platform kills us mid-request — the exact ungraceful case this
+ * handler exists to remove. Bounding it means we choose *when* to stop rather
+ * than having it chosen for us, and the log line below says which happened.
+ *
+ * Being killed mid-issue is no longer able to double-issue an invoice either
+ * way: the row is left in 'issuing' with issue_attempts incremented, so whoever
+ * picks it up next queries Amego by OrderId before issuing anything (migration
+ * 0049 + lib/issue-invoice.ts). Graceful shutdown reduces how often we land in
+ * that recovery path; it is not what makes it safe.
+ */
+const SHUTDOWN_TIMEOUT_MS = 20_000
 let shuttingDown = false
 async function shutdown(signal: string) {
   if (shuttingDown) return
   shuttingDown = true
-  logger.info({ signal }, "shutting down workers")
+  logger.info({ signal }, "shutting down workers: waiting for in-flight jobs")
   healthServer.close()
-  await Promise.allSettled(workers.map(({ worker }) => worker.close()))
+
+  let timer: NodeJS.Timeout | undefined
+  const timedOut = new Promise<"timeout">((resolve) => {
+    timer = setTimeout(() => resolve("timeout"), SHUTDOWN_TIMEOUT_MS)
+  })
+
+  const drained = Promise.allSettled(workers.map(({ worker }) => worker.close())).then(
+    () => "drained" as const,
+  )
+
+  const outcome = await Promise.race([drained, timedOut])
+  if (timer) clearTimeout(timer)
+
+  if (outcome === "timeout") {
+    logger.warn(
+      { signal, timeoutMs: SHUTDOWN_TIMEOUT_MS },
+      "in-flight jobs did not finish in time; exiting anyway (stale claims are reclaimed by reclaim_stale_invoices)",
+    )
+  } else {
+    logger.info({ signal }, "all workers drained")
+  }
+
   // Anything captured while draining (a job failing as it is cancelled) would
   // otherwise die with the transport.
   await flushSentry()
+  logger.info({ signal }, "worker shutdown complete")
   process.exit(0)
 }
 

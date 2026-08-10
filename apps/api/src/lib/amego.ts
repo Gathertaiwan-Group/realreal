@@ -54,6 +54,39 @@ async function amegoPost<T>(path: string, payload: unknown): Promise<T> {
   return res.data as T
 }
 
+/**
+ * Amego business error codes we branch on.
+ *
+ * Every Amego response is HTTP 200 — success and failure alike — so the only
+ * thing that matters is the `code` in the body. These three are load-bearing for
+ * the idempotency design in workers/invoice-issuer.ts:
+ *
+ *   0        成功
+ *   71       查無資料 — for invoice_query this means "not issued yet". It is a
+ *            NORMAL RESULT, NOT AN ERROR. Getting this boundary wrong is what
+ *            turns the whole idempotency scheme from preventing duplicates into
+ *            manufacturing them: treat 71 as a failed lookup and the retry path
+ *            says "couldn't check, issue anyway" — which is the exact thing we
+ *            are defending against.
+ *   3040171  OrderId 重複 — Amego enforces uniqueness on OrderId, so this is a
+ *            positive idempotency signal: "this order already has an invoice".
+ *            Never treat it as a plain failure; look the invoice up and adopt it.
+ */
+export const AMEGO_OK = 0
+export const AMEGO_CODE_NOT_FOUND = 71
+export const AMEGO_CODE_DUPLICATE_ORDER = 3040171
+
+/** An Amego business error, carrying the numeric `code` so callers can branch. */
+export class AmegoError extends Error {
+  constructor(
+    message: string,
+    readonly code: number | null,
+  ) {
+    super(message)
+    this.name = "AmegoError"
+  }
+}
+
 export type InvoiceType = "B2C_2" | "B2C_3" | "B2B"
 
 export interface IssueInvoiceParams {
@@ -152,8 +185,14 @@ export async function issueInvoice(params: IssueInvoiceParams) {
   }
 
   const res = await amegoPost<AmegoIssueResponse>("/json/c0401", payload)
-  if (res.code !== 0 || !res.invoice_number) {
-    throw new Error(`Amego issue failed: ${res.msg ?? JSON.stringify(res)}`)
+  if (res.code !== AMEGO_OK || !res.invoice_number) {
+    // AmegoError (not Error) so the caller can see code 3040171 — "OrderId
+    // 重複" — and treat it as "already issued, go adopt it" instead of as a
+    // failure that should be retried into a second real invoice.
+    throw new AmegoError(
+      `Amego issue failed: ${res.msg ?? JSON.stringify(res)}`,
+      typeof res.code === "number" ? res.code : null,
+    )
   }
   return {
     invoiceNumber: res.invoice_number,
@@ -205,8 +244,89 @@ export async function voidInvoice(invoiceNumber: string, reason: string) {
   return res
 }
 
-export async function queryInvoice(invoiceNumber: string) {
-  return amegoPost("/json/invoice_query", [{ InvoiceNumber: invoiceNumber }])
+interface AmegoQueryResponse {
+  code: number
+  msg?: string
+  data?: {
+    invoice_number?: string
+    random_number?: string
+    invoice_type?: string
+    total_amount?: number
+    wait?: Array<{ invoice_type?: string }>
+  }
+}
+
+export interface InvoiceQueryHit {
+  invoiceNumber: string
+  randomNumber: string
+  totalAmount: number
+  /** A pending C0501 in `wait` means a void has been submitted but not settled. */
+  pendingVoid: boolean
+}
+
+/**
+ * 用 OrderId 向 Amego 反查發票。
+ *
+ * This is the single most important piece of the "never issue twice" design.
+ * The window it closes: we call /json/c0401, Amego really issues a government
+ * e-invoice, and then our process dies before the DB records it. Nothing in our
+ * database knows the invoice exists, so a naive retry opens a SECOND real one —
+ * and e-invoices cannot be recalled.
+ *
+ * `OrderId` is unique on Amego's side, and issueInvoice() sends
+ * `orders.order_number` as OrderId, which is TEXT UNIQUE in our schema. So the
+ * order number is a natural idempotency key shared by both systems, and this
+ * lookup answers "did the previous attempt actually succeed?" authoritatively.
+ *
+ * Verified against Amego's TEST environment (統編 12345678) on 2026-08-11:
+ *   { type:"order", order_id:"…" }  → {"code":71,"msg":"查無資料"}   ← correct shape
+ *   [{ InvoiceNumber:"…" }]         → {"code":31,"msg":"type 查詢類型不存在"}
+ * The array form is what this function replaced — it was never a working call.
+ *
+ * Three-state return, and the distinction is the whole point:
+ *   { ok:true,  hit:<obj> }  已經開過了 → adopt it, do NOT issue
+ *   { ok:true,  hit:null  }  確定還沒開過（code 71） → safe to issue
+ *   { ok:false, msg }        不知道（sign error, network, …) → NOT the same as
+ *                            "not issued"; the caller must fall back to Amego's
+ *                            own OrderId uniqueness rather than assume anything.
+ */
+export async function findInvoiceByOrderId(
+  orderId: string,
+): Promise<{ ok: true; hit: InvoiceQueryHit | null } | { ok: false; msg: string }> {
+  try {
+    const res = await amegoPost<AmegoQueryResponse>("/json/invoice_query", {
+      type: "order",
+      order_id: orderId,
+    })
+
+    if (res.code === AMEGO_OK) {
+      const d = res.data ?? {}
+      const number = String(d.invoice_number ?? "")
+      // code 0 with no number should not happen; treat it as "cannot confirm"
+      // rather than as "not issued" — the latter would authorise a re-issue.
+      if (!number) return { ok: false, msg: "code 0 but no invoice_number" }
+      const wait = Array.isArray(d.wait) ? d.wait : []
+      return {
+        ok: true,
+        hit: {
+          invoiceNumber: number,
+          randomNumber: String(d.random_number ?? ""),
+          totalAmount: Number(d.total_amount ?? 0),
+          pendingVoid: wait.some((w) => String(w?.invoice_type ?? "") === "C0501"),
+        },
+      }
+    }
+
+    // 查無資料 = definitively not issued yet. The ONLY code that may be read as
+    // "safe to issue".
+    if (res.code === AMEGO_CODE_NOT_FOUND) return { ok: true, hit: null }
+
+    return { ok: false, msg: `code=${res.code} ${res.msg ?? ""}`.trim() }
+  } catch (err: any) {
+    // Transport failure (timeout, DNS, IP allow-list rejection). Explicitly NOT
+    // "not issued".
+    return { ok: false, msg: `query transport error: ${err?.message ?? String(err)}` }
+  }
 }
 
 export function invoicePdfUrl(invoiceNumber: string) {

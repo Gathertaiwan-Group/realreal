@@ -674,6 +674,9 @@ export function OrderTimeline({ status, createdAt, logistics }: OrderTimelinePro
 
 const INVOICE_STATUS_LABEL: Record<string, string> = {
   pending: "待開立",
+  // 'issuing' 是 migration 0049 加的中間狀態：已經向 Amego 送出、還沒收到／還沒記錄
+  // 結果。它存在的目的就是讓這段空窗在系統裡看得見，所以它必須在 UI 上有名字。
+  issuing: "開立中",
   issued: "已開立",
   voided: "已作廢",
   failed: "開立失敗",
@@ -684,6 +687,7 @@ const INVOICE_STATUS_VARIANT: Record<
   "default" | "secondary" | "outline" | "destructive"
 > = {
   pending: "outline",
+  issuing: "secondary",
   issued: "default",
   voided: "destructive",
   failed: "destructive",
@@ -753,8 +757,11 @@ export function InvoiceCard({
     })
   }
 
+  // 'issuing' 也要能按補開。卡在 issuing 的列是「行程死在開票途中」留下的，正是最需要
+  // 人工推一把的那一種；把按鈕藏起來等於讓它從後台消失。重複按是安全的——真正的
+  // 防重複在 DB 的 claim_invoice_issue，而不是這個按鈕的可見性。
   const canReissue =
-    invoice.status === "pending" || invoice.status === "failed"
+    invoice.status === "pending" || invoice.status === "failed" || invoice.status === "issuing"
   const canVoid = invoice.status === "issued"
 
   return (

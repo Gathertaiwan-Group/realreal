@@ -250,10 +250,31 @@ export async function enqueuePostPaymentJobs(orderId: string) {
       }
     }
 
+    // De-duplicate on the order: every payment gateway retries its webhook, and
+    // admin "retry post-payment" lands here too, so the same order can be
+    // enqueued several times within seconds. A stable jobId collapses those into
+    // one job.
+    //
+    // ⚠️ This is a courtesy, NOT the safety mechanism. BullMQ re-delivers
+    // *stalled* jobs (a job whose worker died mid-flight) under the SAME id, and
+    // that re-delivery is exactly the case that used to open a second real
+    // invoice. Duplicate issuance is prevented in the database by
+    // claim_invoice_issue (migration 0049); never rely on this line for it.
+    //
+    // removeOnComplete/removeOnFail matter: BullMQ refuses an add() whose jobId
+    // still exists in ANY set, so a retained completed/failed job would block
+    // every future enqueue for this order. Failures stay visible in
+    // invoices.error_message and Sentry, not in the failed set.
     await invoiceQueue.add(
       "issue",
       { orderId },
-      { attempts: 5, backoff: { type: "exponential", delay: 60000 } },
+      {
+        jobId: `invoice:order:${orderId}`,
+        attempts: 5,
+        backoff: { type: "exponential", delay: 60000 },
+        removeOnComplete: true,
+        removeOnFail: true,
+      },
     )
   } catch (err) {
     console.warn("[post-payment] invoice creation/enqueue failed (non-fatal):", err)
