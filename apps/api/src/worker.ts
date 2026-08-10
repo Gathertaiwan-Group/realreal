@@ -1,3 +1,19 @@
+// Sentry first, so its instrumentation and global handlers are installed before
+// anything below is constructed. This is the SAME module the API process uses
+// (src/sentry.ts): the `enabled` gate is "is a SENTRY_DSN set", never
+// NODE_ENV — Railway does not guarantee it injects NODE_ENV, and a NODE_ENV gate
+// fails closed exactly when reporting matters.
+//
+// Until now the worker had no Sentry at all: BullMQ job failures and worker
+// crashes were logged to stdout and nowhere else.
+//
+// ⚠️ Only `Sentry.captureException` is used below — never `sendAlert`.
+// sentry.ts's `beforeSend` is the single place alerts are emailed, and it
+// already applies a 15-minute per-fingerprint dedupe plus a 10/hour global cap.
+// Alerting here as well would send two emails for one failure and, with
+// `attempts: 5` on most jobs, five failed attempts of the SAME job would become
+// five emails instead of one.
+import { Sentry } from "./sentry"
 import http from "http"
 import pino from "pino"
 import { inventoryQueue } from "./lib/queue"
@@ -54,13 +70,57 @@ const workers = [
   { name: "tier-expire", worker: tierExpireWorker },
 ]
 
-for (const { name, worker } of workers) {
-  worker.on("failed", (job, err) => logger.error({ queue: name, jobId: job?.id, err: err.message }, "job failed"))
-  worker.on("error", (err) => logger.error({ queue: name, err: err.message }, "worker error"))
+/**
+ * Give Sentry a moment to ship queued events before the process dies.
+ *
+ * `process.exit()` tears the transport down mid-flight, so anything captured on
+ * the way out is lost unless we flush first. Never throws and never blocks
+ * shutdown for longer than the timeout — a reporting problem must not turn into
+ * a worker that refuses to stop. When no DSN is configured this resolves
+ * immediately.
+ */
+const SENTRY_FLUSH_TIMEOUT_MS = 2_000
+async function flushSentry(): Promise<void> {
+  try {
+    await Sentry.flush(SENTRY_FLUSH_TIMEOUT_MS)
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, "sentry flush failed (non-fatal)")
+  }
 }
 
-registerSchedulers().catch((err) => {
+for (const { name, worker } of workers) {
+  worker.on("failed", (job, err) => {
+    logger.error({ queue: name, jobId: job?.id, err: err.message }, "job failed")
+    // Fires once per failed ATTEMPT. Jobs are enqueued with `attempts: 5`, so a
+    // single bad job raises this up to five times with the same error — Sentry
+    // groups them, and sendAlert's per-fingerprint cooldown collapses them into
+    // one email. Nothing extra is needed here, and nothing extra may be added.
+    Sentry.captureException(err, {
+      tags: { component: "worker", queue: name, job_name: job?.name },
+      // Ids and counters only. Job payloads can carry customer data and this
+      // codebase has leaked PII before — do not widen this to `job.data`.
+      extra: { jobId: job?.id, attemptsMade: job?.attemptsMade },
+    })
+  })
+  worker.on("error", (err) => {
+    logger.error({ queue: name, err: err.message }, "worker error")
+    // Worker-level failures (Redis dropped, malformed job, handler blew up
+    // outside a job). During a Redis outage this can fire repeatedly; the alert
+    // module's dedupe + hourly cap is what bounds the email volume.
+    Sentry.captureException(err, {
+      tags: { component: "worker", queue: name, scope: "worker-error" },
+    })
+  })
+}
+
+registerSchedulers().catch(async (err) => {
   logger.error({ err: err.message }, "failed to register job schedulers")
+  // Without this the worker exits 1 on a bad deploy and the only trace is a
+  // Railway log line nobody is watching.
+  Sentry.captureException(err, {
+    tags: { component: "worker", scope: "scheduler-registration" },
+  })
+  await flushSentry()
   process.exit(1)
 })
 
@@ -87,6 +147,9 @@ async function shutdown(signal: string) {
   logger.info({ signal }, "shutting down workers")
   healthServer.close()
   await Promise.allSettled(workers.map(({ worker }) => worker.close()))
+  // Anything captured while draining (a job failing as it is cancelled) would
+  // otherwise die with the transport.
+  await flushSentry()
   process.exit(0)
 }
 
