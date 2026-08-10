@@ -1230,6 +1230,14 @@ export default function CheckoutPage() {
                 <InvoiceSelector value={invoice} onChange={setInvoice} />
               </section>
 
+              {/* Shipping packaging reminder */}
+              <section className="space-y-2">
+                <h2 className="text-lg font-semibold border-b pb-2">📦 出貨提醒</h2>
+                <p className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                  隨身包目前採散包出貨，不附紙盒。
+                </p>
+              </section>
+
               {/* Order notes */}
               <section className="space-y-4">
                 <h2 className="text-lg font-semibold border-b pb-2">備註</h2>
