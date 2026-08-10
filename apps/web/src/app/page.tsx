@@ -380,6 +380,14 @@ function RetailSection() {
       mapUrl: "https://maps.app.goo.gl/Ug2Jy4SVUDupV4TN8?g_st=ic",
       icon: "💊",
     },
+    {
+      name: "松泰藥師藥局",
+      type: "藥局",
+      address: "新北市三重區正德里大同北路65號",
+      phone: "(02) 2985-9593",
+      mapUrl: "https://share.google/4GjO1Zak3zUgjH6Tu",
+      icon: "💊",
+    },
     // 蔬食店
     {
       name: "原粹蔬食作",
