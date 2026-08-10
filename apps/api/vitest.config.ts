@@ -3,6 +3,11 @@ import { defineConfig } from "vitest/config"
 export default defineConfig({
   test: {
     environment: "node",
+    // Corrects supertest's bind/connect address-family mismatch (it binds the
+    // dual-stack wildcard but dials 127.0.0.1), which let an unrelated local
+    // process holding the same ephemeral port on the IPv4 loopback answer our
+    // requests. See vitest.setup.ts for the full mechanism and measurements.
+    setupFiles: ["./vitest.setup.ts"],
     // Only run TS sources — `tsc` (build) emits compiled *.test.js into dist/,
     // which vitest would otherwise pick up as duplicate, broken suites.
     //
