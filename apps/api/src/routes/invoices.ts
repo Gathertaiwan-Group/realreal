@@ -1,7 +1,7 @@
 import { Router } from "express"
 import { supabase } from "../lib/supabase"
 import { voidInvoice, invoicePdfUrl } from "../lib/amego"
-import { invoiceQueue } from "../workers/invoice-issuer"
+import { invoiceQueue } from "../lib/queue"
 
 export const invoicesRouter = Router()
 

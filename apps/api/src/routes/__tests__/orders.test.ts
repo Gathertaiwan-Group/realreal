@@ -24,7 +24,10 @@ vi.mock("../../lib/linepay", () => ({
 vi.mock("../../lib/jkopay", () => ({
   initiatePayment: vi.fn().mockResolvedValue({ paymentUrl: "https://sandbox.jkopay.example/pay", merchantTradeNo: "jko-tx-1" }),
 }))
-vi.mock("../../lib/queue", () => ({ inventoryQueue: { add: vi.fn() } }))
+vi.mock("../../lib/queue", () => ({
+  inventoryQueue: { add: vi.fn() },
+  invoiceQueue: { add: vi.fn() },
+}))
 vi.mock("../../lib/enqueue-post-payment", () => ({
   enqueuePostPaymentJobs: vi.fn(),
   notifyOrderPlacedCod: vi.fn(),

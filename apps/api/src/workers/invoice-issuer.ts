@@ -1,11 +1,15 @@
-import { Worker, Queue } from "bullmq"
+import { Worker } from "bullmq"
 import { Redis } from "ioredis"
 import { supabase } from "../lib/supabase"
 import { issueInvoice, type IssueInvoiceParams } from "../lib/amego"
 
 const connection = new Redis(process.env.REDIS_URL ?? "redis://localhost:6379", { maxRetriesPerRequest: null })
 
-export const invoiceQueue = new Queue("invoice", { connection })
+// The "invoice" *queue* (the producer handle) now lives in lib/queue.ts. It used
+// to be declared here, which meant every producer — lib/enqueue-post-payment.ts
+// and routes/invoices.ts, both reachable from app.ts — imported this file and so
+// started the invoice Worker below inside the API process as well as the worker
+// process. This module is now imported only by src/worker.ts.
 
 export const invoiceWorker = new Worker("invoice", async (job) => {
   // Support both invoiceId (reissue) and orderId (new from payment webhook)

@@ -12,7 +12,10 @@ vi.mock("../../lib/supabase", () => ({
 // admin-orders.ts pulls in a handful of side-effect libs at module load. Stub
 // them so importing the app never reaches out to ECPay / Amego / queues.
 vi.mock("../../lib/enqueue-post-payment", () => ({ enqueuePostPaymentJobs: vi.fn() }))
-vi.mock("../../lib/queue", () => ({ inventoryQueue: { add: vi.fn() } }))
+vi.mock("../../lib/queue", () => ({
+  inventoryQueue: { add: vi.fn() },
+  invoiceQueue: { add: vi.fn() },
+}))
 vi.mock("../../lib/amego", () => ({ voidInvoice: vi.fn() }))
 vi.mock("../../lib/ecpay-logistics", () => ({ cancelEcpayLogistics: vi.fn() }))
 vi.mock("../../lib/refund-payment", () => ({ refundPayment: vi.fn() }))
