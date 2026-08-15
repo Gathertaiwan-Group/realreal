@@ -57,7 +57,16 @@ const postSchema = z.object({
   slug: z.string().min(1).regex(/^[\p{L}\p{N}-]+$/u).optional(),
   content_html: z.string().optional(),
   excerpt: z.string().optional(),
-  cover_image: z.string().url().optional().nullable(),
+  // Accepts a full URL (Supabase Storage uploads) or a root-relative path
+  // (static assets in apps/web/public/, e.g. legacy posts using
+  // /blog/story-cover.jpg) — z.string().url() alone rejected the latter.
+  cover_image: z
+    .string()
+    .refine((v) => /^https?:\/\//.test(v) || v.startsWith("/"), {
+      message: "cover_image must be a full URL or a root-relative path",
+    })
+    .optional()
+    .nullable(),
   status: z.enum(["draft", "published", "scheduled"]).optional(),
   category_id: z.string().uuid().optional().nullable(),
   // Array of tag UUIDs OR a comma-separated string of tag names (form sends the latter).
