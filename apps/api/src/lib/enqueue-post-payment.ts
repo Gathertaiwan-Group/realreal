@@ -269,7 +269,10 @@ export async function enqueuePostPaymentJobs(orderId: string) {
       "issue",
       { orderId },
       {
-        jobId: `invoice:order:${orderId}`,
+        // '-'-joined, never ':' — BullMQ rejects a custom jobId containing ':'
+        // ("Custom Id cannot contain :"), which would throw and skip enqueuing
+        // the invoice for every paid order. Still stable per order (dedup intact).
+        jobId: `invoice-order-${orderId}`,
         attempts: 5,
         backoff: { type: "exponential", delay: 60000 },
         removeOnComplete: true,

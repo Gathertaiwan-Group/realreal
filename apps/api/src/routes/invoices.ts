@@ -73,7 +73,10 @@ invoicesRouter.post("/:id/reissue", async (req, res) => {
   // clicks — or a scripted loop re-driving the paid-but-unissued backlog — can
   // land in the same millisecond, collide on jobId, and have the second add()
   // silently discarded while the API still returns 200.
-  const jobId = `invoice:reissue:${id}:${randomUUID()}`
+  // Segments are '-'-joined, never ':' — BullMQ rejects a custom jobId that
+  // contains ':' (its Redis key separator) with "Custom Id cannot contain :",
+  // which throws here (500, nothing enqueued). randomUUID keeps it unique.
+  const jobId = `invoice-reissue-${id}-${randomUUID()}`
   await invoiceQueue.add(
     "issue",
     { invoiceId: id },

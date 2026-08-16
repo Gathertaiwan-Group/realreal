@@ -111,6 +111,10 @@ describe("POST /admin/invoices/:id/reissue", () => {
     expect(jobIds[0]).toBeTruthy()
     expect(jobIds[0]).not.toBe(jobIds[1])
     expect(jobIds[0]).toContain(INVOICE_ID)
+    // BullMQ rejects a custom jobId containing ':' — regression guard for the
+    // "Custom Id cannot contain :" 500 that made reissue never enqueue.
+    expect(jobIds[0]).not.toContain(":")
+    expect(jobIds[1]).not.toContain(":")
   })
 
   it("已開立 → 400，且不入列（快速回饋；真正的保護在 DB claim）", async () => {
