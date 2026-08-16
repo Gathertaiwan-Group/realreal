@@ -188,6 +188,11 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
           </div>
 
           <div className="flex flex-col">
+            {product.badge_text && (
+              <Badge className="mb-2 w-fit" style={{ backgroundColor: "#f59e0b" }}>
+                {product.badge_text}
+              </Badge>
+            )}
             {minTierName && (
               <Badge className="mb-2 w-fit" style={{ backgroundColor: "#10305a" }}>
                 {minTierName}限定

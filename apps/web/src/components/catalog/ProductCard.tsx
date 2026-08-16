@@ -41,8 +41,16 @@ export function ProductCard({
             </div>
           )}
 
-          {/* Sale badge */}
-          {hasDiscount && (
+          {/* Free-text badge (e.g. "期間限定") takes over the top-left slot;
+              falls back to the discount-derived "優惠" badge when unset. */}
+          {product.badge_text ? (
+            <div
+              className="absolute top-2 left-2 px-2 py-0.5 text-xs font-bold text-white"
+              style={{ backgroundColor: "#f59e0b" }}
+            >
+              {product.badge_text}
+            </div>
+          ) : hasDiscount && (
             <div
               className="absolute top-2 left-2 px-2 py-0.5 text-xs font-bold text-white"
               style={{ backgroundColor: "#f59e0b" }}

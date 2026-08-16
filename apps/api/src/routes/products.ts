@@ -93,7 +93,7 @@ productsRouter.get("/", async (req, res) => {
 
   let query = supabase
     .from("products")
-    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, is_recommended, display_priority, created_at, min_tier_id, membership_tiers!min_tier_id(id, name, min_spend), product_variants(id, sku, name, price, sale_price, addon_price, addon_limit, stock_qty)", { count: "exact" })
+    .select("id, name, slug, description, category_id, images, is_active, is_featured, is_addon, is_recommended, display_priority, created_at, min_tier_id, badge_text, membership_tiers!min_tier_id(id, name, min_spend), product_variants(id, sku, name, price, sale_price, addon_price, addon_limit, stock_qty)", { count: "exact" })
     .eq("is_active", true)
     .is("deleted_at", null)
     .order("is_featured", { ascending: false })
@@ -145,7 +145,7 @@ productsRouter.get("/:slug", async (req, res) => {
   const { data, error } = await supabase
     .from("products")
     .select(`
-      id, name, slug, description, excerpt, category_id, images, is_active, created_at, min_tier_id,
+      id, name, slug, description, excerpt, category_id, images, is_active, created_at, min_tier_id, badge_text,
       membership_tiers!min_tier_id(id, name, min_spend),
       product_variants (id, sku, name, price, sale_price, addon_price, addon_limit, stock_qty, weight, attributes)
     `)
