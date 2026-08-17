@@ -46,7 +46,7 @@ export function ProductCard({
           {product.badge_text ? (
             <div
               className="absolute top-2 left-2 px-2 py-0.5 text-xs font-bold text-white"
-              style={{ backgroundColor: "#f59e0b" }}
+              style={{ backgroundColor: "#F4617A" }}
             >
               {product.badge_text}
             </div>
