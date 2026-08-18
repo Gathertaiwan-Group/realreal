@@ -17,6 +17,7 @@ vi.mock("../supabase", () => ({
 import {
   evalBuyXGetY,
   evalBundle,
+  evalFreebie,
   type CartItem,
   type EvaluatorContext,
 } from "../campaigns-evaluator"
@@ -295,5 +296,53 @@ describe("evalBundle — 適用範圍/指定分類 (scope + category_slug)", () 
     )
     expect(r.applied).toBe(false)
     expect(r.discount_amount ?? 0).toBe(0)
+  })
+})
+
+// evalFreebie coupon gating (ZUMBA100-style: "enter this exact code, get a
+// free item — no spending threshold, and no discount from the coupon itself").
+// A campaign with coupon_id set must only fire when ctx.couponId matches it;
+// ctx.couponId is the caller's already-validated coupon (active, not expired,
+// under max_uses) so a mismatch also naturally covers "wrong/expired/no code".
+function freebieCampaign(config: Record<string, unknown>, couponId: string | null = null) {
+  return {
+    id: "camp-freebie-1",
+    name: "Zumba 活動贈品",
+    type: "freebie",
+    is_active: true,
+    starts_at: "2026-01-01T00:00:00Z",
+    ends_at: null,
+    tier_id: null,
+    config,
+    coupon_id: couponId,
+  }
+}
+
+const FREEBIE_CFG = { min_order_amount: 0, gift_sku: "251A", gift_qty: 1, gift_name: "初心原味隨身包" }
+
+describe("evalFreebie — coupon-gated freebie", () => {
+  it("does NOT apply when the campaign requires a coupon and none was entered", async () => {
+    const ctx = ctxWith([item("p-x", 100, 1)])
+    const r = await evalFreebie(freebieCampaign(FREEBIE_CFG, "coupon-zumba"), ctx)
+    expect(r.applied).toBe(false)
+  })
+
+  it("does NOT apply when a DIFFERENT coupon was entered", async () => {
+    const ctx: EvaluatorContext = { ...ctxWith([item("p-x", 100, 1)]), couponId: "coupon-other" }
+    const r = await evalFreebie(freebieCampaign(FREEBIE_CFG, "coupon-zumba"), ctx)
+    expect(r.applied).toBe(false)
+  })
+
+  it("applies when the matching coupon was entered, even with $0 subtotal-independent threshold", async () => {
+    const ctx: EvaluatorContext = { ...ctxWith([item("p-x", 1, 1)]), couponId: "coupon-zumba" }
+    const r = await evalFreebie(freebieCampaign(FREEBIE_CFG, "coupon-zumba"), ctx)
+    expect(r.applied).toBe(true)
+    expect(r.free_items).toEqual([{ sku: "251A", qty: 1, name: "初心原味隨身包", unit_price: 0 }])
+  })
+
+  it("applies with no gating at all when coupon_id is unset (legacy min-order-only freebie)", async () => {
+    const ctx = ctxWith([item("p-x", 100, 1)])
+    const r = await evalFreebie(freebieCampaign(FREEBIE_CFG, null), ctx)
+    expect(r.applied).toBe(true)
   })
 })

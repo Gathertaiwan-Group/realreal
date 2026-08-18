@@ -13,7 +13,10 @@ export const couponsRouter = Router()
 const couponCreateSchema = z.object({
   code: z.string().min(1).max(64),
   type: z.enum(["percentage", "fixed"]),
-  value: z.number().positive(),
+  // nonnegative (not positive): a $0 fixed coupon is legitimate when its only
+  // purpose is to unlock a coupon-gated campaign (e.g. a "freebie" campaign
+  // with coupon_id set) — the coupon itself gives no discount.
+  value: z.number().nonnegative(),
   min_order: z.number().nonnegative().optional().default(0),
   max_uses: z.number().int().positive().optional().nullable(),
   expires_at: z.string().datetime().optional().nullable(),

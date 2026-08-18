@@ -40,6 +40,43 @@ function centsToTwd(cents: number): number {
   return Math.round(cents) / 100
 }
 
+/**
+ * Resolve a typed coupon code to its id, but only if it's actually usable
+ * right now (active, not expired, under max_uses, min-order met, tier OK).
+ * Used purely to gate coupon-linked campaigns (see evalFreebie) BEFORE the
+ * campaign evaluator runs — campaign evaluation happens earlier in both
+ * /orders and /orders/preview than the real coupon-discount block, so that
+ * block can't supply this. Deliberately duplicates that block's validity
+ * predicate rather than restructuring it: this is read-only (no
+ * atomic_increment_coupon_usage call), so evaluating a coupon here twice per
+ * request is cheap and safe, and the two "is this coupon good right now?"
+ * checks are logically the same, just triggered from two different call sites.
+ */
+async function resolveValidCouponId(
+  couponCode: string | undefined,
+  subtotalCents: number,
+  profileTierId: string | null,
+  userId: string | undefined,
+): Promise<string | null> {
+  if (!couponCode) return null
+  const { data: coupon } = await supabase
+    .from("coupons")
+    .select("id, min_order, max_uses, used_count, expires_at, tier_id, is_active")
+    .eq("code", couponCode)
+    .maybeSingle()
+  if (!coupon) return null
+  const now = new Date()
+  const minOrderCents = coupon.min_order != null ? Math.round(Number(coupon.min_order) * 100) : null
+  const tierOk = !coupon.tier_id || (userId != null && profileTierId === coupon.tier_id)
+  const usable =
+    coupon.is_active !== false &&
+    (!coupon.expires_at || new Date(coupon.expires_at) >= now) &&
+    (minOrderCents == null || subtotalCents >= minOrderCents) &&
+    (coupon.max_uses == null || Number(coupon.used_count ?? 0) < coupon.max_uses) &&
+    tierOk
+  return usable ? (coupon.id as string) : null
+}
+
 const orderItemSchema = z.object({
   variantId: z.string().uuid(),
   qty: z.number().int().positive(),
@@ -224,6 +261,8 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
     })),
   ]
 
+  const earlyCouponId = await resolveValidCouponId(couponCode, subtotalCents, profileTierId, userId)
+
   const evaluatorCtx: EvaluatorContext = {
     user: {
       id: userId ?? "",
@@ -236,6 +275,7 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
       subtotal: subtotalCents / 100,
       shipping_fee: shippingFeeCents / 100,
     },
+    couponId: earlyCouponId,
   }
   const campaignResults = await evaluateAllCampaigns(evaluatorCtx)
 
@@ -622,6 +662,8 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     }
   })
 
+  const earlyCouponId = await resolveValidCouponId(couponCode, subtotalCents, profileTierId, userId)
+
   const evaluatorCtx: EvaluatorContext = {
     user: {
       id: userId ?? "",
@@ -634,6 +676,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       subtotal: subtotalCents / 100,
       shipping_fee: shippingFeeCents / 100,
     },
+    couponId: earlyCouponId,
   }
   const campaignResults = await evaluateAllCampaigns(evaluatorCtx)
 

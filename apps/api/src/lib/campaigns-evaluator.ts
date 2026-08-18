@@ -38,6 +38,14 @@ export type EvaluatorContext = {
     /** Shipping fee in dollars. */
     shipping_fee: number
   }
+  /**
+   * id of the coupon the customer typed at checkout, already validated
+   * (active, not expired, under max_uses, tier/min-order OK) by the caller —
+   * null/undefined when no coupon was entered or it failed validation.
+   * Only consumed by campaigns that set config-level coupon gating (see
+   * evalFreebie); campaigns without a linked coupon ignore this entirely.
+   */
+  couponId?: string | null
 }
 
 export type FreeItem = {
@@ -79,6 +87,8 @@ type CampaignRow = {
   ends_at: string | null
   tier_id: string | null
   config: Record<string, unknown> | null
+  /** When set, this campaign only applies while that exact coupon is entered — see evalFreebie. */
+  coupon_id?: string | null
 }
 
 /* ============================================================================
@@ -284,11 +294,21 @@ export async function evalDiscount(
   return { ...applied(c), discount_amount: discount }
 }
 
-// 2. freebie — gift when subtotal hits threshold
+// 2. freebie — gift when subtotal hits threshold, optionally gated behind a coupon code
 export async function evalFreebie(
   c: CampaignRow,
   ctx: EvaluatorContext,
 ): Promise<EvaluatorResult> {
+  // Coupon-gated freebie (e.g. "enter ZUMBA100, get a free sachet — no
+  // spending threshold"): a campaign with coupon_id set must only fire when
+  // the customer actually entered that exact coupon. ctx.couponId already
+  // reflects the caller's full validity check (active/not expired/under
+  // max_uses/tier), so a mismatch here also naturally covers "coupon expired
+  // or invalid" — this campaign simply doesn't see itself as unlocked.
+  if (c.coupon_id && c.coupon_id !== ctx.couponId) {
+    return notApplied(c, "此贈品活動需要對應的優惠碼")
+  }
+
   const cfg = getConfig(c)
   const minOrder = asNumber(cfg.min_order_amount)
   const giftSku = asString(cfg.gift_sku)
