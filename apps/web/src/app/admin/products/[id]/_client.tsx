@@ -225,23 +225,34 @@ export default function AdminProductEditClient({ product }: { product: ProductRo
 
   async function handleVariantSave(variant: Variant) {
     setVariantSaving(variant.id)
-    const token = await getToken()
-    await fetch(`${API_URL}/products/${product.id}/variants/${variant.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-      body: JSON.stringify({
-        name: variant.name,
-        price: variant.price,
-        sale_price: variant.sale_price || null,
-        addon_price: variant.addon_price ?? null,
-        addon_limit: variant.addon_limit ?? 1,
-        stock_qty: variant.stock_qty,
-        sku: variant.sku || undefined,
-        weight: variant.weight,
-        attributes: variant.attributes,
-      }),
-    })
-    setVariantSaving(null)
+    try {
+      const token = await getToken()
+      const res = await fetch(`${API_URL}/products/${product.id}/variants/${variant.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+        body: JSON.stringify({
+          name: variant.name,
+          price: variant.price,
+          sale_price: variant.sale_price || null,
+          addon_price: variant.addon_price ?? null,
+          addon_limit: variant.addon_limit ?? 1,
+          stock_qty: variant.stock_qty,
+          sku: variant.sku || undefined,
+          weight: variant.weight,
+          attributes: variant.attributes,
+        }),
+      })
+      if (res.ok) {
+        toast.success(`「${variant.name}」已儲存`)
+      } else {
+        const errData = await res.json().catch(() => ({}))
+        toast.error(`儲存失敗 (${res.status})：${JSON.stringify(errData)}`)
+      }
+    } catch (err) {
+      toast.error(`網路錯誤：${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setVariantSaving(null)
+    }
   }
 
   function updateVariant(
