@@ -1243,9 +1243,6 @@ export default function CheckoutPage() {
                 <h2 className="text-lg font-semibold border-b pb-2">備註</h2>
                 <div className="space-y-1.5">
                   <Label htmlFor="notes">訂單備註（選填）</Label>
-                  <p className="text-xs" style={{ color: "#10305a" }}>
-                    有人推薦你認識誠真嗎？在下面留下對方的姓名或手機末三碼，我們會各送一包隨身包。
-                  </p>
                   <textarea
                     id="notes"
                     value={notes}
