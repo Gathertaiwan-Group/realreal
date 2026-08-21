@@ -20,12 +20,14 @@ export function AddToCartSection({
   imageUrl,
   minTierName,
   userQualifies = true,
+  variantNote,
 }: {
   productName: string
   variants: Variant[]
   imageUrl?: string
   minTierName?: string
   userQualifies?: boolean
+  variantNote?: string
 }) {
   const [selectedVariantId, setSelectedVariantId] = useState<string>(
     variants[0]?.id ?? ""
@@ -110,6 +112,9 @@ export function AddToCartSection({
             )
           })}
         </div>
+        {variantNote && (
+          <p className="text-xs" style={{ color: "#687279" }}>{variantNote}</p>
+        )}
       </div>
 
       {/* Price display */}

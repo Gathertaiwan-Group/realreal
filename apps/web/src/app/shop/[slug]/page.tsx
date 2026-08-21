@@ -139,6 +139,20 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
 
   const isHtml = (s: string | null) => (s ?? "").includes("<")
 
+  // Some products author a variant-selection hint (e.g. "選擇其他口味請於
+  // 結帳頁面備註") as the excerpt's first paragraph so it can live in the
+  // DB alongside the rest of the excerpt content. Pull that specific line
+  // out to render next to the variant buttons instead of down with the
+  // rest of the excerpt.
+  const VARIANT_NOTE_TEXT = "選擇其他口味請於結帳頁面備註"
+  const variantNotePrefix = `<p>${VARIANT_NOTE_TEXT}</p>`
+  let variantNote: string | undefined
+  let displayExcerpt = product.excerpt
+  if (product.excerpt?.startsWith(variantNotePrefix)) {
+    variantNote = VARIANT_NOTE_TEXT
+    displayExcerpt = product.excerpt.slice(variantNotePrefix.length).replace(/^\n+/, "")
+  }
+
   return (
     <div className="min-h-screen bg-white">
       <style>{`
@@ -212,15 +226,16 @@ export default async function ProductDetailPage({ params }: { params: Promise<{ 
                 imageUrl={mainImage ?? undefined}
                 minTierName={minTierName}
                 userQualifies={userQualifies}
+                variantNote={variantNote}
               />
             </div>
 
             {/* Excerpt — short intro stays in right column */}
-            {product.excerpt && (
+            {displayExcerpt && (
               <div className="mt-6 pt-6 border-t border-gray-100">
-                {isHtml(product.excerpt)
-                  ? <RichContent html={product.excerpt} />
-                  : <PlainTextContent text={product.excerpt} />}
+                {isHtml(displayExcerpt)
+                  ? <RichContent html={displayExcerpt} />
+                  : <PlainTextContent text={displayExcerpt} />}
               </div>
             )}
           </div>
