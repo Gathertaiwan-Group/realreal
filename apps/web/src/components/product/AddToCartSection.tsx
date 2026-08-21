@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Minus, Plus, ShoppingCart } from "lucide-react"
+import { Minus, Plus, PencilLine, ShoppingCart } from "lucide-react"
 import { useCart } from "@/lib/cart"
 import { Badge } from "@/components/ui/badge"
 import { AddonStrip } from "./AddonStrip"
@@ -113,7 +113,13 @@ export function AddToCartSection({
           })}
         </div>
         {variantNote && (
-          <p className="text-xs" style={{ color: "#687279" }}>{variantNote}</p>
+          <p
+            className="flex items-center justify-center gap-1.5 text-xs font-semibold text-center"
+            style={{ color: "#10305a" }}
+          >
+            <PencilLine className="h-3.5 w-3.5 shrink-0" />
+            {variantNote}
+          </p>
         )}
       </div>
 
