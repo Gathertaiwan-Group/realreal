@@ -301,6 +301,23 @@ adminCustomersRouter.get("/:id", async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// GET /admin/customers/:id/email — lightweight email lookup.
+//
+// Used by the order detail page for orders placed by a logged-in member:
+// order.guest_email is only ever set for guest checkouts (null for member
+// orders), and auth.users isn't reachable via PostgREST with the admin's own
+// session key — only the service-role key here can call auth.admin.*.
+// ---------------------------------------------------------------------------
+adminCustomersRouter.get("/:id/email", async (req, res) => {
+  try {
+    const { data } = await supabase.auth.admin.getUserById(req.params.id)
+    res.json({ data: { email: data?.user?.email ?? null } })
+  } catch {
+    res.json({ data: { email: null } })
+  }
+})
+
+// ---------------------------------------------------------------------------
 // PATCH /admin/customers/:id/profile — edit display_name / phone / birthday
 // ---------------------------------------------------------------------------
 // Only these three fields are exposed. tier / total_spend / charity_savings

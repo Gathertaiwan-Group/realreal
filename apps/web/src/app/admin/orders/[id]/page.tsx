@@ -4,6 +4,7 @@ import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { buildDiscountBreakdown } from "@/lib/discount-breakdown"
+import { API_URL } from "@/lib/api-url"
 import { InvoiceCard, LogisticsCard, OrderActions, OrderTimeline } from "./_client"
 
 
@@ -76,16 +77,35 @@ export default async function AdminOrderDetailPage({
   if (!order) notFound()
 
   // user_profiles has no FK to orders, so resolve separately. Email lives in
-  // auth.users which is not reachable via PostgREST from the browser; fall
-  // back to guest_email.
+  // auth.users, which PostgREST can't reach with the admin's own session key
+  // — only the API's service-role key can via auth.admin.getUserById, so we
+  // hit its lightweight /admin/customers/:id/email endpoint for member orders.
+  // (order.guest_email is only ever set for GUEST checkouts — it's always
+  // null for a logged-in member's order, so it can't be used as a fallback.)
   let profile: { display_name: string | null; email: string | null; phone: string | null } | null = null
   if (order.user_id) {
-    const { data: p } = await supabase
-      .from("user_profiles")
-      .select("display_name, phone")
-      .eq("user_id", order.user_id)
-      .maybeSingle()
-    if (p) profile = { display_name: p.display_name, email: order.guest_email ?? null, phone: p.phone }
+    const [{ data: p }, { data: { session } }] = await Promise.all([
+      supabase
+        .from("user_profiles")
+        .select("display_name, phone")
+        .eq("user_id", order.user_id)
+        .maybeSingle(),
+      supabase.auth.getSession(),
+    ])
+    let email: string | null = null
+    if (session?.access_token) {
+      try {
+        const emailRes = await fetch(`${API_URL}/admin/customers/${order.user_id}/email`, {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+          cache: "no-store",
+        })
+        if (emailRes.ok) {
+          const json = await emailRes.json()
+          email = json?.data?.email ?? null
+        }
+      } catch { /* keep null */ }
+    }
+    if (p) profile = { display_name: p.display_name, email, phone: p.phone }
   } else if (order.guest_email) {
     profile = { display_name: null, email: order.guest_email, phone: null }
   }
