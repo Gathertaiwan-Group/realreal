@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest"
-import { validateCvsReceiverName } from "../ecpay-name"
+import { validateCvsReceiverName, validateRealName } from "../ecpay-name"
 
 describe("validateCvsReceiverName", () => {
   it("accepts 2~5 Chinese characters", () => {
@@ -34,5 +34,31 @@ describe("validateCvsReceiverName", () => {
   it("rejects empty / whitespace-only", () => {
     expect(validateCvsReceiverName("")).toBeDefined()
     expect(validateCvsReceiverName("   ")).toBeDefined()
+  })
+})
+
+describe("validateRealName", () => {
+  it("accepts 2~5 Chinese characters", () => {
+    expect(validateRealName("王小明")).toBeUndefined()
+    expect(validateRealName("陳一")).toBeUndefined()
+  })
+
+  it("accepts spaced English full names", () => {
+    expect(validateRealName("Xuan Chen")).toBeUndefined()
+    expect(validateRealName("Wang Xiao Ming")).toBeUndefined()
+  })
+
+  it("accepts joined (no-space) English full names for CVS pickup", () => {
+    expect(validateRealName("XuanChen")).toBeUndefined()
+  })
+
+  it("rejects the real failing case: single-word English nickname", () => {
+    expect(validateRealName("xuan")).toMatch(/完整真實姓名/)
+    expect(validateRealName("Xuan")).toMatch(/完整真實姓名/)
+  })
+
+  it("rejects empty / whitespace-only", () => {
+    expect(validateRealName("")).toBeDefined()
+    expect(validateRealName("   ")).toBeDefined()
   })
 })

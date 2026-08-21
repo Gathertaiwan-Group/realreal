@@ -15,6 +15,7 @@ import {
   formatShippingPreviewLabel,
   toApiShippingMethod,
   validateCvsReceiverName,
+  validateRealName,
 } from "@/lib/shipping-preview"
 import {
   PromoWidget,
@@ -677,6 +678,10 @@ export default function CheckoutPage() {
   function validate(): FieldErrors {
     const errs: FieldErrors = {}
     if (!name.trim()) errs.name = "請輸入收件人姓名"
+    else {
+      const realNameErr = validateRealName(name)
+      if (realNameErr) errs.name = realNameErr
+    }
     if (!phone.trim()) errs.phone = "請輸入手機號碼"
     else if (addressType !== "overseas" && !/^09\d{8}$/.test(phone.trim())) {
       errs.phone = "手機號碼格式不正確（09xxxxxxxx）"
@@ -835,8 +840,10 @@ export default function CheckoutPage() {
                       placeholder="收件人姓名"
                       className={touched.name && errors.name ? "border-red-400 focus-visible:ring-red-400" : ""}
                     />
-                    {touched.name && errors.name && (
+                    {touched.name && errors.name ? (
                       <p className="text-xs text-red-500">{errors.name}</p>
+                    ) : (
+                      <p className="text-xs text-zinc-500">提醒收件人姓名需與證件相同，以利取貨</p>
                     )}
                   </div>
 

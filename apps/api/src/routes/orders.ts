@@ -20,7 +20,7 @@ import { computeShipping, getShippingRule } from "../lib/shipping"
 import { inventoryQueue } from "../lib/queue"
 import { enqueuePostPaymentJobs, notifyOrderPlacedCod } from "../lib/enqueue-post-payment"
 import { saveCustomerContact } from "../lib/save-customer-contact"
-import { validateCvsReceiverName } from "../lib/ecpay-name"
+import { validateCvsReceiverName, validateRealName } from "../lib/ecpay-name"
 import { cancelOrderById } from "../lib/cancel-order"
 import {
   calcPointsDiscount,
@@ -429,6 +429,13 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
 
   const { items, address, shippingMethod, paymentMethod, guestEmail, invoice, notes } = parsed.data
   let { couponCode } = parsed.data
+
+  // 收件人姓名須為完整真實姓名（與證件相同），非超商取貨規則之外的業務要求，
+  // 目的是避免超商取貨到店因姓名與證件不符被拒領。適用所有配送方式。
+  const realNameErr = validateRealName(address.name)
+  if (realNameErr) {
+    res.status(400).json({ error: realNameErr, field: "name" }); return
+  }
 
   // 超商取貨收件人姓名必須符合綠界規則，否則訂單成立後 createCvsLogistics 會建單
   // 失敗（error 10500036）。前端結帳已擋一次，這裡是 server 端安全網：直接拒絕、
