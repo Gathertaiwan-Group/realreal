@@ -18,6 +18,7 @@ import {
   evalBuyXGetY,
   evalBundle,
   evalFreebie,
+  evalFirstPurchase,
   type CartItem,
   type EvaluatorContext,
 } from "../campaigns-evaluator"
@@ -343,6 +344,62 @@ describe("evalFreebie — coupon-gated freebie", () => {
   it("applies with no gating at all when coupon_id is unset (legacy min-order-only freebie)", async () => {
     const ctx = ctxWith([item("p-x", 100, 1)])
     const r = await evalFreebie(freebieCampaign(FREEBIE_CFG, null), ctx)
+    expect(r.applied).toBe(true)
+  })
+})
+
+// evalFirstPurchase excluded_coupon_ids (ZUMBA100-style: the event coupon
+// already grants its own free item via evalFreebie, so the automatic $50
+// first-purchase discount must NOT also stack on top of it).
+function firstPurchaseCampaign(config: Record<string, unknown>) {
+  return {
+    id: "camp-first-purchase-1",
+    name: "首購折 NT$50",
+    type: "first_purchase",
+    is_active: true,
+    starts_at: "2026-01-01T00:00:00Z",
+    ends_at: null,
+    tier_id: null,
+    config,
+    coupon_id: null,
+  }
+}
+
+const FIRST_PURCHASE_CFG = {
+  discount_amount: 50,
+  min_order_amount: 350,
+  excluded_coupon_ids: ["coupon-zumba"],
+}
+
+function firstPurchaseCtx(subtotal: number, couponId: string | null = null): EvaluatorContext {
+  return {
+    user: { id: "u1", tier_id: null, birthday: null, _is_first_purchase_override: true },
+    cart: { items: [item("p-x", subtotal, 1)], subtotal, shipping_fee: 0 },
+    couponId,
+  }
+}
+
+describe("evalFirstPurchase — excluded_coupon_ids", () => {
+  it("does NOT apply when the excluded coupon was entered", async () => {
+    const r = await evalFirstPurchase(firstPurchaseCampaign(FIRST_PURCHASE_CFG), firstPurchaseCtx(600, "coupon-zumba"))
+    expect(r.applied).toBe(false)
+  })
+
+  it("still applies when a DIFFERENT coupon was entered", async () => {
+    const r = await evalFirstPurchase(firstPurchaseCampaign(FIRST_PURCHASE_CFG), firstPurchaseCtx(600, "coupon-other"))
+    expect(r.applied).toBe(true)
+    expect(r.discount_amount).toBe(50)
+  })
+
+  it("still applies when no coupon was entered", async () => {
+    const r = await evalFirstPurchase(firstPurchaseCampaign(FIRST_PURCHASE_CFG), firstPurchaseCtx(600, null))
+    expect(r.applied).toBe(true)
+    expect(r.discount_amount).toBe(50)
+  })
+
+  it("applies with no gating at all when excluded_coupon_ids is unset (backward compatible)", async () => {
+    const cfg = { discount_amount: 50, min_order_amount: 350 }
+    const r = await evalFirstPurchase(firstPurchaseCampaign(cfg), firstPurchaseCtx(600, "coupon-zumba"))
     expect(r.applied).toBe(true)
   })
 })

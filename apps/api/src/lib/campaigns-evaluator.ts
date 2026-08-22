@@ -243,6 +243,10 @@ function asString(v: unknown): string | undefined {
   return typeof v === "string" ? v : undefined
 }
 
+function asStringArray(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []
+}
+
 /* ============================================================================
  * 11 evaluators
  * ========================================================================== */
@@ -689,6 +693,13 @@ export async function evalFirstPurchase(
   const discountAmount = asNumber(cfg.discount_amount) ?? 50
   const minOrderAmount = asNumber(cfg.min_order_amount) ?? 0
   const daysSinceSignup = asNumber(cfg.days_since_signup) // optional
+  const excludedCouponIds = asStringArray(cfg.excluded_coupon_ids)
+
+  // 0) Coupon exclusion — e.g. an event coupon (ZUMBA100) that already grants
+  // its own freebie shouldn't ALSO stack the automatic first-purchase discount.
+  if (ctx.couponId && excludedCouponIds.includes(ctx.couponId)) {
+    return notApplied(c, "此優惠碼不可與首購折扣併用")
+  }
 
   // 1) Subtotal threshold
   if (ctx.cart.subtotal < minOrderAmount) {

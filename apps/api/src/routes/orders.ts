@@ -52,7 +52,7 @@ function centsToTwd(cents: number): number {
  * request is cheap and safe, and the two "is this coupon good right now?"
  * checks are logically the same, just triggered from two different call sites.
  */
-async function resolveValidCouponId(
+export async function resolveValidCouponId(
   couponCode: string | undefined,
   subtotalCents: number,
   profileTierId: string | null,

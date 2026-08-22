@@ -5,6 +5,7 @@ import { requireAuth } from "../middleware/auth"
 import { requireAdmin } from "../middleware/admin"
 import { requireEditor } from "../middleware/editor"
 import { computeShipping } from "../lib/shipping"
+import { resolveValidCouponId } from "./orders"
 import {
   evaluateCampaign,
   fetchActiveCampaignsForUser,
@@ -248,6 +249,12 @@ campaignsRouter.post("/admin/campaigns/preview", requireAuth, requireAdmin, asyn
   const feeDollars = await computeShipping(p.shippingMethod, subtotalCents / 100)
   let shippingFeeCents = Math.round(feeDollars * 100)
 
+  // Resolve the typed coupon code to an id, same predicate the real checkout
+  // uses — coupon-gated campaigns (evalFreebie) and coupon-excluded campaigns
+  // (evalFirstPurchase's excluded_coupon_ids) both key off ctx.couponId, so
+  // the sandbox needs this to actually exercise that logic.
+  const couponId = await resolveValidCouponId(p.coupon_code, subtotalCents, tierId ?? null, p.user_id)
+
   // ───── 4. Build EvaluatorContext + run every active campaign ─────
   const ctx: EvaluatorContext = {
     user: {
@@ -262,6 +269,7 @@ campaignsRouter.post("/admin/campaigns/preview", requireAuth, requireAdmin, asyn
       subtotal: subtotalCents / 100,
       shipping_fee: shippingFeeCents / 100,
     },
+    couponId,
   }
 
   const activeCampaigns = await fetchActiveCampaignsForUser(ctx.user.id, ctx.user.tier_id)
