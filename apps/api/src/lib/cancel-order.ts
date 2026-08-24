@@ -276,6 +276,12 @@ export async function cancelOrderById(
     }
     if (order.payment_status === "paid") {
       update.payment_status = "refunded"
+    } else if (order.payment_status === "pending") {
+      // Never actually paid — leaving payment_status="pending" on a cancelled
+      // order reads as "cancelled AND still awaiting payment" (confusing on
+      // the admin order page, and it also kept the order matching the
+      // pending/paid filters other code uses to decide what's still "live").
+      update.payment_status = "failed"
     }
     const { error: statusError } = await supabase.from("orders").update(update).eq("id", orderId)
     if (statusError) throw new Error(statusError.message)

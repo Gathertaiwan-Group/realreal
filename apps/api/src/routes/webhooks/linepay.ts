@@ -135,7 +135,7 @@ linepayWebhookRouter.get("/cancel", async (req, res) => {
       // paid-but-cancelled dirty state and a phantom stock restore (TOCTOU).
       const { data: cancelled, error: cancelErr } = await supabase
         .from("orders")
-        .update({ status: "cancelled", updated_at: new Date().toISOString() })
+        .update({ status: "cancelled", payment_status: "failed", updated_at: new Date().toISOString() })
         .eq("id", order.id)
         .eq("status", "pending")
         .neq("payment_status", "paid")

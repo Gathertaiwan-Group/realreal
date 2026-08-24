@@ -68,6 +68,12 @@ adminOrdersRouter.patch("/:id/status", async (req, res) => {
     update.payment_status = "refunded"
   }
 
+  // Never actually paid — leaving payment_status="pending" on a cancelled
+  // order reads as "cancelled AND still awaiting payment" on the order page.
+  if (newStatus === "cancelled" && order.payment_status === "pending") {
+    update.payment_status = "failed"
+  }
+
   const { data: updated, error: updateError } = await supabase
     .from("orders")
     .update(update)
@@ -165,12 +171,22 @@ adminOrdersRouter.post("/bulk-status", async (req, res) => {
       .in("id", ids)
       .eq("payment_status", "paid")
 
-    // Update non-paid orders normally
+    // Never actually paid — flip to "failed" instead of leaving payment_status
+    // stuck on "pending" forever (reads as "cancelled AND still awaiting
+    // payment" on the order page, and keeps matching pending/paid filters
+    // elsewhere that decide whether an order is still "live").
+    await supabase
+      .from("orders")
+      .update({ status: newStatus, payment_status: "failed", updated_at: new Date().toISOString() })
+      .in("id", ids)
+      .eq("payment_status", "pending")
+
+    // Already failed/refunded — status only, payment_status untouched.
     await supabase
       .from("orders")
       .update({ status: newStatus, updated_at: new Date().toISOString() })
       .in("id", ids)
-      .neq("payment_status", "paid")
+      .in("payment_status", ["failed", "refunded"])
 
     // Run refund chain on previously-paid orders. Both helpers idempotent
     // per-order (ledger SELECT-first + spend_decremented_at sentinel).
