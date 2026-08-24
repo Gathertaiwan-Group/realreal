@@ -577,10 +577,17 @@ export async function getEffectiveRedeemablePoints(
     return acc + delta
   }, 0)
 
+  // Mirrors check_points_not_oversubscribed's status filter (packages/db/
+  // migrations/0037_marketing_integrity.sql) — a cancelled/failed order stays
+  // payment_status="pending" forever (nothing flips it), so filtering on
+  // payment_status alone treated every abandoned checkout as still "in
+  // flight", permanently locking up the points it had reserved even though
+  // they were never actually redeemed (no points_ledger row exists for it).
   const { data: inflightOrders } = await supabase
     .from("orders")
     .select("id, points_used")
     .eq("user_id", userId)
+    .in("status", ["pending", "processing", "shipped", "completed"])
     .in("payment_status", ["pending", "paid"])
     .gt("points_used", 0)
 
