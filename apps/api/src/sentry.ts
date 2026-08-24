@@ -23,13 +23,20 @@ Sentry.init({
       const first = event.exception?.values?.[0]
       const detail = first?.value ?? event.message ?? "unknown"
       const type = first?.type ?? "Error"
-      void sendAlert({
-        title: `線上錯誤：${type}`,
-        body: detail,
-        // Fingerprint on type+message so a storm of the same error collapses
-        // into one email per cooldown window.
-        dedupeKey: `${type}:${detail}`,
-      })
+      // Temporarily muted: Amego 發票字軌不足 (invoice number range exhausted) —
+      // a known, already-being-handled issue, not something that needs to keep
+      // paging the inbox on every issuance attempt. Still captured by Sentry
+      // normally (event is returned below); only the email alert is skipped.
+      // Remove this guard once a new 字軌 has been applied for.
+      if (!detail.includes("字軌")) {
+        void sendAlert({
+          title: `線上錯誤：${type}`,
+          body: detail,
+          // Fingerprint on type+message so a storm of the same error collapses
+          // into one email per cooldown window.
+          dedupeKey: `${type}:${detail}`,
+        })
+      }
     }
     return event
   },
