@@ -49,10 +49,18 @@ linepayWebhookRouter.get("/confirm", async (req, res) => {
     // amount-verified gateway-side.
     await confirmPayment(transactionId, payment.amount)
 
-    await supabase
+    const { error: captureErr } = await supabase
       .from("payments")
       .update({ status: "captured", updated_at: new Date().toISOString() })
       .eq("id", payment.id)
+    if (captureErr) {
+      // Payment captured at LINE Pay but the local payments-row flip failed —
+      // log loudly so it can be reconciled. Seen in the wild as payments.status
+      // stuck on "pending" forever even though the order below correctly ends
+      // up payment_status="paid" (orders#10000114, #10000123) — this was
+      // previously silent (no error was even checked here).
+      console.error("[webhooks/linepay] payments row capture-flip failed:", captureErr)
+    }
 
     const { error: paidErr } = await supabase
       .from("orders")
