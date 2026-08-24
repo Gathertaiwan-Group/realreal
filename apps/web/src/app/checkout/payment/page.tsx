@@ -190,7 +190,7 @@ export default function PaymentPage() {
         },
       ]
     : [
-        { value: "pchomepay", label: "PChomePay 支付連", icon: "💳", color: "bg-blue-50 border-blue-200" },
+        { value: "pchomepay", label: "信用卡支付", icon: "💳", color: "bg-blue-50 border-blue-200" },
         { value: "linepay", label: "LINE Pay", icon: "💚", color: "bg-green-50 border-green-200", note: "不支援定期訂閱扣款" },
         { value: "jkopay", label: "街口支付 JKOPay", icon: "🟠", color: "bg-orange-50 border-orange-200", note: "不支援定期訂閱扣款" },
         ...(isCvsShipping ? [{
