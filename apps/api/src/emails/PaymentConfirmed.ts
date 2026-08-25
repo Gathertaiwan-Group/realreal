@@ -4,6 +4,8 @@ export function renderPaymentConfirmed(data: {
   customerName: string
   items: Array<{ name: string; qty: number; price: string }>
   pickupInfo: string
+  /** Set only for overseas_cod orders — shipping fee notice, mirrors the checkout page's amber box. */
+  codNotice?: string
 }): string {
   const itemRows = data.items.map(item =>
     `<tr>
@@ -12,6 +14,12 @@ export function renderPaymentConfirmed(data: {
       <td style="padding:4px 0;text-align:right;padding-left:12px">NT$${item.price}</td>
     </tr>`
   ).join("")
+
+  const codNoticeHtml = data.codNotice
+    ? `<div style="background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:8px;padding:12px;margin:16px 0;font-size:14px">
+        📦 ${data.codNotice}
+      </div>`
+    : ""
 
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="font-family:sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px">
     <h1 style="color:#10305a;border-bottom:2px solid #10305a;padding-bottom:8px">誠真生活 RealReal</h1>
@@ -24,6 +32,7 @@ export function renderPaymentConfirmed(data: {
       <tr><td style="padding:6px 0;color:#687279;vertical-align:top">取貨方式</td><td style="padding:6px 0">${data.pickupInfo}</td></tr>
       <tr><td style="padding:6px 0;color:#687279;vertical-align:top">商品</td><td style="padding:6px 0"><table style="width:100%">${itemRows}</table></td></tr>
     </table>
+    ${codNoticeHtml}
     <p>訂單將於 2–5 個工作天備貨出貨。</p>
     <p>如需查詢訂單狀態，請聯絡客服。</p>
     <hr style="margin:24px 0;border:none;border-top:1px solid #eee">
