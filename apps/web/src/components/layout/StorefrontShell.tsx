@@ -6,7 +6,12 @@ import { Footer } from "./Footer"
 import type { Category } from "@/lib/catalog"
 
 function AnnouncementBar() {
-  const messages = ["超取499免運優惠至8/31", "消費滿 999 超商取貨付款免運", "消費滿 1499 宅配免運"]
+  const messages = [
+    "消費滿 1000 超商取貨免運",
+    "消費滿 1000 超商取貨付款免運",
+    "消費滿 1000 宅配免運",
+    "加入會員立享首購折50元",
+  ]
   const items = [...messages, ...messages]
 
   return (
