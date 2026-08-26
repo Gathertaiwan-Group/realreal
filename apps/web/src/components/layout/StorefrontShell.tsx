@@ -7,7 +7,8 @@ import type { Category } from "@/lib/catalog"
 
 function AnnouncementBar() {
   const messages = [
-    "消費滿1000超商取貨與宅配皆免運",
+    "超商取貨滿649免運",
+    "宅配、超商取貨付款滿999免運",
     "加入會員立享首購折50元",
     "銀杏水蜜桃口味新上市",
   ]
