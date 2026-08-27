@@ -125,6 +125,7 @@ const FIELD_META: Record<
   "shipping.fee_cvs_cod":         { label: "超商取貨付款運費 NT$", placeholder: "80", hint: "超商取貨付款（代收貨款）專屬費率" },
   "shipping.free_threshold_home": { label: "宅配免運門檻 NT$", placeholder: "999", hint: "0 = 不提供免運" },
   "shipping.free_threshold_cvs":  { label: "超商免運門檻 NT$", placeholder: "649", hint: "0 = 不提供免運" },
+  "shipping.free_threshold_cvs_wed": { label: "超商免運門檻（週三）NT$", placeholder: "499", hint: "每週三（台灣時間）自動套用，取代上面的一般超商免運門檻；不影響超商取貨付款或宅配" },
   "shipping.free_threshold_cvs_cod": { label: "超商取貨付款免運門檻 NT$", placeholder: "999", hint: "0 = 不提供免運" },
   "shipping.fee_overseas_cod":    { label: "海外到付運費（顯示用）", placeholder: "0", hint: "實際由司機收取，固定顯示 NT$0，此設定僅供備忘" },
   // Contact
