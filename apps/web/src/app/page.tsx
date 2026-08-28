@@ -423,6 +423,14 @@ function RetailSection() {
       fbUrl: "https://www.facebook.com/share/1C9Wk8UDW8/?mibextid=wwXIfr",
       icon: "🌿",
     },
+    {
+      name: "探索天然蔬適集",
+      type: "生機店",
+      address: "桃園市桃園區中平里泰昌三街16-1號",
+      phone: "(03) 264-0318",
+      mapUrl: "https://share.google/eZzDBCqQWOggWP2lc",
+      icon: "🌿",
+    },
   ]
 
   return (
