@@ -358,10 +358,19 @@ function RetailSection() {
       name: "中華電信信義園區",
       type: "出攤活動",
       address: "台北市信義區 中華電信信義園區",
-      dates: "2026/8/12、19（三）",
+      dates: "2026/9/17（四）、9/30（三）",
       hours: "11:00–14:00",
       mapUrl: "https://share.google/Wy0bHclnkgfaVtxD1",
       icon: "🏢",
+    },
+    {
+      name: "中華電信綜合活動中心員工消費合作社",
+      type: "出攤活動",
+      address: "台北市大安區仁愛路一段42號",
+      dates: "2026/9/15（二）",
+      hours: "11:00–14:00",
+      mapUrl: "https://www.google.com/maps/search/?api=1&query=%E5%8F%B0%E5%8C%97%E5%B8%82%E5%A4%A7%E5%AE%89%E5%8D%80%E4%BB%81%E6%84%9B%E8%B7%AF%E4%B8%80%E6%AE%B542%E8%99%9F",
+      icon: "🏬",
     },
     // 藥局
     {
