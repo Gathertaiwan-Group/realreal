@@ -346,15 +346,6 @@ function RetailSection() {
   const entries = [
     // 擺攤活動（最新活動排最前）
     {
-      name: "緯創竹北廠",
-      type: "出攤活動",
-      address: "新竹縣竹北市 緯創竹北廠",
-      dates: "2026/8/5（三）",
-      hours: "11:00–14:00",
-      mapUrl: "https://share.google/yzGyjFGeQ1YAE1o9r",
-      icon: "🏭",
-    },
-    {
       name: "中華電信信義園區",
       type: "出攤活動",
       address: "台北市信義區 中華電信信義園區",
