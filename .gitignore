@@ -11,3 +11,4 @@ Wordpress/
 .credentials.local
 supabase/.temp/
 .worktrees/
+.superpowers/
