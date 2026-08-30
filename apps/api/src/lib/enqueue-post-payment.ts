@@ -169,6 +169,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
             items: mappedItems,
             pickupInfo,
             codNotice,
+            isGuestOrder: !order.user_id,
           },
         })
       } catch (err) {

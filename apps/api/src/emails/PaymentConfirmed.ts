@@ -1,3 +1,5 @@
+import { renderMembershipCta } from "./membership-cta"
+
 export function renderPaymentConfirmed(data: {
   orderNumber: string
   amount: string
@@ -6,6 +8,8 @@ export function renderPaymentConfirmed(data: {
   pickupInfo: string
   /** Set only for overseas_cod orders — shipping fee notice, mirrors the checkout page's amber box. */
   codNotice?: string
+  /** True when the order has no linked member account (guest_email set, user_id null) — shows a "加入會員" CTA. */
+  isGuestOrder?: boolean
 }): string {
   const itemRows = data.items.map(item =>
     `<tr>
@@ -21,6 +25,8 @@ export function renderPaymentConfirmed(data: {
       </div>`
     : ""
 
+  const membershipCtaHtml = data.isGuestOrder ? renderMembershipCta(data.orderNumber) : ""
+
   return `<!DOCTYPE html><html><head><meta charset="UTF-8"></head><body style="font-family:sans-serif;color:#333;max-width:600px;margin:0 auto;padding:20px">
     <h1 style="color:#10305a;border-bottom:2px solid #10305a;padding-bottom:8px">誠真生活 RealReal</h1>
     <p>親愛的 ${data.customerName}，</p>
@@ -33,6 +39,7 @@ export function renderPaymentConfirmed(data: {
       <tr><td style="padding:6px 0;color:#687279;vertical-align:top">商品</td><td style="padding:6px 0"><table style="width:100%">${itemRows}</table></td></tr>
     </table>
     ${codNoticeHtml}
+    ${membershipCtaHtml}
     <p>訂單將於 2–5 個工作天備貨出貨。</p>
     <p>如需查詢訂單狀態，請聯絡客服。</p>
     <hr style="margin:24px 0;border:none;border-top:1px solid #eee">
