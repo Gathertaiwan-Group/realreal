@@ -62,7 +62,7 @@ export function Footer() {
             </p>
             <div className="flex flex-col gap-4">
               <a
-                href="https://www.instagram.com/realreal.yinsin/"
+                href="https://www.instagram.com/realreal.cc/"
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="Instagram"
