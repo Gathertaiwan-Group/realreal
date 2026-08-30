@@ -5,6 +5,7 @@ import { incrementSpendAndUpgrade } from "./tier"
 import { inventoryQueue, invoiceQueue } from "./queue"
 import { getSetting } from "./settings"
 import { grantPoints, redeemPoints } from "./points"
+import { renderMembershipCta } from "../emails/membership-cta"
 
 /** Escape customer-supplied values before interpolating them into admin email HTML. */
 function esc(s: string): string {
@@ -427,6 +428,7 @@ export async function notifyOrderPlacedCod(orderId: string) {
   // --- Customer email: order-placed (COD) ---
   if (recipientEmail) {
     try {
+      const membershipCtaHtml = order.user_id ? "" : renderMembershipCta(order.order_number)
       const subject = `【誠真生活】訂單已成立 #${order.order_number} — 請至超商取貨付款`
       const html = `
         <div style="font-family: -apple-system, sans-serif; max-width:600px; color:#1a1a1a;">
@@ -440,6 +442,7 @@ export async function notifyOrderPlacedCod(orderId: string) {
             <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">取件門市</td><td>${cvsLine}</td></tr>
             <tr><td style="padding:6px 0; color:#687279; vertical-align:top;">商品</td><td style="white-space:pre-line;">${itemLines || "—"}</td></tr>
           </table>
+          ${membershipCtaHtml}
           <p style="line-height:1.6;">
             訂單將於 2–5 個工作天備貨出貨，包裹到達門市後將以簡訊通知您取貨，<br/>
             請攜帶手機至門市出示取件條碼並完成付款。
