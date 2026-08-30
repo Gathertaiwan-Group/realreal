@@ -23,6 +23,7 @@ import {
   PROMO_EVENT,
   type PromoState,
 } from "@/components/checkout/PromoWidget"
+import { MemberReminderCard } from "@/components/checkout/MemberReminderCard"
 import {
   listUserAddresses,
   migrateLegacyAddresses,
@@ -229,6 +230,7 @@ export default function CheckoutPage() {
   // Account-bound saved address book (loaded for logged-in users in 2b).
   const [savedAddresses, setSavedAddresses] = useState<UserAddress[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<string>("")
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
   const didRunAddressTypeEffect = useRef(false)
 
   const searchParams = useSearchParams()
@@ -327,6 +329,7 @@ export default function CheckoutPage() {
       const { data } = await supabase.auth.getUser()
       if (cancelled) return
       const user = data.user
+      setIsLoggedIn(!!user)
       if (!user) return
 
       if (user.email) setEmail((prev) => prev || user.email!)
@@ -826,6 +829,8 @@ export default function CheckoutPage() {
                   the after-discount total BEFORE filling the address form
                   (Baymard cart-abandonment research). */}
               <PromoWidget subtotal={subtotal} />
+
+              {!isLoggedIn && <MemberReminderCard />}
 
               <h1 className="text-2xl font-bold">收件資訊</h1>
 

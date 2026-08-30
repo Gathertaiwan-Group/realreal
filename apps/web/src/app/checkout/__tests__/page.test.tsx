@@ -12,13 +12,40 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => searchParams,
 }))
 
+const mockGetUser = vi.fn().mockResolvedValue({ data: { user: null } })
+
+// Chainable Supabase query-builder stub: every method returns itself so any
+// .select().eq().order().limit() combination in the page's profile/address
+// prefill effect works, and it resolves to { data: null } whether awaited
+// directly (the real query builder is thenable) or terminated with
+// .maybeSingle()/.single().
+function makeSupabaseChain(): Record<string, unknown> {
+  const chain: Record<string, unknown> = {}
+  const self = () => chain
+  chain.select = vi.fn(self)
+  chain.eq = vi.fn(self)
+  chain.in = vi.fn(self)
+  chain.order = vi.fn(self)
+  chain.limit = vi.fn(self)
+  chain.maybeSingle = vi.fn(() => Promise.resolve({ data: null }))
+  chain.single = vi.fn(() => Promise.resolve({ data: null }))
+  chain.then = (resolve: (v: { data: null }) => void) => resolve({ data: null })
+  return chain
+}
+
 vi.mock("@/lib/supabase/client", () => ({
   createClient: () => ({
     auth: {
-      getUser: vi.fn().mockResolvedValue({ data: { user: null } }),
+      getUser: mockGetUser,
       getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
     },
+    from: vi.fn(() => makeSupabaseChain()),
   }),
+}))
+
+vi.mock("@/lib/user-addresses", () => ({
+  listUserAddresses: vi.fn().mockResolvedValue([]),
+  migrateLegacyAddresses: vi.fn().mockResolvedValue(undefined),
 }))
 
 vi.mock("sonner", () => ({
@@ -81,5 +108,52 @@ describe("CheckoutPage CVS map return", () => {
     })
     expect(screen.getByText("門市編號：016958")).toBeInTheDocument()
     expect(screen.queryByText("尚未選擇取貨門市")).not.toBeInTheDocument()
+  })
+})
+
+describe("CheckoutPage member reminder card", () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    localStorage.clear()
+    searchParams = new URLSearchParams()
+    useCart.setState({
+      items: [
+        {
+          variantId: "variant-1",
+          productName: "植物蛋白",
+          variantName: "原味",
+          price: 100,
+          qty: 1,
+        },
+      ],
+    })
+    global.fetch = vi.fn().mockResolvedValue({ ok: false }) as unknown as typeof fetch
+    window.history.replaceState = vi.fn()
+  })
+
+  it("shows the reminder card for a logged-out visitor", async () => {
+    mockGetUser.mockResolvedValue({ data: { user: null } })
+
+    render(<CheckoutPage />)
+
+    await waitFor(() => {
+      expect(screen.getByText("已經是會員了嗎？", { exact: false })).toBeInTheDocument()
+    })
+  })
+
+  it("hides the reminder card once logged in", async () => {
+    mockGetUser.mockResolvedValue({
+      data: { user: { id: "user-1", email: "member@example.com" } },
+    })
+
+    render(<CheckoutPage />)
+
+    // The auth effect prefills the email field synchronously alongside
+    // flipping isLoggedIn — waiting on it is a reliable signal the effect
+    // has run far enough that the card's visibility has also settled.
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("member@example.com")).toBeInTheDocument()
+    })
+    expect(screen.queryByText("已經是會員了嗎？", { exact: false })).not.toBeInTheDocument()
   })
 })
