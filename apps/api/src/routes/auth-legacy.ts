@@ -2,6 +2,8 @@ import { Router } from "express"
 import { z } from "zod"
 import { supabase } from "../lib/supabase"
 import { verifyWordPressHash } from "../lib/phpass"
+import { requireAuth } from "../middleware/auth"
+import { claimGuestOrdersForUser } from "../lib/claim-guest-orders"
 
 export const authLegacyRouter = Router()
 
@@ -219,49 +221,39 @@ authLegacyRouter.post("/register-from-guest", async (req, res) => {
     return
   }
 
-  // 4. Bulk-claim all unclaimed guest orders with this email. We do this in
-  // two steps so we can normalise first_purchase_applied: keep the flag on
-  // the OLDEST matching order, flip it off on the rest (otherwise the
-  // partial unique index uniq_first_purchase_per_user trips when multiple
-  // claimed orders all have first_purchase_applied=true).
-  let claimedOrderCount = 0
-  try {
-    const { data: candidateOrders } = await supabase
-      .from("orders")
-      .select("id, created_at, first_purchase_applied")
-      .is("user_id", null)
-      .eq("guest_email", normalisedEmail)
-      .order("created_at", { ascending: true })
-
-    const rows = (candidateOrders ?? []) as Array<{
-      id: string
-      created_at: string
-      first_purchase_applied: boolean
-    }>
-
-    // Among the rows that already had first_purchase_applied=true, keep the
-    // earliest one; flip the rest. New user with no prior orders has zero
-    // history, so picking the oldest is the right "this WAS your first" anchor.
-    const firstPurchaseClaimed = rows.filter((r) => r.first_purchase_applied)
-    const idsToDemote = firstPurchaseClaimed.slice(1).map((r) => r.id)
-    if (idsToDemote.length > 0) {
-      await supabase
-        .from("orders")
-        .update({ first_purchase_applied: false })
-        .in("id", idsToDemote)
-    }
-
-    // Now claim all of them.
-    const { data: claimed } = await supabase
-      .from("orders")
-      .update({ user_id: newUserId, guest_email: null })
-      .is("user_id", null)
-      .eq("guest_email", normalisedEmail)
-      .select("id")
-    claimedOrderCount = (claimed ?? []).length
-  } catch (err) {
-    console.warn("[auth-legacy register-from-guest] bulk-claim failed (non-fatal):", err)
-  }
+  // 4. Bulk-claim all unclaimed guest orders with this email (shared with
+  // POST /auth/claim-guest-orders below — see that helper's doc comment).
+  const claimedOrderCount = await claimGuestOrdersForUser(newUserId, normalisedEmail)
 
   res.json({ userId: newUserId, claimedOrderCount })
+})
+
+/**
+ * POST /auth/legacy/claim-guest-orders
+ *
+ * Companion to register-from-guest for the OTHER signup path: a visitor who
+ * registers through the normal /auth/register form (not the post-checkout
+ * one-click flow) never supplies an orderNumber, so register-from-guest's
+ * proof-of-ownership check doesn't apply here. Instead, this endpoint runs
+ * AFTER Supabase's own email-confirmation link succeeds — verifyOtp() is the
+ * proof of ownership, so by the time this is called (from
+ * apps/web/src/app/auth/confirm/route.ts, immediately after a successful
+ * "signup" confirmation) the caller already holds a verified session for
+ * that exact email. requireAuth resolves the real user id/email from that
+ * session's Bearer token — nothing here is client-supplied.
+ *
+ * Silent/non-fatal by design (matches claimGuestOrdersForUser): a confirmed
+ * signup must never fail or redirect somewhere broken just because this
+ * backfill step had a hiccup. The user can always be linked manually later
+ * (see docs on 補跑付款後流程 / manual order linking in admin).
+ */
+authLegacyRouter.post("/claim-guest-orders", requireAuth, async (req, res) => {
+  const userId = res.locals.userId as string
+  const userEmail = res.locals.userEmail as string | undefined
+  if (!userEmail) {
+    res.json({ claimedOrderCount: 0 })
+    return
+  }
+  const claimedOrderCount = await claimGuestOrdersForUser(userId, userEmail)
+  res.json({ claimedOrderCount })
 })

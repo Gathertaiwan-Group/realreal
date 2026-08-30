@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server"
 import { NextResponse, type NextRequest } from "next/server"
 import type { EmailOtpType } from "@supabase/supabase-js"
+import { API_URL } from "@/lib/api-url"
 
 // Device-independent email confirmation / password recovery.
 //
@@ -86,6 +87,26 @@ export async function GET(request: NextRequest) {
 
   if (error) {
     return NextResponse.redirect(errorRedirect)
+  }
+
+  // A freshly-confirmed signup may have placed earlier guest orders under
+  // the same (now-verified) email — pull them into the new account. This is
+  // the counterpart to the one-click post-checkout registration flow, for
+  // people who instead signed up later through the normal /auth/register
+  // form. Best-effort: verifyOtp already succeeded, so the confirmation
+  // itself must not fail or redirect somewhere broken over this.
+  if (typeParam === "signup") {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.access_token) {
+        await fetch(`${API_URL}/auth/legacy/claim-guest-orders`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        })
+      }
+    } catch {
+      // non-fatal — the order can still be linked manually later
+    }
   }
 
   return NextResponse.redirect(`${origin}${next}`)
