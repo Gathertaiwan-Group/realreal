@@ -428,7 +428,9 @@ export async function notifyOrderPlacedCod(orderId: string) {
   // --- Customer email: order-placed (COD) ---
   if (recipientEmail) {
     try {
-      const membershipCtaHtml = order.user_id ? "" : renderMembershipCta(order.order_number)
+      const membershipCtaHtml = order.user_id
+        ? ""
+        : renderMembershipCta(order.order_number, { method: "cvs_cod" })
       const subject = `【誠真生活】訂單已成立 #${order.order_number} — 請至超商取貨付款`
       const html = `
         <div style="font-family: -apple-system, sans-serif; max-width:600px; color:#1a1a1a;">

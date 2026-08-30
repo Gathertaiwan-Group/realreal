@@ -12,4 +12,10 @@ describe("renderMembershipCta", () => {
     const html = renderMembershipCta("RR 2026#001")
     expect(html).toContain("order=RR%202026%23001")
   })
+
+  it("adds extra query params when provided (e.g. method=cvs_cod)", () => {
+    const html = renderMembershipCta("RR20260830001", { method: "cvs_cod" })
+    expect(html).toContain("order=RR20260830001")
+    expect(html).toContain("method=cvs_cod")
+  })
 })

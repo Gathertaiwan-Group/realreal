@@ -8,7 +8,16 @@ export function renderPaymentConfirmed(data: {
   pickupInfo: string
   /** Set only for overseas_cod orders — shipping fee notice, mirrors the checkout page's amber box. */
   codNotice?: string
-  /** True when the order has no linked member account (guest_email set, user_id null) — shows a "加入會員" CTA. */
+  /**
+   * True when the order has no linked member account (guest_email set,
+   * user_id null) — shows a "加入會員" CTA.
+   *
+   * ⚠️ If a `site_contents` row with key `email_payment_confirmed` exists,
+   * email-sender.ts's DB-template-override path sends that HTML instead and
+   * this CTA never reaches the customer — see docs/superpowers/specs/
+   * 2026-08-30-guest-checkout-membership-awareness-design.md and the
+   * `email-template-db-override` memory. Confirmed empty as of 2026-08-30.
+   */
   isGuestOrder?: boolean
 }): string {
   const itemRows = data.items.map(item =>

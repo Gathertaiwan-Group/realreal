@@ -230,7 +230,7 @@ export default function CheckoutPage() {
   // Account-bound saved address book (loaded for logged-in users in 2b).
   const [savedAddresses, setSavedAddresses] = useState<UserAddress[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<string>("")
-  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
   const didRunAddressTypeEffect = useRef(false)
 
   const searchParams = useSearchParams()
@@ -830,7 +830,7 @@ export default function CheckoutPage() {
                   (Baymard cart-abandonment research). */}
               <PromoWidget subtotal={subtotal} />
 
-              {!isLoggedIn && <MemberReminderCard />}
+              {isLoggedIn === false && <MemberReminderCard />}
 
               <h1 className="text-2xl font-bold">收件資訊</h1>
 
