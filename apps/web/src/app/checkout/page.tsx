@@ -1182,7 +1182,7 @@ export default function CheckoutPage() {
                 {addressType === "overseas" && (
                   <div className="space-y-3">
                     <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-                      📦 目前僅支援港澳地區。運費由司機收取，收到貨品時當場付款。商品金額請線上完成付款。
+                      📦 目前僅支援港澳地區，採順豐速運寄送。運費由司機收取，收到貨品時當場付款。商品金額請線上完成付款。
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">

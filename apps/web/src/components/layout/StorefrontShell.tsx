@@ -10,6 +10,7 @@ function AnnouncementBar() {
     "加入會員立即享首購折50元",
     "超商取貨滿649免運",
     "宅配、超商取貨付款滿999免運",
+    "港澳寄送可運費到付",
     "銀杏水蜜桃口味新上市",
   ]
   const items = [...messages, ...messages]

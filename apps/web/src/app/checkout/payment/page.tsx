@@ -558,7 +558,7 @@ export default function PaymentPage() {
               )}
               {checkoutData.shippingMethod === "overseas_cod" && (
                 <div className="mt-2 rounded bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">
-                  🌍 港澳到付：運費由司機收取，請線上完成商品金額付款
+                  🌍 港澳到付（順豐速運）：運費由司機收取，請線上完成商品金額付款
                 </div>
               )}
               {forcedPayment === "cvs_cod" && (

@@ -153,7 +153,7 @@ export async function enqueuePostPaymentJobs(orderId: string) {
     // charged online — restate the checkout page's amber-box notice here so
     // the customer has a written record, not just a one-time UI moment.
     const codNotice = s.address_type === "overseas"
-      ? "運費由司機收取，收到貨品時當場付款。商品金額已於線上完成付款，無需重複支付。"
+      ? "採順豐速運寄送，運費由司機收取，收到貨品時當場付款。商品金額已於線上完成付款，無需重複支付。"
       : undefined
 
     // 1a) Customer email
