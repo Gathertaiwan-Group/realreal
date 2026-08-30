@@ -52,6 +52,33 @@ function centsToTwd(cents: number): number {
  * request is cheap and safe, and the two "is this coupon good right now?"
  * checks are logically the same, just triggered from two different call sites.
  */
+/**
+ * True when a coupon's optional per-user cap (coupons.max_uses_per_user)
+ * still has room for this user — separate from the existing global
+ * `max_uses`/`used_count` (e.g. well20: one redemption per account, not one
+ * redemption total across everyone). A coupon with no cap is always OK. A
+ * capped coupon requires a logged-in user — a guest has no stable identity
+ * to cap against, so guests can't redeem a per-user-capped coupon at all.
+ * Counts rows in the `coupon_uses` ledger (written at checkout — see
+ * orders.ts's `coupon_uses` insert below — and deleted on cancel/refund by
+ * cancel-order.ts's refundCouponUsage, so a cancelled order correctly frees
+ * the slot back up).
+ */
+async function couponPerUserLimitOk(
+  couponId: string,
+  maxUsesPerUser: number | null | undefined,
+  userId: string | undefined,
+): Promise<boolean> {
+  if (maxUsesPerUser == null) return true
+  if (!userId) return false
+  const { count } = await supabase
+    .from("coupon_uses")
+    .select("id", { count: "exact", head: true })
+    .eq("coupon_id", couponId)
+    .eq("user_id", userId)
+  return (count ?? 0) < maxUsesPerUser
+}
+
 export async function resolveValidCouponId(
   couponCode: string | undefined,
   subtotalCents: number,
@@ -61,20 +88,49 @@ export async function resolveValidCouponId(
   if (!couponCode) return null
   const { data: coupon } = await supabase
     .from("coupons")
-    .select("id, min_order, max_uses, used_count, expires_at, tier_id, is_active")
+    .select("id, min_order, max_uses, used_count, expires_at, tier_id, is_active, max_uses_per_user")
     .eq("code", couponCode)
     .maybeSingle()
   if (!coupon) return null
   const now = new Date()
   const minOrderCents = coupon.min_order != null ? Math.round(Number(coupon.min_order) * 100) : null
   const tierOk = !coupon.tier_id || (userId != null && profileTierId === coupon.tier_id)
+  const perUserOk = await couponPerUserLimitOk(
+    coupon.id as string,
+    (coupon as { max_uses_per_user?: number | null }).max_uses_per_user,
+    userId,
+  )
   const usable =
     coupon.is_active !== false &&
     (!coupon.expires_at || new Date(coupon.expires_at) >= now) &&
     (minOrderCents == null || subtotalCents >= minOrderCents) &&
     (coupon.max_uses == null || Number(coupon.used_count ?? 0) < coupon.max_uses) &&
-    tierOk
+    tierOk &&
+    perUserOk
   return usable ? (coupon.id as string) : null
+}
+
+/**
+ * When a coupon excludes specific products (coupons.excluded_product_ids —
+ * e.g. francis's 3% off excludes the thin-margin 10/30/60-day bundle
+ * products), its discount must only be computed against the portion of the
+ * cart NOT made up of those products. Returns `fallbackBaseCents` unchanged
+ * when there's no exclusion list, so every other coupon's math is completely
+ * untouched. Capped by `fallbackBaseCents` too, so the carve-out can never
+ * grant MORE discount room than the coupon's other constraints (member/
+ * campaign discounts already netted out of it) would otherwise allow.
+ */
+function couponEligibleBaseCents(
+  cartItems: CartItem[],
+  excludedProductIds: string[] | null | undefined,
+  fallbackBaseCents: number,
+): number {
+  if (!excludedProductIds || excludedProductIds.length === 0) return fallbackBaseCents
+  const excluded = new Set(excludedProductIds)
+  const eligibleCents = cartItems
+    .filter((i) => !excluded.has(i.product_id))
+    .reduce((sum, i) => sum + Math.round(i.unit_price * 100) * i.qty, 0)
+  return Math.min(eligibleCents, fallbackBaseCents)
 }
 
 const orderItemSchema = z.object({
@@ -313,7 +369,7 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
   if (couponCode) {
     const { data: coupon } = await supabase
       .from("coupons")
-      .select("type, value, min_order, expires_at, max_uses, used_count, tier_id")
+      .select("id, type, value, min_order, expires_at, max_uses, used_count, tier_id, excluded_product_ids, max_uses_per_user")
       .eq("code", couponCode)
       .maybeSingle()
     const now = new Date()
@@ -325,12 +381,20 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
     // POST / behaviour.
     const couponTierOk =
       !coupon?.tier_id || (userId != null && profileTierId === coupon.tier_id)
+    const couponPerUserOk = coupon
+      ? await couponPerUserLimitOk(
+          coupon.id as string,
+          (coupon as { max_uses_per_user?: number | null }).max_uses_per_user,
+          userId,
+        )
+      : true
     const usable =
       coupon &&
       (!coupon.expires_at || new Date(coupon.expires_at) >= now) &&
       (minOrderCents == null || subtotalCents >= minOrderCents) &&
       (coupon.max_uses == null || Number(coupon.used_count ?? 0) < coupon.max_uses) &&
-      couponTierOk
+      couponTierOk &&
+      couponPerUserOk
     // Audit L5 (round 2): if shipping was already zeroed by a free_shipping
     // campaign, applying a free_shipping coupon delivers nothing — same
     // logic as POST / couponWouldBeRedundant.
@@ -338,15 +402,20 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
       coupon?.type === "free_shipping" && shippingFeeCents === 0
     if (usable && coupon && !previewCouponRedundant) {
       const baseAfter = Math.max(0, subtotalCents - memberDiscountCents - campaignDiscountCents)
+      const couponBase = couponEligibleBaseCents(
+        cartItems,
+        (coupon as { excluded_product_ids?: string[] | null }).excluded_product_ids,
+        baseAfter,
+      )
       // Audit M4 (round 2): bounds-check coupon value (admin typo guard).
       const rawValue = Number(coupon.value)
       if (Number.isFinite(rawValue) && rawValue >= 0) {
         const clampedPctValue = Math.min(rawValue, 100)
         if (coupon.type === "percentage") {
-          couponDiscountCents = Math.round(baseAfter * (clampedPctValue / 100))
+          couponDiscountCents = Math.round(couponBase * (clampedPctValue / 100))
         } else if (coupon.type === "fixed") {
           // coupon.value is TWD dollars; preview math is in cents → ×100.
-          couponDiscountCents = Math.min(baseAfter, Math.round(rawValue * 100))
+          couponDiscountCents = Math.min(couponBase, Math.round(rawValue * 100))
         } else if (coupon.type === "free_shipping") {
           // Audit L12 (round 2): report actual shipping savings on the coupon
           // info line so UI can show "免運費 -NT$ X".
@@ -722,7 +791,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
   if (couponCode) {
     const { data: coupon } = await supabase
       .from("coupons")
-      .select("id, type, value, min_order, max_uses, used_count, expires_at, tier_id, is_active")
+      .select("id, type, value, min_order, max_uses, used_count, expires_at, tier_id, is_active, excluded_product_ids, max_uses_per_user")
       .eq("code", couponCode)
       .maybeSingle()
     const now = new Date()
@@ -732,12 +801,20 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     // profileTierId to match.
     const couponTierOk =
       !coupon?.tier_id || (userId != null && profileTierId === coupon.tier_id)
+    const couponPerUserOk = coupon
+      ? await couponPerUserLimitOk(
+          coupon.id as string,
+          (coupon as { max_uses_per_user?: number | null }).max_uses_per_user,
+          userId,
+        )
+      : true
     const validPrecheck =
       coupon &&
       coupon.is_active !== false && // admin-disabled coupons must not apply
       (!coupon.expires_at || new Date(coupon.expires_at) >= now) &&
       (minOrderCents == null || subtotalCents >= minOrderCents) &&
-      couponTierOk
+      couponTierOk &&
+      couponPerUserOk
     if (validPrecheck && coupon) {
       // Pre-check redundancy: if shipping is already 0 (zeroed by a
       // free_shipping campaign) and this coupon is type='free_shipping',
@@ -759,18 +836,23 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
             0,
             subtotalCents - memberDiscountCents - campaignDiscountCents,
           )
+          const couponBase = couponEligibleBaseCents(
+            cartItems,
+            (coupon as { excluded_product_ids?: string[] | null }).excluded_product_ids,
+            baseAfterCampaigns,
+          )
           // Audit M4 (round 2): bounds-check coupon value. Negative or
           // >100% percentage would inflate the order or drive it negative.
           const rawValue = Number(coupon.value)
           if (Number.isFinite(rawValue) && rawValue >= 0) {
             const clampedPctValue = Math.min(rawValue, 100)
             if (coupon.type === "percentage") {
-              couponDiscountCents = Math.round(baseAfterCampaigns * (clampedPctValue / 100))
+              couponDiscountCents = Math.round(couponBase * (clampedPctValue / 100))
             } else if (coupon.type === "fixed") {
               // coupon.value is TWD dollars; order math is in cents → ×100.
               // (Was applying the dollar figure as cents, so a NT$200 coupon
               // only took NT$2 off while the widget showed the full NT$200.)
-              couponDiscountCents = Math.min(baseAfterCampaigns, Math.round(rawValue * 100))
+              couponDiscountCents = Math.min(couponBase, Math.round(rawValue * 100))
             } else if (coupon.type === "free_shipping") {
               // Don't deduct from items; zero the shipping fee instead.
               shippingFeeCents = 0
