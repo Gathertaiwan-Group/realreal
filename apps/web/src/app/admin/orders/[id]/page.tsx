@@ -131,7 +131,8 @@ export default async function AdminOrderDetailPage({
     campaignNames,
     attributed_kol_slug: order.attributed_kol_slug ?? null,
   })
-  const freeItems = (order.free_items ?? []) as Array<{ name?: string; sku?: string; qty?: number }>
+  const freeItems = (order.free_items ?? []) as Array<{ name?: string; sku?: string; qty?: number; via_coupon?: boolean }>
+  const couponCode = (order.metadata as { coupon_code?: string | null } | null)?.coupon_code ?? null
 
   return (
     <div className="space-y-6">
@@ -236,7 +237,7 @@ export default async function AdminOrderDetailPage({
               {freeItems.map((g, i) => (
                 <tr key={`gift-${i}`}>
                   <td colSpan={4} className="px-4 py-2 text-right text-emerald-700">
-                    🎁 滿額贈：{g.name ?? g.sku ?? "贈品"} × {g.qty ?? 1}
+                    🎁 {g.via_coupon ? `${couponCode || "優惠碼"}之友贈禮` : "滿額贈"}：{g.name ?? g.sku ?? "贈品"} × {g.qty ?? 1}
                   </td>
                   <td className="px-4 py-2 text-right text-emerald-700">免費</td>
                 </tr>

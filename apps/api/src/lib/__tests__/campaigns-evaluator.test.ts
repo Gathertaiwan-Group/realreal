@@ -338,7 +338,7 @@ describe("evalFreebie — coupon-gated freebie", () => {
     const ctx: EvaluatorContext = { ...ctxWith([item("p-x", 1, 1)]), couponId: "coupon-zumba" }
     const r = await evalFreebie(freebieCampaign(FREEBIE_CFG, "coupon-zumba"), ctx)
     expect(r.applied).toBe(true)
-    expect(r.free_items).toEqual([{ sku: "251A", qty: 1, name: "初心原味隨身包", unit_price: 0 }])
+    expect(r.free_items).toEqual([{ sku: "251A", qty: 1, name: "初心原味隨身包", unit_price: 0, via_coupon: true }])
   })
 
   it("applies with no gating at all when coupon_id is unset (legacy min-order-only freebie)", async () => {

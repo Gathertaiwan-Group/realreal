@@ -55,6 +55,15 @@ export type FreeItem = {
   name?: string
   /** Optional unit price (dollars) — used by pickBestPerType to score freebie campaigns. */
   unit_price?: number
+  /**
+   * True when this gift only unlocked because the customer typed a specific
+   * coupon code (evalFreebie's `c.coupon_id` gate), as opposed to a plain
+   * spend-threshold freebie. The frontend uses this to label the line with
+   * the coupon rather than the generic "滿額贈" (spend-threshold gift) text —
+   * otherwise a customer who used e.g. "francis" for a free sachet sees
+   * "滿額贈" and assumes their code did nothing.
+   */
+  via_coupon?: boolean
 }
 
 export type EvaluatorResult = {
@@ -359,7 +368,13 @@ export async function evalFreebie(
 
   return {
     ...applied(c),
-    free_items: [{ sku: giftSku, qty: giftQty, name: giftName, unit_price: unitPrice }],
+    free_items: [{
+      sku: giftSku,
+      qty: giftQty,
+      name: giftName,
+      unit_price: unitPrice,
+      via_coupon: !!c.coupon_id,
+    }],
   }
 }
 

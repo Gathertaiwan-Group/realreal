@@ -48,7 +48,7 @@ type OrderDetail = {
   metadata?: { coupon_code?: string | null; coupon_discount?: number | null } | null
   campaign_names?: string[]
   attributed_kol_slug?: string | null
-  free_items?: Array<{ name?: string; sku?: string; qty?: number }>
+  free_items?: Array<{ name?: string; sku?: string; qty?: number; via_coupon?: boolean }>
   shipping_zeroed_by_campaign?: boolean
   payment_method: string
   payment_status: string
@@ -223,7 +223,7 @@ export default async function OrderDetailPage({
               {freeItems.map((g, i) => (
                 <tr key={`gift-${i}`}>
                   <td colSpan={2} className="p-3 text-right text-emerald-700">
-                    🎁 滿額贈：{g.name ?? g.sku ?? "贈品"} × {g.qty ?? 1}
+                    🎁 {g.via_coupon ? `${order.metadata?.coupon_code || "優惠碼"}之友贈禮` : "滿額贈"}：{g.name ?? g.sku ?? "贈品"} × {g.qty ?? 1}
                   </td>
                   <td className="p-3 text-right text-emerald-700">免費</td>
                 </tr>

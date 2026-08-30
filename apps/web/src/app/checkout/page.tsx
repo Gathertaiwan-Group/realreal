@@ -429,7 +429,7 @@ export default function CheckoutPage() {
     points_used: number
     discount_total: number
     discounts: Array<{ campaign_id: string; name: string; amount: number; type: string }>
-    free_items: Array<{ sku?: string; product_id?: string; qty: number; name?: string }>
+    free_items: Array<{ sku?: string; product_id?: string; qty: number; name?: string; via_coupon?: boolean }>
     free_shipping_names: string[]
     total: number
   } | null>(null)
@@ -767,6 +767,11 @@ export default function CheckoutPage() {
   const shippingLabel = formatShippingPreviewLabel({ preview, loading: previewLoading })
   const discountLines = preview?.discounts ?? []
   const freeItemsList = preview?.free_items ?? []
+  // A coupon-gated gift (e.g. "francis" → free 原味 sachet) isn't a
+  // spend-threshold "滿額贈" — label it with the coupon so entering the code
+  // visibly did something, instead of looking identical to a threshold gift.
+  const giftLabel = (g: { via_coupon?: boolean }) =>
+    g.via_coupon ? `🎁 ${promo?.couponCode || "優惠碼"}之友贈禮：` : "🎁 滿額贈："
 
   // The order SUMMARY total must be the server's authoritative number. The
   // preview request now carries the applied coupon/points, so preview.total
@@ -1321,7 +1326,7 @@ export default function CheckoutPage() {
                     ))}
                     {freeItemsList.map((g, i) => (
                       <div key={`gift-m-${i}`} className="flex justify-between text-emerald-700">
-                        <span>🎁 滿額贈：{g.name ?? g.sku ?? "贈品"} × {g.qty}</span>
+                        <span>{giftLabel(g)}{g.name ?? g.sku ?? "贈品"} × {g.qty}</span>
                         <span>免費</span>
                       </div>
                     ))}
@@ -1424,7 +1429,7 @@ export default function CheckoutPage() {
                 ))}
                 {freeItemsList.map((g, i) => (
                   <div key={`gift-d-${i}`} className="flex justify-between text-emerald-700 font-medium">
-                    <span>🎁 滿額贈：{g.name ?? g.sku ?? "贈品"} × {g.qty}</span>
+                    <span>{giftLabel(g)}{g.name ?? g.sku ?? "贈品"} × {g.qty}</span>
                     <span>免費</span>
                   </div>
                 ))}
