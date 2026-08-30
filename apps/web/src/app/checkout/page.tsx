@@ -84,7 +84,7 @@ const SHIPPING_LABELS: Record<ShippingMethod, string> = {
   "711": "7-11取貨",
   "family": "全家取貨",
   "home_delivery": "宅配",
-  "overseas_cod": "海外寄送（到付）",
+  "overseas_cod": "港澳寄送（到付）",
 }
 
 const STEPS = [
@@ -703,7 +703,7 @@ export default function CheckoutPage() {
       }
     } else {
       // overseas
-      if (!country.trim()) errs.country = "請輸入國家"
+      if (!country.trim()) errs.country = "請選擇地區（香港／澳門）"
       if (!addressLine.trim()) errs.address = "請輸入詳細地址"
     }
     return errs
@@ -907,7 +907,7 @@ export default function CheckoutPage() {
                         style={addressType === type ? { borderColor: "#10305a", backgroundColor: "rgba(16,48,90,0.05)", color: "#10305a" } : undefined}
                       >
                         <span>{type === "home" ? "🏠" : type === "cvs" ? "🏪" : type === "cvs_cod" ? "💵" : "🌍"}</span>
-                        <span>{type === "home" ? "宅配到府" : type === "cvs" ? "超商取貨" : type === "cvs_cod" ? "超商取貨付款" : "海外寄送"}</span>
+                        <span>{type === "home" ? "宅配到府" : type === "cvs" ? "超商取貨" : type === "cvs_cod" ? "超商取貨付款" : "港澳寄送"}</span>
                       </button>
                     ))}
                   </div>
@@ -1182,34 +1182,43 @@ export default function CheckoutPage() {
                 {addressType === "overseas" && (
                   <div className="space-y-3">
                     <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-                      📦 運費由司機收取，收到貨品時當場付款。商品金額請線上完成付款。
+                      📦 目前僅支援港澳地區。運費由司機收取，收到貨品時當場付款。商品金額請線上完成付款。
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
-                        <Label htmlFor="country">
-                          國家 / Country <span className="text-red-500">*</span>
+                        <Label>
+                          地區 <span className="text-red-500">*</span>
                         </Label>
-                        <Input
-                          id="country"
-                          value={country}
-                          onChange={e => { setCountry(e.target.value); if (touched.country) setErrors(prev => ({ ...prev, country: undefined })) }}
-                          onBlur={() => handleBlur("country")}
-                          placeholder="Japan / 日本"
-                          className={touched.country && errors.country ? "border-red-400 focus-visible:ring-red-400" : ""}
-                        />
+                        <div className="grid grid-cols-2 gap-2">
+                          {(["香港", "澳門"] as const).map(region => (
+                            <button
+                              key={region}
+                              type="button"
+                              onClick={() => { setCountry(region); if (touched.country) setErrors(prev => ({ ...prev, country: undefined })) }}
+                              className={`rounded-lg border-2 px-3 py-2 text-sm font-medium transition-colors ${
+                                country === region
+                                  ? ""
+                                  : "border-zinc-200 text-zinc-600 hover:border-zinc-300"
+                              }`}
+                              style={country === region ? { borderColor: "#10305a", backgroundColor: "rgba(16,48,90,0.05)", color: "#10305a" } : undefined}
+                            >
+                              {region}
+                            </button>
+                          ))}
+                        </div>
                         {touched.country && errors.country && (
                           <p className="text-xs text-red-500">{errors.country}</p>
                         )}
                       </div>
                       <div className="space-y-1.5">
                         <Label htmlFor="city">
-                          城市 / City <span className="text-red-500">*</span>
+                          地區細分（選填）
                         </Label>
                         <Input
                           id="city"
                           value={city}
                           onChange={e => setCity(e.target.value)}
-                          placeholder="Tokyo / 東京都"
+                          placeholder="例：九龍 / 港島 / 新界"
                         />
                       </div>
                     </div>

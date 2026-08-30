@@ -56,7 +56,7 @@ const SHIPPING_LABELS: Record<string, string> = {
   "711": "7-11取貨",
   "family": "全家取貨",
   "home_delivery": "宅配",
-  "overseas_cod": "海外寄送（到付）",
+  "overseas_cod": "港澳寄送（到付）",
 }
 
 const STEPS = [
@@ -558,7 +558,7 @@ export default function PaymentPage() {
               )}
               {checkoutData.shippingMethod === "overseas_cod" && (
                 <div className="mt-2 rounded bg-amber-50 border border-amber-200 p-2 text-xs text-amber-800">
-                  🌍 海外到付：運費由司機收取，請線上完成商品金額付款
+                  🌍 港澳到付：運費由司機收取，請線上完成商品金額付款
                 </div>
               )}
               {forcedPayment === "cvs_cod" && (
