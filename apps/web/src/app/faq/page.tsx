@@ -203,7 +203,7 @@ const hardcodedSections: FaqSection[] = [
       },
       {
         q: "什麼是永續獎勵？",
-        a: "夾鏈袋與紙箱歡迎重複利用，拍照分享至社群媒體，並標記誠真生活官方帳號（IG: realreal.yinsin | FB: realreal.cc）即可獲得永續獎勵金，讓包裝延續價值。",
+        a: "夾鏈袋與紙箱歡迎重複利用，拍照分享至社群媒體，並標記誠真生活官方帳號（IG: realreal.cc | FB: realreal.cc）即可獲得永續獎勵金，讓包裝延續價值。",
       },
     ],
   },
