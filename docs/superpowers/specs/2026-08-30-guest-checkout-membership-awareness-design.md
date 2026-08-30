@@ -42,9 +42,14 @@
 
 ### 2. 訂單確認信新增「加入會員」提醒（新增）
 
-**位置**：`apps/api/src/emails/OrderConfirmation.ts` 的 `renderOrderConfirmation`，在商品表格與地址之後、頁尾之前，加一段條件式區塊。
+**重要修正**：寫這份設計時最初以為訂單成立信是 `apps/api/src/emails/OrderConfirmation.ts`（`renderOrderConfirmation`），但寫實作計畫前重新確認程式碼發現這個檔案其實是**死碼**——它的 `"order-confirmation"` template 從未被任何呼叫端 enqueue 過。客人實際收到的「訂單成立」信其實有兩條完全不同的路徑，兩個都要加：
 
-**顯示條件**：僅在該訂單為訪客訂單（`guest_email` 非空、`user_id` 為 null）時顯示；會員下單完全不加這段。這代表 `renderOrderConfirmation` 的參數需要擴充，讓呼叫端（`apps/api/src/workers/email-sender.ts`）把 `orderNumber` 對應訂單是否為訪客訂單的判斷結果（例如一個 `isGuestOrder: boolean` 欄位）一併傳入。
+1. **線上付款成功**（LinePay / PChomePay / JKOPay）：`apps/api/src/lib/enqueue-post-payment.ts` 的 `enqueuePostPaymentJobs()`（約 162 行）呼叫 `renderAndSendEmail({ template: "payment-confirmed", ... })`，實際範本在 `apps/api/src/emails/PaymentConfirmed.ts` 的 `renderPaymentConfirmed`。這條路徑會先查 `site_contents`（`TEMPLATE_KEY_MAP["payment-confirmed"] = "email_payment_confirmed"`），有資料庫範本就完全蓋掉程式碼版本。
+2. **超商取貨付款（COD）**：同一檔案的 `notifyOrderPlacedCod()`（約 366 行）在訂單一成立（尚未付款）時，直接組一段內嵌 HTML 字串呼叫 `sendEmail()`，完全不經過 `email-sender.ts` 的樣板系統，也就不受 `site_contents` 影響。
+
+兩條路徑呼叫時，`order.user_id` 與 `order.guest_email` 都已經在同一次 `supabase.from("orders").select(...)` 查詢裡撈出來了（分別在 `enqueuePostPaymentJobs` 第 34 行、`notifyOrderPlacedCod` 第 370 行），`isGuestOrder = !order.user_id` 兩處都能直接算，不用額外查詢。
+
+**顯示條件**：僅在該訂單為訪客訂單（`guest_email` 非空、`user_id` 為 null）時顯示；會員下單完全不加這段。
 
 **內容（草案）**：
 ```
@@ -56,7 +61,7 @@
 
 **CTA 連結**：直接導回 `https://realreal.cc/checkout/confirm?order=<orderNumber>`。這個頁面（`apps/web/src/app/checkout/confirm/page.tsx`）本來就會依訂單編號查詢 `/orders/by-number/:n/status`，若判斷是訪客訂單且未登入，就會自動渲染 `GuestRegisterCard`——也就是說**不需要新頁面、不需要新後端邏輯**，直接重用已經上線、已測試過的一鍵建帳號 + 自動認領同信箱訪客訂單流程（`POST /auth/legacy/register-from-guest`）。
 
-**⚠️ 實作風險（務必在動工前確認）**：根據先前經驗，`site_contents` 資料庫表可能存在一筆客製化的 `email_order_confirmation`（或對應 `TEMPLATE_KEY_MAP` 的 key）範本，會**完全覆蓋** `email-sender.ts` 對 `renderOrderConfirmation` 的呼叫結果。實作計畫必須包含「先查 `site_contents` 有沒有這筆資料」這一步——如果有，要嘛編輯那筆資料庫紀錄，要嘛比照上次做法整筆刪除讓程式碼版本重新生效，否則改了程式碼客人收到的信仍然不會變。
+**⚠️ 實作風險（務必在動工前確認）**：`payment-confirmed` 這條路徑受 `site_contents` DB 範本覆蓋影響（先前改信件版型時發生過這問題——見 memory）。實作計畫必須包含「先查 `site_contents` 有沒有 `email_payment_confirmed` 這筆資料」這一步——如果有，要嘛編輯那筆資料庫紀錄，要嘛比照上次做法整筆刪除讓程式碼版本重新生效，否則改了 `PaymentConfirmed.ts` 客人收到的信仍然不會變。`notifyOrderPlacedCod` 這條路徑沒有這個風險（不經過 DB 範本系統）。
 
 ### 3. 已存在的安全網（本次會期已上線，不在本設計範圍內，僅記錄關聯）
 
