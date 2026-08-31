@@ -776,6 +776,31 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       firstPurchaseApplied = true
     }
   }
+
+  // Clear any first-purchase claim still held by this user's dead orders before
+  // we insert one that claims it again. `uniq_first_purchase_per_user`
+  // (migration 0028) allows exactly one claimed order per user, so a flag left
+  // behind on a failed/cancelled order doesn't just skew the eligibility check
+  // — it makes this INSERT fail outright, blocking the retry entirely.
+  //
+  // Doing it here rather than in each payment webhook's failure branch means
+  // one choke point covers every route to failed/cancelled (four webhook files
+  // today) plus every historical row that predates this fix. Non-fatal: if the
+  // cleanup errors we still attempt the insert.
+  if (firstPurchaseApplied && userId) {
+    const { error: releaseError } = await supabase
+      .from("orders")
+      .update({ first_purchase_applied: false })
+      .eq("user_id", userId)
+      .eq("first_purchase_applied", true)
+      .in("status", ["failed", "cancelled"])
+    if (releaseError) {
+      console.warn(
+        `[orders] releasing stale first-purchase claim failed for user ${userId} (non-fatal):`,
+        releaseError.message,
+      )
+    }
+  }
   // "preview" sentinel comes from POST /admin/campaigns/preview; real
   // checkout results never carry it, but skip defensively.
   const appliedCampaignIds = campaignResults

@@ -231,6 +231,21 @@ export default function CheckoutPage() {
   const [savedAddresses, setSavedAddresses] = useState<UserAddress[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState<string>("")
   const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
+  // Live free-shipping thresholds, so the COD hint below can name real numbers.
+  const [shippingCfg, setShippingCfg] = useState<{
+    cvs: { free_threshold: number }
+    cvsCod: { free_threshold: number }
+  } | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    fetch(`${API_URL}/config`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((json) => {
+        if (!cancelled && json?.shipping) setShippingCfg(json.shipping)
+      })
+      .catch(() => {/* hint just won't render */})
+    return () => { cancelled = true }
+  }, [])
   const didRunAddressTypeEffect = useRef(false)
 
   const searchParams = useSearchParams()
@@ -1112,6 +1127,17 @@ export default function CheckoutPage() {
                     <div className="rounded-lg bg-blue-50 border border-blue-200 p-3 text-sm text-blue-800">
                       💵 到超商取貨時當場以現金付款（代收貨款），不需要事先線上付款。
                     </div>
+                    {/* 貨到付款的免運門檻比一般超商取貨高（代收貨款有額外成本）。
+                        金額落在兩個門檻中間時客人只會看到「我明明有到免運卻被收運費」，
+                        所以在這裡就把兩個數字講清楚，讓他當下能自己選。 */}
+                    {shippingCfg &&
+                      (preview?.subtotal ?? subtotal) >= shippingCfg.cvs.free_threshold &&
+                      (preview?.subtotal ?? subtotal) < shippingCfg.cvsCod.free_threshold && (
+                        <div className="rounded-lg bg-amber-50 border border-amber-200 p-3 text-sm text-amber-900">
+                          💡 目前金額改選「超商取貨」可享免運（滿 {shippingCfg.cvs.free_threshold.toLocaleString()} 元）；
+                          超商取貨付款需滿 {shippingCfg.cvsCod.free_threshold.toLocaleString()} 元才免運。
+                        </div>
+                      )}
                     <div className="space-y-2">
                       {(Object.entries(SHIPPING_LABELS) as [ShippingMethod, string][])
                         .filter(([v]) => v !== "home_delivery" && v !== "overseas_cod")

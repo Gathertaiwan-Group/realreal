@@ -131,10 +131,22 @@ async function isFirstPurchase(userId: string | null | undefined): Promise<boole
   // and each one would re-claim the first-purchase discount (the migration
   // 0028 partial unique index `uniq_first_purchase_per_user` then trips on
   // the second INSERT/UPDATE, breaking admin status changes too).
+  //
+  // A failed/cancelled order must NOT disqualify anyone. Those orders never
+  // became a purchase, so the claim they made has to be released — otherwise a
+  // customer whose payment failed loses the first-purchase discount forever,
+  // and the partial unique index blocks them from ever re-claiming it on a
+  // retry. (Reported 2026-08-30 by a customer whose order failed at the
+  // payment step: total_spend NT$0, yet no longer "first purchase".)
+  // releaseFirstPurchaseClaim() in cancel-order.ts clears the flag when an
+  // order fails or is cancelled; this status filter is the second line of
+  // defence, so pre-existing rows that still carry a stale flag don't
+  // misjudge the customer either.
   const { count, error } = await supabase
     .from("orders")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
+    .not("status", "in", "(failed,cancelled)")
     .or("status.in.(processing,shipped,completed),first_purchase_applied.eq.true")
   if (error) {
     console.warn("[first-purchase] check failed:", error.message)

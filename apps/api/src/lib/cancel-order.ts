@@ -106,6 +106,38 @@ export async function refundCouponUsage(orderId: string): Promise<void> {
   }
 }
 
+/**
+ * Release the first-purchase discount an order claimed at checkout, so a
+ * customer whose order never completed can claim it again on their next try.
+ *
+ * `orders.first_purchase_applied` is guarded by the partial unique index
+ * `uniq_first_purchase_per_user` (migration 0028) — one claimed order per
+ * user. That means a claim left behind on a dead order doesn't merely mislead
+ * the first-purchase check, it makes the discount **unclaimable forever**: the
+ * index rejects the next order that tries to set the flag.
+ *
+ * Reported 2026-08-30: a customer picked the wrong payment method, the order
+ * failed, and her NT$50 first-purchase discount vanished with it — NT$0 spent,
+ * yet no longer eligible. Call this whenever an order transitions to
+ * failed/cancelled.
+ *
+ * Idempotent (setting false twice is harmless) and non-fatal: losing this
+ * cleanup must never block a cancellation, so it logs and continues.
+ */
+export async function releaseFirstPurchaseClaim(orderId: string): Promise<void> {
+  const { error } = await supabase
+    .from("orders")
+    .update({ first_purchase_applied: false })
+    .eq("id", orderId)
+    .eq("first_purchase_applied", true)
+  if (error) {
+    console.warn(
+      `[cancel-order] releaseFirstPurchaseClaim failed for ${orderId} (non-fatal):`,
+      error.message,
+    )
+  }
+}
+
 type OrderRow = {
   id: string
   user_id: string | null
@@ -313,6 +345,11 @@ export async function cancelOrderById(
       await refundCouponUsage(orderId)
     } catch (err) {
       console.warn(`[cancel-order] refundCouponUsage threw for ${orderId} (non-fatal):`, err)
+    }
+    try {
+      await releaseFirstPurchaseClaim(orderId)
+    } catch (err) {
+      console.warn(`[cancel-order] releaseFirstPurchaseClaim threw for ${orderId} (non-fatal):`, err)
     }
   }
 
