@@ -181,3 +181,103 @@ describe("POST /admin/invoices/reclaim-stale", () => {
     })
   })
 })
+
+/**
+ * POST /admin/invoices/reissue-batch — 整批補開。
+ *
+ * 字軌用完時整個 backlog 會一起卡住（2026-08-20 卡了 45 筆、11 天），一筆一筆按
+ * 不是可行的復原程序。這裡驗的是批次路徑沒有把兩個保護拆掉：
+ *   a) WP 舊站訂單預設不碰 —— 那些在 2026-06-29 匯入前就已經在舊平台開過發票，
+ *      再開一次是重複開立（稅務問題，不只是雜訊）。
+ *   b) 每一筆都各自入列且 jobId 唯一，跟單筆路徑同一套 claim_invoice_issue 去序列化。
+ */
+describe("POST /admin/invoices/reissue-batch", () => {
+  const NEW_1 = "10000109-0000-0000-0000-000000000001"
+  const NEW_2 = "10000110-0000-0000-0000-000000000002"
+  const LEGACY = "wp3114aa-0000-0000-0000-000000000003"
+
+  function withBacklog() {
+    const invoicesChain = chain({
+      terminal: {
+        data: [
+          { id: "inv-new-1", order_id: NEW_1, status: "pending" },
+          { id: "inv-new-2", order_id: NEW_2, status: "pending" },
+          { id: "inv-legacy", order_id: LEGACY, status: "pending" },
+        ],
+        error: null,
+      },
+    })
+    invoicesChain.neq = vi.fn().mockReturnThis()
+    invoicesChain.limit = vi.fn().mockReturnThis()
+
+    const ordersChain = chain({
+      terminal: {
+        data: [
+          { id: NEW_1, order_number: "10000109" },
+          { id: NEW_2, order_number: "10000110" },
+          { id: LEGACY, order_number: "WP3114" },
+        ],
+        error: null,
+      },
+    })
+    ordersChain.in = vi.fn().mockReturnThis()
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "user_profiles") return adminProfileChain() as any
+      if (table === "invoices") return invoicesChain as any
+      if (table === "orders") return ordersChain as any
+      return chain() as any
+    })
+    return invoicesChain
+  }
+
+  const batch = (body: Record<string, unknown> = {}) =>
+    request(app).post("/admin/invoices/reissue-batch").set("Authorization", "Bearer t").send(body)
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAdminAuth()
+  })
+
+  it("★ 預設跳過 WP 舊站訂單，只補開新站的（避免重複開立已開過的發票）", async () => {
+    withBacklog()
+
+    const res = await batch()
+
+    expect(res.status).toBe(200)
+    expect(res.body.enqueued).toBe(2)
+    expect(res.body.skippedLegacy).toBe(1)
+    expect(res.body.invoiceIds).toEqual(["inv-new-1", "inv-new-2"])
+    expect(invoiceQueue.add).toHaveBeenCalledTimes(2)
+  })
+
+  it("includeLegacy 明確開啟時才會納入 WP 訂單", async () => {
+    withBacklog()
+
+    const res = await batch({ includeLegacy: true })
+
+    expect(res.status).toBe(200)
+    expect(res.body.enqueued).toBe(3)
+    expect(res.body.skippedLegacy).toBe(0)
+    expect(invoiceQueue.add).toHaveBeenCalledTimes(3)
+  })
+
+  it("每一筆的 jobId 都不同，且依序拉開 delay 不讓 Amego 收到爆量", async () => {
+    withBacklog()
+
+    await batch({ delayMs: 1000 })
+
+    const calls = vi.mocked(invoiceQueue.add).mock.calls as any[]
+    const jobIds = calls.map((c) => c[2].jobId)
+    expect(new Set(jobIds).size).toBe(jobIds.length)
+    expect(calls.map((c) => c[2].delay)).toEqual([0, 1000])
+  })
+
+  it("清掉 error_message 與 retry_count，否則燒完自動重試的那幾列按了不會動", async () => {
+    const invoices = withBacklog()
+
+    await batch()
+
+    expect(invoices.update).toHaveBeenCalledWith({ error_message: null, retry_count: 0 })
+  })
+})

@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin"
 import Link from "next/link"
 import { Badge } from "@/components/ui/badge"
 import { AdminTabs } from "../_components/AdminTabs"
-import { ArchivedRowActions, ArchiveRowAction } from "./_row-actions"
+import { ArchivedRowActions, ArchiveRowAction, ReissueAllInvoicesAction } from "./_row-actions"
 import {
   getOrderDisplayStatus,
   type DisplayStatus,
@@ -136,7 +136,10 @@ export default async function AdminOrdersPage({
 
   return (
     <div>
-      <h1 className="text-xl font-semibold mb-2 text-[#10305a]">訂單</h1>
+      <div className="flex items-start justify-between gap-4 mb-2">
+        <h1 className="text-xl font-semibold text-[#10305a]">訂單</h1>
+        <ReissueAllInvoicesAction />
+      </div>
       <AdminTabs tabs={ORDER_TABS} />
 
       {/* Status filter tabs + archived toggle */}

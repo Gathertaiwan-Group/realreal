@@ -87,6 +87,107 @@ invoicesRouter.post("/:id/reissue", async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// POST /admin/invoices/reissue-batch — re-drive the whole unissued backlog
+// ---------------------------------------------------------------------------
+// When Amego's 字軌 (invoice number range) runs out, every issue attempt fails
+// until a new range is allocated — and then the entire backlog needs re-driving
+// by hand, one :id/reissue press per invoice. That happened on 2026-08-20 and
+// left 45 invoices stranded for 11 days; pressing the button 45 times is not a
+// reasonable recovery procedure, and the range WILL run out again.
+//
+// This does exactly what :id/reissue does, in a loop, with two guards:
+//
+//   - Legacy WordPress orders are excluded by default. Those orders were
+//     invoiced on the old platform before the 2026-06-29 import; issuing again
+//     here would duplicate a real invoice (a tax problem, not just noise).
+//     `includeLegacy: true` overrides, for the case where they genuinely were
+//     never invoiced.
+//   - Jobs are spaced by `delayMs` so a 45-invoice backlog doesn't arrive at
+//     Amego as a burst.
+//
+// Duplicate issuance is prevented in the database by claim_invoice_issue
+// (migration 0049), the same guard the single-press path relies on — this
+// endpoint adds no new issuance route, it only enqueues more of them.
+invoicesRouter.post("/reissue-batch", async (req, res) => {
+  const { includeLegacy, limit, delayMs } = req.body as {
+    includeLegacy?: boolean
+    limit?: number
+    delayMs?: number
+  }
+  const cap = Math.min(Math.max(Number(limit) || 100, 1), 500)
+  const spacing = Math.min(Math.max(Number(delayMs) || 1000, 0), 10000)
+
+  const { data: rows, error } = await supabase
+    .from("invoices")
+    .select("id, order_id, status")
+    .neq("status", "issued")
+    .neq("status", "voided")
+    .limit(cap)
+  if (error) { res.status(500).json({ error: error.message }); return }
+
+  const candidates = (rows ?? []) as Array<{ id: string; order_id: string; status: string }>
+  if (candidates.length === 0) {
+    res.json({ message: "No unissued invoices", enqueued: 0, skippedLegacy: 0, invoiceIds: [] })
+    return
+  }
+
+  // Resolve order numbers so legacy (WP-prefixed) orders can be held back.
+  const { data: orderRows } = await supabase
+    .from("orders")
+    .select("id, order_number")
+    .in("id", candidates.map((c) => c.order_id))
+  const numberById = new Map(
+    ((orderRows ?? []) as Array<{ id: string; order_number: string }>)
+      .map((o) => [o.id, o.order_number]),
+  )
+
+  const targets: typeof candidates = []
+  let skippedLegacy = 0
+  for (const c of candidates) {
+    const isLegacy = (numberById.get(c.order_id) ?? "").startsWith("WP")
+    if (isLegacy && !includeLegacy) { skippedLegacy++; continue }
+    targets.push(c)
+  }
+
+  const enqueued: string[] = []
+  const failed: Array<{ invoiceId: string; error: string }> = []
+  for (let i = 0; i < targets.length; i++) {
+    const inv = targets[i]
+    try {
+      // Same reset as the single-press path: clear the error and the retry
+      // counter that claim_invoice_issue checks against p_max_retries. `status`
+      // is deliberately left alone — see the note on :id/reissue above.
+      await supabase
+        .from("invoices")
+        .update({ error_message: null, retry_count: 0 })
+        .eq("id", inv.id)
+
+      await invoiceQueue.add(
+        "issue",
+        { invoiceId: inv.id },
+        {
+          jobId: `invoice-reissue-${inv.id}-${randomUUID()}`,
+          attempts: 5,
+          backoff: { type: "exponential", delay: 60000 },
+          delay: i * spacing,
+        },
+      )
+      enqueued.push(inv.id)
+    } catch (err) {
+      failed.push({ invoiceId: inv.id, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  res.json({
+    message: `Enqueued ${enqueued.length} invoice job(s)`,
+    enqueued: enqueued.length,
+    skippedLegacy,
+    failed,
+    invoiceIds: enqueued,
+  })
+})
+
+// ---------------------------------------------------------------------------
 // POST /admin/invoices/reclaim-stale — 把卡在 issuing 的撿回來
 // ---------------------------------------------------------------------------
 // 'issuing' means "someone is issuing this right now". When a process dies

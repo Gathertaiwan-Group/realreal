@@ -62,6 +62,36 @@ export async function reissueInvoiceAction(
   }
 }
 
+/**
+ * Re-drive every unissued invoice at once.
+ *
+ * When Amego's 字軌 runs out, the whole backlog fails together and each one
+ * needs re-driving by hand — 45 invoices sat stranded for 11 days after
+ * 2026-08-20. Legacy WordPress orders are held back by the API unless
+ * includeLegacy is set: those were invoiced on the old platform before the
+ * 2026-06-29 import, so re-issuing would duplicate a real invoice.
+ */
+export async function reissueAllInvoicesAction(
+  opts: { includeLegacy?: boolean } = {},
+): Promise<ActionResult & { enqueued?: number; skippedLegacy?: number }> {
+  try {
+    const supabase = await createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    const result = await apiClient<{ enqueued: number; skippedLegacy: number }>(
+      "/admin/invoices/reissue-batch",
+      {
+        method: "POST",
+        body: JSON.stringify({ includeLegacy: opts.includeLegacy ?? false }),
+        token: session?.access_token,
+      },
+    )
+    revalidatePath("/admin/orders")
+    return { ok: true, enqueued: result.enqueued, skippedLegacy: result.skippedLegacy }
+  } catch (e) {
+    return toErrorResult(e)
+  }
+}
+
 export async function voidInvoiceAction(
   orderId: string,
   invoiceId: string,
