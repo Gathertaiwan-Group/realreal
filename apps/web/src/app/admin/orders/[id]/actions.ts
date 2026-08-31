@@ -38,6 +38,30 @@ export async function updateOrderStatusAction(
   }
 }
 
+/**
+ * Confirm payment on an order whose status must NOT move — specifically
+ * 超商取貨付款 collected at the store after shipping. Sets payment_status=paid
+ * and runs the post-payment pipeline (invoice / points / tier / 付款確認信).
+ *
+ * Manually-shipped COD orders never get the ECPay delivered webhook, so without
+ * this they stay 'pending' forever and never produce an invoice.
+ */
+export async function confirmPaymentAction(orderId: string): Promise<ActionResult> {
+  try {
+    const supabase = await createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    await apiClient(`/admin/orders/${orderId}/confirm-payment`, {
+      method: "POST",
+      body: JSON.stringify({}),
+      token: session?.access_token,
+    })
+    revalidatePath(`/admin/orders/${orderId}`)
+    return { ok: true }
+  } catch (e) {
+    return toErrorResult(e)
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Invoice actions — re-enqueue and void via the existing API. Path is
 // revalidated so the page re-fetches the invoice row after each call.

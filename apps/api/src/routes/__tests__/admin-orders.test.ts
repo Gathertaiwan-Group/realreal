@@ -401,3 +401,78 @@ describe("POST /admin/orders/:id/restore", () => {
     expect(eq).toHaveBeenCalledWith("id", ORDER_ID)
   })
 })
+
+/**
+ * POST /admin/orders/:id/confirm-payment — 超商取貨付款的補收款入口。
+ *
+ * 手動出貨的 COD 訂單收不到綠界的取貨回報，付款狀態永遠停在 pending，於是
+ * 不開發票、不累積消費、不給點數（2026-08-31 一次累積了 25 筆、NT$29,361）。
+ * 原本的「確認付款」是走狀態轉換 → processing，但 COD 收款時訂單已經 shipped，
+ * 那樣會把訂單倒退，所以這條路徑必須**只改付款狀態、不動 status**。
+ */
+describe("POST /admin/orders/:id/confirm-payment", () => {
+  function withOrder(status: string, paymentStatus: string) {
+    const ordersChain = chain({ single: { data: { id: ORDER_ID, status, payment_status: paymentStatus }, error: null } })
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "user_profiles") return adminProfileChain() as any
+      if (table === "orders") return ordersChain as any
+      return chain() as any
+    })
+    return ordersChain
+  }
+
+  const confirm = () =>
+    request(app).post(`/admin/orders/${ORDER_ID}/confirm-payment`).set("Authorization", "Bearer t").send({})
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAdminAuth()
+  })
+
+  it("★ 已出貨的 COD 訂單可以確認收款，且 status 保持不動", async () => {
+    const orders = withOrder("shipped", "pending")
+
+    const res = await confirm()
+
+    expect(res.status).toBe(200)
+    expect(res.body.status).toBe("shipped")
+    // 只寫 payment_status，沒有把 status 一起送出去 —— 否則訂單會被倒退。
+    const payload = orders.update.mock.calls[0][0]
+    expect(payload.payment_status).toBe("paid")
+    expect(payload).not.toHaveProperty("status")
+  })
+
+  it("已完成的 COD 訂單也可以確認收款", async () => {
+    withOrder("completed", "pending")
+    const res = await confirm()
+    expect(res.status).toBe(200)
+    expect(res.body.status).toBe("completed")
+  })
+
+  it("觸發付款後流程（發票／點數／等級／通知信）", async () => {
+    const { enqueuePostPaymentJobs } = await import("../../lib/enqueue-post-payment")
+    withOrder("shipped", "pending")
+
+    await confirm()
+
+    expect(enqueuePostPaymentJobs).toHaveBeenCalledWith(ORDER_ID)
+  })
+
+  it("已經是 paid 的訂單拒絕重複確認", async () => {
+    withOrder("shipped", "paid")
+    const res = await confirm()
+    expect(res.status).toBe(400)
+    expect(res.body.error).toContain("already marked paid")
+  })
+
+  it("★ 已取消／失敗的訂單不可確認收款（否則會復活發票與消費金額）", async () => {
+    for (const dead of ["cancelled", "failed"]) {
+      vi.clearAllMocks()
+      mockAdminAuth()
+      withOrder(dead, "failed")
+      const res = await confirm()
+      expect(res.status).toBe(400)
+      expect(res.body.error).toContain(dead)
+    }
+  })
+})

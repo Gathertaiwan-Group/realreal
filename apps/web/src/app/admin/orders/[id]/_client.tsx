@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner"
 import {
   cancelOrderAction,
+  confirmPaymentAction,
   deleteOrderAction,
   reissueInvoiceAction,
   retryPostPaymentAction,
@@ -154,8 +155,16 @@ export function OrderActions({
 
   // 也對「誤標失敗」的訂單顯示 —— 讓 admin 能把「其實已收款卻被標成 failed」的單
   // 救回（確認付款 → 設 paid + 補跑付款後流程：點數/發票/物流/通知）。
+  // 一般（線上付款）訂單：付款發生在出貨前，所以確認付款＝把狀態推進到 processing。
   const showConfirmPayment =
     (status === "pending" || status === "failed") && paymentStatus !== "paid" && paymentMethod !== "cvs_cod"
+  // 超商取貨付款：款項是客人到店取貨時才收，此時訂單已經是 shipped/completed，
+  // 不能用狀態轉換來確認付款（會把訂單倒退）。手動出貨的 COD 收不到綠界的取貨
+  // 回報，沒有這顆按鈕就永遠停在待付款、不會開發票 —— 2026-08-31 一次累積了 25 筆。
+  const showConfirmCodPayment =
+    paymentMethod === "cvs_cod" &&
+    paymentStatus !== "paid" &&
+    (status === "shipped" || status === "completed")
   const showShip = status === "processing" || (status === "pending" && paymentMethod === "cvs_cod")
   // 「補跑付款後流程」recovery — for orders that ARE paid but whose post-payment
   // pipeline never completed (no 通知/發票/點數), e.g. manually confirmed before
@@ -177,6 +186,26 @@ export function OrderActions({
         {showConfirmPayment && (
           <Button size="sm" disabled={isPending} onClick={() => handleAction("processing")}>
             確認付款
+          </Button>
+        )}
+        {showConfirmCodPayment && (
+          <Button
+            size="sm"
+            disabled={isPending}
+            onClick={() => {
+              if (!confirm("確認客人已到超商取貨並付款？會標記為已付款，並開立發票、累積消費與點數，同時寄出付款確認信給客人。")) return
+              startTransition(async () => {
+                const result = await confirmPaymentAction(orderId)
+                if (result.ok) {
+                  toast.success("已確認收款（發票／點數／通知信已送出）")
+                  router.refresh()
+                } else {
+                  toast.error(`確認付款失敗：${result.error}`)
+                }
+              })
+            }}
+          >
+            確認取貨付款
           </Button>
         )}
         {showShip && (

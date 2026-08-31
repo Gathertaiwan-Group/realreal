@@ -226,6 +226,59 @@ adminOrdersRouter.post("/bulk-status", async (req, res) => {
   res.json({ data: { updated: ids.length } })
 })
 
+// POST /admin/orders/:id/confirm-payment
+// Mark an order paid WITHOUT moving its status, then run the same post-payment
+// side effects a gateway webhook would (invoice + points + tier + 付款確認信).
+//
+// Why this exists separately from PATCH /status: the 確認付款 button used to be
+// the status transition → "processing", which also flips payment_status. That
+// works for an unshipped order, but 超商取貨付款 orders are collected at the
+// store AFTER shipping, so by the time payment happens the order is already
+// 'shipped'/'completed' and sending it back to 'processing' would rewind it.
+//
+// The gap this closes: COD orders shipped manually (logistics.provider =
+// 'manual', i.e. the shop printed its own 出貨單 rather than going through the
+// ECPay integration) never receive the delivered/paid webhook, so their
+// payment_status sat at 'pending' forever — no invoice, no points, no tier
+// credit. 25 such orders (NT$29,361, 2026-07-04 → 08-27) had accumulated by
+// 2026-08-31 before anyone noticed.
+adminOrdersRouter.post("/:id/confirm-payment", async (req, res) => {
+  const orderId = req.params.id
+
+  const { data: order, error } = await supabase
+    .from("orders")
+    .select("id, status, payment_status")
+    .eq("id", orderId)
+    .single()
+  if (error || !order) { res.status(404).json({ error: "Order not found" }); return }
+  if (order.payment_status === "paid") {
+    res.status(400).json({ error: "Order is already marked paid" }); return
+  }
+  // Refuse on dead orders — confirming payment on a cancelled/failed order
+  // would resurrect its invoice and spend without resurrecting the order.
+  if (order.status === "cancelled" || order.status === "failed") {
+    res.status(400).json({ error: `Cannot confirm payment on a "${order.status}" order` })
+    return
+  }
+
+  const { error: updateError } = await supabase
+    .from("orders")
+    .update({ payment_status: "paid", updated_at: new Date().toISOString() })
+    .eq("id", orderId)
+  if (updateError) {
+    res.status(500).json({ error: updateError.message }); return
+  }
+
+  // Idempotent throughout (SELECT-first / sentinel), so a double press is safe.
+  try {
+    await enqueuePostPaymentJobs(orderId)
+  } catch (err) {
+    console.warn("[admin/orders] confirm-payment post-payment jobs failed (non-fatal):", err)
+  }
+
+  res.json({ ok: true, message: "Payment confirmed", status: order.status })
+})
+
 // POST /admin/orders/:id/retry-post-payment
 // Re-runs the post-payment side effects (admin email, invoice insert,
 // invoice issuance enqueue, logistics enqueue, tier upgrade). All the
