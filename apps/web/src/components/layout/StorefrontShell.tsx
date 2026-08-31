@@ -19,18 +19,33 @@ type ShippingConfig = {
 // charged NT$150 at checkout. Any edit in admin now flows straight through to
 // this bar. Until the fetch resolves (or if it fails) the shipping lines are
 // simply omitted — a shorter marquee is fine, a wrong number is not.
+//
+// Methods sharing a threshold are merged into ONE message: when all three match
+// (the current setting — everything at 999) the bar says it once rather than
+// scrolling the same fact past the reader three times. Only a genuine
+// difference in thresholds earns a separate line.
 function shippingMessages(s: ShippingConfig | null): string[] {
   if (!s) return []
-  const lines = [`超商取貨滿${s.cvs.free_threshold}免運`]
-  // 宅配 and 超商取貨付款 only share a line when their thresholds truly match;
-  // they are separate settings and have differed before.
-  if (s.home.free_threshold === s.cvsCod.free_threshold) {
-    lines.push(`宅配、超商取貨付款滿${s.home.free_threshold}免運`)
-  } else {
-    lines.push(`宅配滿${s.home.free_threshold}免運`)
-    lines.push(`超商取貨付款滿${s.cvsCod.free_threshold}免運`)
+
+  const methods: Array<{ label: string; threshold: number }> = [
+    { label: "超商取貨", threshold: s.cvs.free_threshold },
+    { label: "超商取貨付款", threshold: s.cvsCod.free_threshold },
+    { label: "宅配", threshold: s.home.free_threshold },
+  ]
+
+  // Group by threshold, preserving the order thresholds first appear.
+  const groups = new Map<number, string[]>()
+  for (const m of methods) {
+    const bucket = groups.get(m.threshold)
+    if (bucket) bucket.push(m.label)
+    else groups.set(m.threshold, [m.label])
   }
-  return lines
+
+  return Array.from(groups.entries()).map(([threshold, labels]) =>
+    labels.length === methods.length
+      ? `全站消費滿${threshold}元免運`
+      : `${labels.join("、")}滿${threshold}元免運`,
+  )
 }
 
 function AnnouncementBar() {
