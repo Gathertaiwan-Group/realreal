@@ -10,6 +10,7 @@ import { Label } from "@/components/ui/label"
 import { InvoiceSelector, type InvoiceData } from "@/components/checkout/InvoiceSelector"
 import { API_URL } from "@/lib/api-url"
 import { applyAddonDisplay, cartDisplaySubtotal } from "@/lib/addon-display"
+import { validateInvoice } from "@/lib/invoice-carrier"
 import {
   buildOrderPreviewItems,
   formatShippingPreviewLabel,
@@ -149,6 +150,7 @@ type FieldErrors = {
   address?: string
   cvsStore?: string
   country?: string
+  invoice?: string
 }
 
 // 驗證失敗時要捲到第一個有錯的欄位 —— 順序須照畫面由上而下。各 addressType 的
@@ -162,6 +164,7 @@ const CHECKOUT_ERROR_FIELD_ORDER: Array<keyof FieldErrors> = [
   "city",
   "country",
   "address",
+  "invoice",
 ]
 // 錯誤鍵 → DOM 元素 id（address 對應的 input id 是 addressLine；cvsStore 是門市
 // 選擇器外層的錨點 div）。
@@ -173,6 +176,7 @@ const CHECKOUT_ERROR_ELEMENT_ID: Record<string, string> = {
   address: "addressLine",
   cvsStore: "cvs-store-section",
   country: "country",
+  invoice: "invoice-section",
 }
 
 function scrollToFirstError(errs: FieldErrors) {
@@ -724,6 +728,13 @@ export default function CheckoutPage() {
       if (!country.trim()) errs.country = "請選擇地區（香港／澳門）"
       if (!addressLine.trim()) errs.address = "請輸入詳細地址"
     }
+
+    // A malformed 載具 is only rejected by Amego days later, at which point the
+    // invoice silently sits unissued and someone has to chase it by hand
+    // (#10000172). Stop it here, while the customer can still fix it.
+    const invoiceErr = validateInvoice(invoice)
+    if (invoiceErr) errs.invoice = invoiceErr
+
     return errs
   }
 
@@ -1277,9 +1288,12 @@ export default function CheckoutPage() {
               </section>
 
               {/* Invoice */}
-              <section className="space-y-4">
+              <section className="space-y-4" id="invoice-section">
                 <h2 className="text-lg font-semibold border-b pb-2">發票資訊</h2>
                 <InvoiceSelector value={invoice} onChange={setInvoice} />
+                {errors.invoice && (
+                  <p className="text-sm text-red-600">{errors.invoice}</p>
+                )}
               </section>
 
               {/* Shipping packaging reminder */}

@@ -3,6 +3,7 @@ import { useState } from "react"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { validateCarrierNumber, validateLoveCode, validateTaxId } from "@/lib/invoice-carrier"
 
 export type InvoiceData = {
   type: "B2C_2" | "B2C_3" | "B2B"
@@ -19,6 +20,18 @@ interface Props {
 }
 
 export function InvoiceSelector({ value, onChange }: Props) {
+  // Show format errors only after the field loses focus — flagging "/A" as
+  // malformed while someone is still typing /ABC1234 is just noise.
+  const [touched, setTouched] = useState<Record<string, boolean>>({})
+  const markTouched = (field: string) => setTouched((t) => ({ ...t, [field]: true }))
+
+  const carrierErr =
+    touched.carrier && (value.carrierType === "phone" || value.carrierType === "natural_person" || !value.carrierType)
+      ? validateCarrierNumber(value.carrierType ?? "phone", value.carrierNumber)
+      : null
+  const loveErr = touched.love ? validateLoveCode(value.loveCode) : null
+  const taxErr = touched.tax ? validateTaxId(value.taxId) : null
+
   return (
     <div className="space-y-3">
       <Label className="font-medium">發票類型</Label>
@@ -60,29 +73,44 @@ export function InvoiceSelector({ value, onChange }: Props) {
             </div>
           </RadioGroup>
           {(value.carrierType === "phone" || value.carrierType === "natural_person") && (
-            <Input
-              placeholder={value.carrierType === "phone" ? "/XXXXXXX" : "請輸入自然人憑證"}
-              value={value.carrierNumber ?? ""}
-              onChange={(e) => onChange({ ...value, carrierNumber: e.target.value })}
-            />
+            <div className="space-y-1">
+              <Input
+                placeholder={value.carrierType === "phone" ? "/XXXXXXX（斜線開頭共 8 碼）" : "2 個大寫英文字母 + 14 位數字"}
+                value={value.carrierNumber ?? ""}
+                onChange={(e) => onChange({ ...value, carrierNumber: e.target.value })}
+                onBlur={() => markTouched("carrier")}
+                aria-invalid={!!carrierErr}
+              />
+              {carrierErr && <p className="text-xs text-red-600">{carrierErr}</p>}
+            </div>
           )}
           {value.carrierType === "love_code" && (
-            <Input
-              placeholder="愛心碼"
-              value={value.loveCode ?? ""}
-              onChange={(e) => onChange({ ...value, loveCode: e.target.value })}
-            />
+            <div className="space-y-1">
+              <Input
+                placeholder="愛心碼（3–7 位數字）"
+                value={value.loveCode ?? ""}
+                onChange={(e) => onChange({ ...value, loveCode: e.target.value })}
+                onBlur={() => markTouched("love")}
+                aria-invalid={!!loveErr}
+              />
+              {loveErr && <p className="text-xs text-red-600">{loveErr}</p>}
+            </div>
           )}
         </div>
       )}
 
       {value.type === "B2B" && (
         <div className="space-y-2 pl-4">
-          <Input
-            placeholder="統一編號"
-            value={value.taxId ?? ""}
-            onChange={(e) => onChange({ ...value, taxId: e.target.value })}
-          />
+          <div className="space-y-1">
+            <Input
+              placeholder="統一編號（8 位數字）"
+              value={value.taxId ?? ""}
+              onChange={(e) => onChange({ ...value, taxId: e.target.value })}
+              onBlur={() => markTouched("tax")}
+              aria-invalid={!!taxErr}
+            />
+            {taxErr && <p className="text-xs text-red-600">{taxErr}</p>}
+          </div>
           <Input
             placeholder="公司抬頭"
             value={value.companyTitle ?? ""}
