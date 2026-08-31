@@ -485,6 +485,7 @@ describe("POST /admin/orders/:id/confirm-payment", () => {
  * 只碰「已付款、有會員、且沒有 tier_incremented_at 記號」的訂單。
  */
 describe("POST /admin/orders/retry-post-payment-batch", () => {
+  let lastOrdersChain: any
   const O1 = "aaaaaaaa-0000-0000-0000-000000000001"
   const O2 = "bbbbbbbb-0000-0000-0000-000000000002"
   const O3 = "cccccccc-0000-0000-0000-000000000003"
@@ -502,6 +503,7 @@ describe("POST /admin/orders/retry-post-payment-batch", () => {
     })
     ordersChain.not = vi.fn().mockReturnThis()
     ordersChain.limit = vi.fn().mockReturnThis()
+    lastOrdersChain = ordersChain
 
     const logChain = chain({ terminal: { data: logs, error: null } })
     logChain.in = vi.fn().mockReturnThis()
@@ -562,5 +564,15 @@ describe("POST /admin/orders/retry-post-payment-batch", () => {
     expect(res.status).toBe(200)
     expect(res.body.processed).toBe(2)
     expect(res.body.failed).toEqual([{ orderNumber: "10000019", error: "boom" }])
+  })
+
+  it("★ 只選 cvs_cod —— 其他付款方式會寄「付款成功」信給客人（2026-08-31 事故）", async () => {
+    withBacklog([])
+
+    await run()
+
+    // enqueuePostPaymentJobs 只對 cvs_cod 靜音；漏掉這個過濾條件，
+    // 幾個月前的舊訂單就會突然寄付款成功通知給客人。
+    expect(lastOrdersChain.eq).toHaveBeenCalledWith("payment_method", "cvs_cod")
   })
 })
