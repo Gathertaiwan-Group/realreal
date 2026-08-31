@@ -288,32 +288,28 @@ adminOrdersRouter.post("/:id/confirm-payment", async (req, res) => {
 // spend, no points. Once their payment is confirmed they still need the
 // pipeline run, and there were 14 member orders waiting on 2026-08-31.
 //
-// ⚠️ INCIDENT 2026-08-31: the first version of this endpoint selected EVERY
-// paid order with no sentinel, not just COD. That swept in 20 non-COD orders
-// (11 WordPress-era, dating back to January) and emailed each of those
-// customers a "付款成功" notice for an order they had received months earlier.
-// enqueuePostPaymentJobs only suppresses the customer email for cvs_cod; every
-// other payment method mails the customer. Hence the payment_method filter
-// below — it is load-bearing, not a convenience.
+// Runs SILENTLY. Backfilling an order paid weeks ago must not mail the
+// customer a "付款成功" notice — they already have the goods, so the notice
+// reads as a duplicate charge or a mistake. On 2026-08-31 an earlier version
+// of this endpoint did exactly that to 20 customers (oldest order: January),
+// because the pipeline only suppressed mail for cvs_cod and this endpoint
+// selected every payment method. The fix is not to narrow the selection but to
+// make the backfill itself silent — silence belongs to the reason for the run,
+// not the payment method — so it passes { silent: true } and can safely cover
+// every payment method again.
 //
-// Selection is otherwise narrow: paid, has a user_id, and no
-// tier_incremented_at sentinel, i.e. provably never processed. Every
-// underlying job is idempotent (SELECT-first / sentinel / UNIQUE index), so a
-// double press cannot double-count spend or points.
+// Selection: paid, has a user_id, and no tier_incremented_at sentinel, i.e.
+// provably never processed. Every underlying job is idempotent (SELECT-first /
+// sentinel / UNIQUE index), so a double press cannot double-count spend or
+// points.
 adminOrdersRouter.post("/retry-post-payment-batch", async (req, res) => {
   const { limit } = req.body as { limit?: number }
   const cap = Math.min(Math.max(Number(limit) || 100, 1), 500)
 
-  // SCOPE IS THE WHOLE SAFETY STORY HERE — see the incident note above.
-  // Restricted to cvs_cod because that is the only backlog this endpoint
-  // exists to drain, and because enqueuePostPaymentJobs skips the customer
-  // 付款確認信 for COD only. Any other payment method emails the customer a
-  // "付款成功" notice, which for a months-old order is simply wrong.
   const { data: paidOrders, error } = await supabase
     .from("orders")
     .select("id, order_number, user_id")
     .eq("payment_status", "paid")
-    .eq("payment_method", "cvs_cod")
     .not("user_id", "is", null)
     .limit(cap)
   if (error) { res.status(500).json({ error: error.message }); return }
@@ -341,7 +337,7 @@ adminOrdersRouter.post("/retry-post-payment-batch", async (req, res) => {
   const failed: Array<{ orderNumber: string; error: string }> = []
   for (const o of targets) {
     try {
-      await enqueuePostPaymentJobs(o.id)
+      await enqueuePostPaymentJobs(o.id, { silent: true })
       processed.push(o.order_number)
     } catch (err) {
       failed.push({ orderNumber: o.order_number, error: err instanceof Error ? err.message : String(err) })

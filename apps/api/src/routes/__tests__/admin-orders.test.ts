@@ -566,13 +566,16 @@ describe("POST /admin/orders/retry-post-payment-batch", () => {
     expect(res.body.failed).toEqual([{ orderNumber: "10000019", error: "boom" }])
   })
 
-  it("★ 只選 cvs_cod —— 其他付款方式會寄「付款成功」信給客人（2026-08-31 事故）", async () => {
+  it("★ 一律以 silent 模式執行，補算不得寄任何通知信（2026-08-31 事故）", async () => {
+    const { enqueuePostPaymentJobs } = await import("../../lib/enqueue-post-payment")
     withBacklog([])
 
     await run()
 
-    // enqueuePostPaymentJobs 只對 cvs_cod 靜音；漏掉這個過濾條件，
-    // 幾個月前的舊訂單就會突然寄付款成功通知給客人。
-    expect(lastOrdersChain.eq).toHaveBeenCalledWith("payment_method", "cvs_cod")
+    // 事故成因：補算幾個月前的舊訂單時寄出「付款成功」信給 20 位客人。
+    // 靜音屬於「為什麼要跑這條流程」，不屬於付款方式，所以由呼叫端宣告。
+    for (const call of vi.mocked(enqueuePostPaymentJobs).mock.calls) {
+      expect(call[1]).toEqual({ silent: true })
+    }
   })
 })

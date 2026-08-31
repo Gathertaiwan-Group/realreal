@@ -28,7 +28,28 @@ function esc(s: string): string {
  * the notification block so we don't re-send those emails — invoice / points
  * / tier upgrade still fire because those are the actual payment-time events.
  */
-export async function enqueuePostPaymentJobs(orderId: string) {
+export type PostPaymentOptions = {
+  /**
+   * Skip BOTH customer and admin notification emails.
+   *
+   * Backfilling an order that was paid weeks or months ago must never mail the
+   * customer a "付款成功" notice — they already received the goods, and the
+   * notice reads as either a duplicate charge or a mistake. On 2026-08-31 a
+   * batch backfill did exactly that to 20 customers, the oldest order dating
+   * from January, because the pipeline only suppressed mail for cvs_cod.
+   *
+   * Silence is a property of *why* the pipeline is running, not of the payment
+   * method, so the caller declares it. Everything else — invoice, 消費累積,
+   * points, tier — still runs.
+   */
+  silent?: boolean
+}
+
+export async function enqueuePostPaymentJobs(
+  orderId: string,
+  options: PostPaymentOptions = {},
+) {
+  const silent = options.silent === true
   // Fetch order details needed for the email
   const { data: order } = await supabase
     .from("orders")
@@ -105,9 +126,11 @@ export async function enqueuePostPaymentJobs(orderId: string) {
   }
   const recipientEmail = userEmail ?? (order as any).guest_email as string | undefined
 
-  // 1a + 1b) Customer confirmation + admin notification — skipped for COD
-  // (notifyOrderPlacedCod already handled both at checkout time).
-  if (!isCod) {
+  // 1a + 1b) Customer confirmation + admin notification.
+  // Skipped for COD (notifyOrderPlacedCod already handled both at checkout
+  // time), and skipped entirely when the caller asked for a silent run —
+  // see PostPaymentOptions.silent.
+  if (!isCod && !silent) {
     // Fetch shipping address + items once; share between customer and admin emails.
     const [{ data: shippingRow }, { data: orderItemRows }] = await Promise.all([
       supabase
