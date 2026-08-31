@@ -60,6 +60,25 @@ Replace the confirmation link in the **Confirm signup** template with:
 - `type=signup` → `verifyOtp({ type: "signup", token_hash })`.
 - On failure the user is redirected to `/auth/login?error=link_expired`.
 
+**Always pair the button with a copyable plain-text URL.** Some mobile mail
+clients (confirmed 2026-08-30 with a customer on the iPhone Gmail app) strip
+`<a>` styling and render the anchor as dead plain text — the words "確認註冊"
+appear but nothing is clickable, and the signup silently stalls. Printing the
+full URL as text underneath gives those users a way through:
+
+```html
+<p>按鈕無法點擊嗎？請複製下方完整網址，貼到瀏覽器開啟：</p>
+<p style="word-break:break-all">
+  {{ .SiteURL }}/auth/confirm?token_hash={{ .TokenHash }}&type=signup&next=/
+</p>
+```
+
+A ready-to-paste full template (branded, with this fallback already in place)
+lives at `docs/supabase-confirm-signup-template.html` in the repo root.
+
+The **Reset Password** template above carries the same risk and deserves the
+same fallback block, with `type=recovery&next=/auth/reset-password`.
+
 ### Other templates (optional)
 
 If you use them, the same pattern applies with the matching `type`:
