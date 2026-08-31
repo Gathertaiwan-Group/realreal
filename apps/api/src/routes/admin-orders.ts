@@ -279,6 +279,73 @@ adminOrdersRouter.post("/:id/confirm-payment", async (req, res) => {
   res.json({ ok: true, message: "Payment confirmed", status: order.status })
 })
 
+// POST /admin/orders/retry-post-payment-batch
+// Re-run the post-payment pipeline across every paid order that never
+// completed it, instead of pressing 補跑付款後流程 once per order.
+//
+// The backlog this drains: manually-shipped 超商取貨付款 orders sat at
+// payment_status='pending' for weeks (no delivered webhook), so no invoice, no
+// spend, no points. Once their payment is confirmed they still need the
+// pipeline run, and there were 14 member orders waiting on 2026-08-31.
+//
+// Selection is deliberately narrow — only orders that are paid AND have no
+// tier_incremented_at sentinel, i.e. provably never processed. Every underlying
+// job is idempotent anyway (SELECT-first / sentinel / UNIQUE index), so a
+// double press cannot double-count spend or points.
+//
+// Note for COD: enqueuePostPaymentJobs skips the customer 付款確認信 and the
+// admin notification for cvs_cod orders, so draining a COD backlog is silent.
+adminOrdersRouter.post("/retry-post-payment-batch", async (req, res) => {
+  const { limit } = req.body as { limit?: number }
+  const cap = Math.min(Math.max(Number(limit) || 100, 1), 500)
+
+  const { data: paidOrders, error } = await supabase
+    .from("orders")
+    .select("id, order_number, user_id")
+    .eq("payment_status", "paid")
+    .not("user_id", "is", null)
+    .limit(cap)
+  if (error) { res.status(500).json({ error: error.message }); return }
+
+  const candidates = (paidOrders ?? []) as Array<{ id: string; order_number: string; user_id: string }>
+  if (candidates.length === 0) {
+    res.json({ message: "No paid orders found", processed: 0, skippedAlreadyDone: 0, failed: [] })
+    return
+  }
+
+  // Skip anything already credited — the sentinel is what enqueuePostPaymentJobs
+  // itself checks before touching spend.
+  const { data: logs } = await supabase
+    .from("order_post_payment_log")
+    .select("order_id, tier_incremented_at")
+    .in("order_id", candidates.map((c) => c.id))
+  const done = new Set(
+    ((logs ?? []) as Array<{ order_id: string; tier_incremented_at: string | null }>)
+      .filter((l) => l.tier_incremented_at)
+      .map((l) => l.order_id),
+  )
+
+  const targets = candidates.filter((c) => !done.has(c.id))
+  const processed: string[] = []
+  const failed: Array<{ orderNumber: string; error: string }> = []
+  for (const o of targets) {
+    try {
+      await enqueuePostPaymentJobs(o.id)
+      processed.push(o.order_number)
+    } catch (err) {
+      failed.push({ orderNumber: o.order_number, error: err instanceof Error ? err.message : String(err) })
+    }
+  }
+
+  res.json({
+    message: `Re-ran post-payment for ${processed.length} order(s)`,
+    processed: processed.length,
+    skippedAlreadyDone: candidates.length - targets.length,
+    failed,
+    orderNumbers: processed,
+  })
+})
+
 // POST /admin/orders/:id/retry-post-payment
 // Re-runs the post-payment side effects (admin email, invoice insert,
 // invoice issuance enqueue, logistics enqueue, tier upgrade). All the

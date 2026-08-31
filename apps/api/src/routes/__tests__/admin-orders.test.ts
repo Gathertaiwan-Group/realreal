@@ -476,3 +476,91 @@ describe("POST /admin/orders/:id/confirm-payment", () => {
     }
   })
 })
+
+/**
+ * POST /admin/orders/retry-post-payment-batch — 補算漏掉的消費／點數／等級。
+ *
+ * 手動出貨的 COD 訂單長期停在待付款，付款後流程從沒跑過。確認收款後仍要補跑，
+ * 但一筆一筆按不合理（2026-08-31 有 14 筆）。這裡驗的是選取範圍夠窄：
+ * 只碰「已付款、有會員、且沒有 tier_incremented_at 記號」的訂單。
+ */
+describe("POST /admin/orders/retry-post-payment-batch", () => {
+  const O1 = "aaaaaaaa-0000-0000-0000-000000000001"
+  const O2 = "bbbbbbbb-0000-0000-0000-000000000002"
+  const O3 = "cccccccc-0000-0000-0000-000000000003"
+
+  function withBacklog(logs: Array<{ order_id: string; tier_incremented_at: string | null }>) {
+    const ordersChain = chain({
+      terminal: {
+        data: [
+          { id: O1, order_number: "10000017", user_id: "u1" },
+          { id: O2, order_number: "10000019", user_id: "u2" },
+          { id: O3, order_number: "10000032", user_id: "u3" },
+        ],
+        error: null,
+      },
+    })
+    ordersChain.not = vi.fn().mockReturnThis()
+    ordersChain.limit = vi.fn().mockReturnThis()
+
+    const logChain = chain({ terminal: { data: logs, error: null } })
+    logChain.in = vi.fn().mockReturnThis()
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === "user_profiles") return adminProfileChain() as any
+      if (table === "orders") return ordersChain as any
+      if (table === "order_post_payment_log") return logChain as any
+      return chain() as any
+    })
+  }
+
+  const run = () =>
+    request(app).post("/admin/orders/retry-post-payment-batch").set("Authorization", "Bearer t").send({})
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mockAdminAuth()
+  })
+
+  it("處理所有從未計算過的已付款訂單", async () => {
+    const { enqueuePostPaymentJobs } = await import("../../lib/enqueue-post-payment")
+    withBacklog([])
+
+    const res = await run()
+
+    expect(res.status).toBe(200)
+    expect(res.body.processed).toBe(3)
+    expect(res.body.skippedAlreadyDone).toBe(0)
+    expect(enqueuePostPaymentJobs).toHaveBeenCalledTimes(3)
+  })
+
+  it("★ 已有 tier_incremented_at 記號的訂單跳過，不會重複累積消費", async () => {
+    const { enqueuePostPaymentJobs } = await import("../../lib/enqueue-post-payment")
+    withBacklog([
+      { order_id: O1, tier_incremented_at: "2026-08-01T00:00:00Z" },
+      { order_id: O2, tier_incremented_at: null },
+    ])
+
+    const res = await run()
+
+    expect(res.status).toBe(200)
+    expect(res.body.processed).toBe(2)          // O2, O3
+    expect(res.body.skippedAlreadyDone).toBe(1) // O1
+    expect(res.body.orderNumbers).toEqual(["10000019", "10000032"])
+    expect(enqueuePostPaymentJobs).toHaveBeenCalledTimes(2)
+  })
+
+  it("單筆失敗不影響其他筆，並回報是哪一筆", async () => {
+    const { enqueuePostPaymentJobs } = await import("../../lib/enqueue-post-payment")
+    vi.mocked(enqueuePostPaymentJobs).mockImplementation(async (id: string) => {
+      if (id === O2) throw new Error("boom")
+    })
+    withBacklog([])
+
+    const res = await run()
+
+    expect(res.status).toBe(200)
+    expect(res.body.processed).toBe(2)
+    expect(res.body.failed).toEqual([{ orderNumber: "10000019", error: "boom" }])
+  })
+})

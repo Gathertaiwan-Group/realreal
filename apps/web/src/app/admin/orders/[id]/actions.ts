@@ -87,6 +87,31 @@ export async function reissueInvoiceAction(
 }
 
 /**
+ * Re-run the post-payment pipeline for every paid order that never completed
+ * it — invoice, 消費累積, 點數, 會員等級. Only touches orders with no
+ * tier_incremented_at sentinel, and every underlying job is idempotent.
+ *
+ * For 超商取貨付款 orders the pipeline skips the customer 付款確認信, so
+ * draining that backlog does not email anyone.
+ */
+export async function retryPostPaymentBatchAction(): Promise<
+  ActionResult & { processed?: number; skippedAlreadyDone?: number }
+> {
+  try {
+    const supabase = await createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    const result = await apiClient<{ processed: number; skippedAlreadyDone: number }>(
+      "/admin/orders/retry-post-payment-batch",
+      { method: "POST", body: JSON.stringify({}), token: session?.access_token },
+    )
+    revalidatePath("/admin/orders")
+    return { ok: true, processed: result.processed, skippedAlreadyDone: result.skippedAlreadyDone }
+  } catch (e) {
+    return toErrorResult(e)
+  }
+}
+
+/**
  * Re-drive every unissued invoice at once.
  *
  * When Amego's 字軌 runs out, the whole backlog fails together and each one

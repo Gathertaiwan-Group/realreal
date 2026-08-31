@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Trash2 } from "lucide-react"
-import { deleteOrderAction, restoreOrderAction, reissueAllInvoicesAction } from "./[id]/actions"
+import { deleteOrderAction, restoreOrderAction, reissueAllInvoicesAction, retryPostPaymentBatchAction } from "./[id]/actions"
 
 // 封存 (soft-archive) for an ACTIVE order in the list. Reversible: the order
 // moves to the 「顯示已封存」 view where it can be 還原 (restored) or 永久刪除
@@ -186,6 +186,57 @@ export function ReissueAllInvoicesAction() {
       <span className="text-xs text-zinc-600">確定送出？</span>
       <Button size="sm" onClick={handleReissue} disabled={isPending}>
         {isPending ? "送出中…" : "確定"}
+      </Button>
+      <Button variant="ghost" size="sm" onClick={() => setConfirm(false)} disabled={isPending}>
+        取消
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * 補算所有漏掉的消費金額／點數／會員等級。
+ *
+ * 手動出貨的超商取貨付款訂單長期停在待付款，付款後流程從沒跑過，客人的消費
+ * 與點數都沒算到（2026-08-31 有 14 筆會員訂單）。只處理「已付款且從未計算過」
+ * 的訂單，底層每個步驟都是冪等的，重複按不會重複計算。
+ */
+export function RetryPostPaymentBatchAction() {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [confirm, setConfirm] = useState(false)
+
+  function handleRun() {
+    startTransition(async () => {
+      const result = await retryPostPaymentBatchAction()
+      if (result.ok) {
+        const skipped = result.skippedAlreadyDone
+          ? `，${result.skippedAlreadyDone} 筆已計算過略過`
+          : ""
+        toast.success(`已補算 ${result.processed ?? 0} 筆訂單${skipped}`, {
+          description: "消費金額、點數與會員等級已更新。",
+        })
+        router.refresh()
+      } else {
+        toast.error(result.error ?? "補算失敗")
+      }
+      setConfirm(false)
+    })
+  }
+
+  if (!confirm) {
+    return (
+      <Button variant="outline" size="sm" onClick={() => setConfirm(true)}>
+        補算消費與點數
+      </Button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-zinc-600">確定執行？</span>
+      <Button size="sm" onClick={handleRun} disabled={isPending}>
+        {isPending ? "執行中…" : "確定"}
       </Button>
       <Button variant="ghost" size="sm" onClick={() => setConfirm(false)} disabled={isPending}>
         取消
