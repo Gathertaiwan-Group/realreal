@@ -1,6 +1,6 @@
 /**
  * Email sender — direct send (no BullMQ/Redis required).
- * Templates are rendered to HTML and sent via Gmail SMTP.
+ * Templates are rendered to HTML and sent via Resend (see lib/email.ts).
  * Supports editable templates from site_contents (CMS) with fallback to hardcoded render functions.
  */
 import { sendEmail } from "../lib/email"
