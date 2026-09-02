@@ -18,7 +18,7 @@ import { renderSubscriptionFailed } from "../emails/SubscriptionFailed"
 export type EmailJobData =
   | { template: "order-confirmation"; to: string; data: { orderNumber: string; items: any[]; total: string; address: string } }
   | { template: "payment-confirmed"; to: string; data: { orderNumber: string; amount: string; customerName: string; items: Array<{ name: string; qty: number; price: string }>; pickupInfo: string; codNotice?: string; isGuestOrder?: boolean } }
-  | { template: "order-shipped"; to: string; data: { orderNumber: string; customerName: string } }
+  | { template: "order-shipped"; to: string; data: { orderNumber: string; customerName: string; codAmount?: number | null; pickupInfo?: string | null } }
   | { template: "payment-reminder"; to: string; data: { orderNumber: string; customerName: string; amount: string; items: Array<{ name: string; qty: number; price: string }>; pickupInfo: string; repayUrl: string } }
   | { template: "tier-upgrade"; to: string; data: { newTier: string; discountRate: number; perks: string[] } }
   | { template: "tier-renewed"; to: string; data: { tierName: string; newExpiresAt: string; perks: string[] } }
@@ -141,7 +141,9 @@ export async function renderAndSendEmail(jobData: EmailJobData): Promise<void> {
       html = renderPaymentConfirmed(data)
       break
     case "order-shipped":
-      subject = `您的訂單已出貨 #${data.orderNumber}`
+      subject = Number(data.codAmount ?? 0) > 0
+        ? `您的訂單已出貨 #${data.orderNumber} — 取貨時請付 NT$ ${Number(data.codAmount).toLocaleString("en-US")}`
+        : `您的訂單已出貨 #${data.orderNumber}`
       html = renderOrderShipped(data)
       break
     case "payment-reminder":

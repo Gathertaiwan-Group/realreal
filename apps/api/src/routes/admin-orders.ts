@@ -442,7 +442,7 @@ async function shipOrderById(
 ): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   const { data: order, error } = await supabase
     .from("orders")
-    .select("id, order_number, status, payment_method, guest_email, user_id")
+    .select("id, order_number, status, payment_method, total, guest_email, user_id")
     .eq("id", orderId)
     .single()
 
@@ -456,12 +456,36 @@ async function shipOrderById(
 
   const { data: shippingAddr } = await supabase
     .from("order_addresses")
-    .select("name")
+    .select("name, address_type, address, cvs_store_id, cvs_type, city, postal_code")
     .eq("order_id", orderId)
     .eq("type", "shipping")
     .maybeSingle()
 
-  const customerName = (shippingAddr?.name as string | null | undefined) ?? "顧客"
+  const addr = (shippingAddr ?? {}) as {
+    name?: string | null
+    address_type?: string | null
+    address?: string | null
+    cvs_store_id?: string | null
+    cvs_type?: string | null
+    city?: string | null
+    postal_code?: string | null
+  }
+  const customerName = addr.name ?? "顧客"
+
+  // 取件資訊：超商要寫到門市（客人要拿著它去店裡），宅配寫地址。
+  let pickupInfo: string | null = null
+  if (addr.address_type === "cvs") {
+    const chain = addr.cvs_type === "family" ? "全家" : "7-11"
+    pickupInfo = `${chain} ${addr.address ?? ""} (${addr.cvs_store_id ?? ""})`.trim()
+  } else if (addr.address_type === "overseas") {
+    pickupInfo = `海外寄送｜${addr.city ?? ""} ${addr.address ?? ""}`.trim()
+  } else if (addr.address) {
+    pickupInfo = `宅配｜${addr.postal_code ?? ""} ${addr.city ?? ""} ${addr.address}`.trim()
+  }
+
+  // 只有超商取貨付款才帶金額。已經線上付過款的訂單看到「請付 NT$ x」會以為
+  // 被重複請款 —— 港澳順豐的運費到付也不走這裡（運費由司機收，不是我們代收）。
+  const codAmount = isCod ? Number(order.total ?? 0) : null
 
   let recipientEmail: string | undefined
   if (order.user_id) {
@@ -482,7 +506,7 @@ async function shipOrderById(
     return { ok: false, status: 500, error: "Failed to update order status" }
   }
 
-  const emailData = { orderNumber: order.order_number as string, customerName }
+  const emailData = { orderNumber: order.order_number as string, customerName, codAmount, pickupInfo }
 
   if (recipientEmail) {
     try {
