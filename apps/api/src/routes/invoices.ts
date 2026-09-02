@@ -276,10 +276,34 @@ invoicesRouter.post("/void-legacy-duplicates", async (req, res) => {
   const { reason } = req.body as { reason?: string }
   const voidReason = reason?.trim() || "舊站訂單重複開立"
 
+  // Two lookups, deliberately NOT a PostgREST embed. `invoices` and `orders`
+  // are joined BOTH ways (invoices.order_id → orders.id and
+  // orders.invoice_id → invoices.id), so `orders(order_number)` is ambiguous
+  // and PostgREST answers 300 Multiple Choices — the whole request fails
+  // before a single invoice is examined. Naming a constraint
+  // (`orders!invoices_order_id_fkey`) would work until someone renames it.
+  // Two plain queries have no such dependency.
+  const { data: legacyOrders, error: ordersError } = await supabase
+    .from("orders")
+    .select("id, order_number")
+    .like("order_number", "WP%")
+
+  if (ordersError) { res.status(500).json({ error: ordersError.message }); return }
+
+  const orderNumberById = new Map(
+    (legacyOrders ?? []).map((o) => [o.id as string, o.order_number as string]),
+  )
+
+  if (orderNumberById.size === 0) {
+    res.json({ voided: [], failed: [], voidedCount: 0, failedCount: 0 })
+    return
+  }
+
   const { data: rows, error } = await supabase
     .from("invoices")
-    .select("id, invoice_number, amego_id, status, amount, orders(order_number)")
+    .select("id, invoice_number, amego_id, status, amount, order_id")
     .eq("status", "issued")
+    .in("order_id", [...orderNumberById.keys()])
 
   if (error) { res.status(500).json({ error: error.message }); return }
 
@@ -288,17 +312,12 @@ invoicesRouter.post("/void-legacy-duplicates", async (req, res) => {
     invoice_number: string | null
     amego_id: string | null
     amount: number | string | null
-    orders: { order_number: string } | Array<{ order_number: string }> | null
+    order_id: string
   }
 
-  const orderNumberOf = (r: Row): string => {
-    const o = Array.isArray(r.orders) ? r.orders[0] : r.orders
-    return o?.order_number ?? ""
-  }
+  const orderNumberOf = (r: Row): string => orderNumberById.get(r.order_id) ?? ""
 
-  const targets = ((rows ?? []) as Row[]).filter((r) =>
-    orderNumberOf(r).startsWith("WP"),
-  )
+  const targets = (rows ?? []) as Row[]
 
   const voided: Array<{ orderNumber: string; invoiceNumber: string; amount: number }> = []
   const failed: Array<{ orderNumber: string; invoiceNumber: string; error: string }> = []
