@@ -429,23 +429,29 @@ adminOrdersRouter.post("/:id/retry-shipment", async (req, res) => {
   }
 })
 
-// POST /admin/orders/:id/ship — mark order as shipped and send customer email.
-// Works for regular orders (status="processing") and COD orders (status="pending").
-adminOrdersRouter.post("/:id/ship", async (req, res) => {
-  const orderId = req.params.id
-
+/**
+ * Mark ONE order shipped and send the customer + admin notification.
+ *
+ * Shared by POST /:id/ship and POST /ship-batch, so a batch run is literally N
+ * single ships — same guards, same template, same wording. A batch that
+ * reimplements the work drifts from the single-order path, and that drift is
+ * only ever discovered in a customer's inbox.
+ */
+async function shipOrderById(
+  orderId: string,
+): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   const { data: order, error } = await supabase
     .from("orders")
     .select("id, order_number, status, payment_method, guest_email, user_id")
     .eq("id", orderId)
     .single()
 
-  if (error || !order) { res.status(404).json({ error: "Order not found" }); return }
+  if (error || !order) return { ok: false, status: 404, error: "Order not found" }
 
   const isCod = order.payment_method === "cvs_cod"
   const canShip = order.status === "processing" || (isCod && order.status === "pending")
   if (!canShip) {
-    res.status(400).json({ error: `Cannot ship order in status "${order.status}"` }); return
+    return { ok: false, status: 400, error: `Cannot ship order in status "${order.status}"` }
   }
 
   const { data: shippingAddr } = await supabase
@@ -473,7 +479,7 @@ adminOrdersRouter.post("/:id/ship", async (req, res) => {
 
   if (updateError) {
     console.error("[admin/orders] ship status update failed:", updateError)
-    res.status(500).json({ error: "Failed to update order status" }); return
+    return { ok: false, status: 500, error: "Failed to update order status" }
   }
 
   const emailData = { orderNumber: order.order_number as string, customerName }
@@ -504,7 +510,73 @@ adminOrdersRouter.post("/:id/ship", async (req, res) => {
     console.warn(`[admin/orders] order-shipped admin email failed for ${orderId}:`, err)
   }
 
+  return { ok: true }
+}
+
+// POST /admin/orders/:id/ship — mark order as shipped and send customer email.
+// Works for regular orders (status="processing") and COD orders (status="pending").
+adminOrdersRouter.post("/:id/ship", async (req, res) => {
+  const result = await shipOrderById(req.params.id)
+  if (!result.ok) { res.status(result.status).json({ error: result.error }); return }
   res.json({ ok: true })
+})
+
+// POST /admin/orders/ship-batch — mark a NAMED LIST of orders shipped at once.
+//
+// Shipping day means ~30 orders going out together; opening 30 detail pages to
+// click 出貨 30 times is where an order gets missed.
+//
+// The list is always explicit — this endpoint never selects its own scope. On
+// 2026-08-31 a batch that chose its own rows mailed 20 customers a payment
+// notice for orders they had received months earlier. A batch that must be
+// handed every order number it touches cannot surprise anyone; the caller sees
+// the exact set before it runs, and the response names every order it skipped.
+adminOrdersRouter.post("/ship-batch", async (req, res) => {
+  const { orderNumbers } = req.body as { orderNumbers?: unknown }
+
+  if (!Array.isArray(orderNumbers) || orderNumbers.length === 0) {
+    res.status(400).json({ error: "orderNumbers must be a non-empty array" }); return
+  }
+  if (orderNumbers.length > 100) {
+    res.status(400).json({ error: "一次最多 100 筆" }); return
+  }
+
+  const wanted = [
+    ...new Set(orderNumbers.map((n) => String(n).trim()).filter(Boolean)),
+  ]
+
+  const { data: rows, error } = await supabase
+    .from("orders")
+    .select("id, order_number")
+    .in("order_number", wanted)
+    .is("deleted_at", null)
+
+  if (error) { res.status(500).json({ error: error.message }); return }
+
+  const idByNumber = new Map(
+    (rows ?? []).map((r) => [r.order_number as string, r.id as string]),
+  )
+
+  const shipped: string[] = []
+  const skipped: Array<{ orderNumber: string; reason: string }> = []
+
+  // Sequential, not Promise.all: each ship sends two emails through Resend, and
+  // 30 concurrent sends is how you trip a rate limit halfway through a batch
+  // and end up not knowing which half landed.
+  for (const orderNumber of wanted) {
+    const id = idByNumber.get(orderNumber)
+    if (!id) { skipped.push({ orderNumber, reason: "找不到此訂單" }); continue }
+    const result = await shipOrderById(id)
+    if (result.ok) shipped.push(orderNumber)
+    else skipped.push({ orderNumber, reason: result.error })
+  }
+
+  res.json({
+    shipped,
+    skipped,
+    shippedCount: shipped.length,
+    skippedCount: skipped.length,
+  })
 })
 
 // POST /admin/orders/:id/cancel — one-click admin cancellation.

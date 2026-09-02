@@ -255,6 +255,105 @@ invoicesRouter.post("/:id/void", async (req, res) => {
 })
 
 // ---------------------------------------------------------------------------
+// POST /admin/invoices/void-legacy-duplicates — 作廢 WP 舊站訂單的重複發票
+// ---------------------------------------------------------------------------
+//
+// WP-prefixed orders are WordPress-era imports from before the 2026-06-29
+// migration; each was already invoiced on the old platform. On 2026-08-31 a
+// spend/points backfill ran the post-payment pipeline over them and minted 11
+// duplicate invoices (DV25772577–DV25772587, NT$17,489). 財政部 now holds two
+// documents for each of those sales.
+//
+// Scope is derived from the rule, not typed in: every *issued* invoice whose
+// order number starts with "WP". Nothing else can be reached from here, so the
+// button cannot be pointed at a live order by accident. Already-voided rows are
+// skipped, which makes a second press a no-op rather than a second 作廢 attempt.
+//
+// The leak that produced them is closed in enqueuePostPaymentJobs (the invoice
+// step now skips WP orders at the choke point every payment path shares); this
+// endpoint only cleans up what already went out.
+invoicesRouter.post("/void-legacy-duplicates", async (req, res) => {
+  const { reason } = req.body as { reason?: string }
+  const voidReason = reason?.trim() || "舊站訂單重複開立"
+
+  const { data: rows, error } = await supabase
+    .from("invoices")
+    .select("id, invoice_number, amego_id, status, amount, orders(order_number)")
+    .eq("status", "issued")
+
+  if (error) { res.status(500).json({ error: error.message }); return }
+
+  type Row = {
+    id: string
+    invoice_number: string | null
+    amego_id: string | null
+    amount: number | string | null
+    orders: { order_number: string } | Array<{ order_number: string }> | null
+  }
+
+  const orderNumberOf = (r: Row): string => {
+    const o = Array.isArray(r.orders) ? r.orders[0] : r.orders
+    return o?.order_number ?? ""
+  }
+
+  const targets = ((rows ?? []) as Row[]).filter((r) =>
+    orderNumberOf(r).startsWith("WP"),
+  )
+
+  const voided: Array<{ orderNumber: string; invoiceNumber: string; amount: number }> = []
+  const failed: Array<{ orderNumber: string; invoiceNumber: string; error: string }> = []
+
+  // Sequential: Amego is a tax authority relay, and a 作廢 storm is not
+  // something to debug halfway through. One at a time, each result recorded.
+  for (const row of targets) {
+    const orderNumber = orderNumberOf(row)
+    const invoiceNumber = row.invoice_number ?? row.amego_id ?? "(unknown)"
+
+    if (!row.amego_id) {
+      failed.push({ orderNumber, invoiceNumber, error: "沒有 amego_id，無法作廢" })
+      continue
+    }
+
+    try {
+      await voidInvoice(row.amego_id, voidReason)
+    } catch (err) {
+      failed.push({
+        orderNumber,
+        invoiceNumber,
+        error: err instanceof Error ? err.message : String(err),
+      })
+      continue
+    }
+
+    // Amego already voided it; a DB write failure here must be visible, not
+    // counted as a clean success — otherwise the row still reads "issued" and
+    // the next press tries to void an invoice 財政部 has already cancelled.
+    const { error: updateError } = await supabase
+      .from("invoices")
+      .update({ status: "voided", voided_at: new Date().toISOString(), error_message: null })
+      .eq("id", row.id)
+
+    if (updateError) {
+      failed.push({
+        orderNumber,
+        invoiceNumber,
+        error: `Amego 已作廢，但資料庫未更新：${updateError.message}`,
+      })
+      continue
+    }
+
+    voided.push({ orderNumber, invoiceNumber, amount: Number(row.amount ?? 0) })
+  }
+
+  res.json({
+    voided,
+    failed,
+    voidedCount: voided.length,
+    failedCount: failed.length,
+  })
+})
+
+// ---------------------------------------------------------------------------
 // GET /admin/invoices/:id/pdf — redirect to Amego PDF URL
 // ---------------------------------------------------------------------------
 

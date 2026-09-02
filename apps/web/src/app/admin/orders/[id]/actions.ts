@@ -141,6 +141,70 @@ export async function reissueAllInvoicesAction(
   }
 }
 
+/**
+ * 批次出貨：把一份指名的訂單清單標記為已出貨並寄出通知信。
+ *
+ * 出貨日一次就是 ~30 筆，逐筆點進去按「出貨」是漏單的來源。清單一律由使用者
+ * 指定，API 不會自己挑訂單 —— 2026-08-31 就是一個自己挑範圍的批次，寄了 20 封
+ * 錯誤的付款通知給幾個月前就收到貨的客人。
+ */
+export async function shipBatchAction(
+  orderNumbers: string[],
+): Promise<
+  ActionResult & {
+    shipped?: string[]
+    skipped?: Array<{ orderNumber: string; reason: string }>
+  }
+> {
+  try {
+    const supabase = await createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    const result = await apiClient<{
+      shipped: string[]
+      skipped: Array<{ orderNumber: string; reason: string }>
+    }>("/admin/orders/ship-batch", {
+      method: "POST",
+      body: JSON.stringify({ orderNumbers }),
+      token: session?.access_token,
+    })
+    revalidatePath("/admin/orders")
+    return { ok: true, shipped: result.shipped, skipped: result.skipped }
+  } catch (e) {
+    return toErrorResult(e)
+  }
+}
+
+/**
+ * 作廢 WP 舊站訂單被重複開立的發票。
+ *
+ * WP 開頭的訂單是 2026-06-29 搬站前的 WordPress 訂單，發票在舊平台就開過了。
+ * 2026-08-31 的補算批次跑過付款後流程，替這些訂單又開了 11 張真發票。範圍由
+ * 規則決定（狀態 issued 且訂單編號以 WP 開頭），按鈕指不到任何一筆新站訂單。
+ */
+export async function voidLegacyDuplicateInvoicesAction(): Promise<
+  ActionResult & {
+    voided?: Array<{ orderNumber: string; invoiceNumber: string; amount: number }>
+    failed?: Array<{ orderNumber: string; invoiceNumber: string; error: string }>
+  }
+> {
+  try {
+    const supabase = await createClient()
+    const { data: { session } } = await supabase.auth.getSession()
+    const result = await apiClient<{
+      voided: Array<{ orderNumber: string; invoiceNumber: string; amount: number }>
+      failed: Array<{ orderNumber: string; invoiceNumber: string; error: string }>
+    }>("/admin/invoices/void-legacy-duplicates", {
+      method: "POST",
+      body: JSON.stringify({ reason: "舊站訂單重複開立" }),
+      token: session?.access_token,
+    })
+    revalidatePath("/admin/orders")
+    return { ok: true, voided: result.voided, failed: result.failed }
+  } catch (e) {
+    return toErrorResult(e)
+  }
+}
+
 export async function voidInvoiceAction(
   orderId: string,
   invoiceId: string,

@@ -243,6 +243,25 @@ export async function enqueuePostPaymentJobs(
 
   // 2) Create an invoice record (if not already present) and enqueue Amego
   //    issuance via the invoice worker.
+  //
+  // WP-prefixed orders are WordPress-era imports from before the 2026-06-29
+  // migration. Every one of them was already invoiced on the old platform, so
+  // issuing here mints a DUPLICATE tax document — 財政部 sees two, the customer
+  // gets two, and the only remedy is 作廢.
+  //
+  // That exclusion used to live in POST /admin/invoices/reissue-batch alone. On
+  // 2026-08-31 a spend/points backfill reached this function instead, sailed
+  // past a guard that wasn't on its path, and opened 11 duplicate invoices
+  // (DV25772577–DV25772587) that had to be voided by hand. A rule enforced in
+  // one caller is not enforced. It belongs here, at the choke point every
+  // payment path — webhook, admin retry, batch backfill — funnels through.
+  const isLegacyImport = String(order.order_number ?? "").startsWith("WP")
+  if (isLegacyImport) {
+    console.log(
+      `[post-payment] ${order.order_number} is a WordPress-era import — invoice skipped (already issued on the old platform)`,
+    )
+  }
+
   try {
     const { data: existingInvoice } = await supabase
       .from("invoices")
@@ -250,7 +269,7 @@ export async function enqueuePostPaymentJobs(
       .eq("order_id", orderId)
       .maybeSingle()
 
-    if (!existingInvoice) {
+    if (!existingInvoice && !isLegacyImport) {
       // Schema enum (0001_initial.sql + 0003_invoice_extensions.sql):
       //   type        ∈ B2C_2 / B2C_3 / B2B
       //   carrier_type∈ phone / natural_person / love_code (or NULL)
@@ -300,20 +319,22 @@ export async function enqueuePostPaymentJobs(
     // still exists in ANY set, so a retained completed/failed job would block
     // every future enqueue for this order. Failures stay visible in
     // invoices.error_message and Sentry, not in the failed set.
-    await invoiceQueue.add(
-      "issue",
-      { orderId },
-      {
-        // '-'-joined, never ':' — BullMQ rejects a custom jobId containing ':'
-        // ("Custom Id cannot contain :"), which would throw and skip enqueuing
-        // the invoice for every paid order. Still stable per order (dedup intact).
-        jobId: `invoice-order-${orderId}`,
-        attempts: 5,
-        backoff: { type: "exponential", delay: 60000 },
-        removeOnComplete: true,
-        removeOnFail: true,
-      },
-    )
+    if (!isLegacyImport) {
+      await invoiceQueue.add(
+        "issue",
+        { orderId },
+        {
+          // '-'-joined, never ':' — BullMQ rejects a custom jobId containing ':'
+          // ("Custom Id cannot contain :"), which would throw and skip enqueuing
+          // the invoice for every paid order. Still stable per order (dedup intact).
+          jobId: `invoice-order-${orderId}`,
+          attempts: 5,
+          backoff: { type: "exponential", delay: 60000 },
+          removeOnComplete: true,
+          removeOnFail: true,
+        },
+      )
+    }
   } catch (err) {
     console.warn("[post-payment] invoice creation/enqueue failed (non-fatal):", err)
   }

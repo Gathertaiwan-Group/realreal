@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { Button } from "@/components/ui/button"
 import { Trash2 } from "lucide-react"
-import { deleteOrderAction, restoreOrderAction, reissueAllInvoicesAction, retryPostPaymentBatchAction } from "./[id]/actions"
+import {
+  deleteOrderAction,
+  restoreOrderAction,
+  reissueAllInvoicesAction,
+  retryPostPaymentBatchAction,
+  shipBatchAction,
+  voidLegacyDuplicateInvoicesAction,
+} from "./[id]/actions"
 
 // 封存 (soft-archive) for an ACTIVE order in the list. Reversible: the order
 // moves to the 「顯示已封存」 view where it can be 還原 (restored) or 永久刪除
@@ -237,6 +244,168 @@ export function RetryPostPaymentBatchAction() {
       <span className="text-xs text-zinc-600">確定執行？</span>
       <Button size="sm" onClick={handleRun} disabled={isPending}>
         {isPending ? "執行中…" : "確定"}
+      </Button>
+      <Button variant="ghost" size="sm" onClick={() => setConfirm(false)} disabled={isPending}>
+        取消
+      </Button>
+    </div>
+  )
+}
+
+/**
+ * 批次出貨：貼上訂單編號 → 一次標記出貨並寄通知信。
+ *
+ * 為什麼是「貼清單」而不是「勾選全部處理中」：出貨當天真正出的那批，跟後台當下
+ * 篩得出來的那批從來不會剛好一樣（有人改地址、有人待補款、有廠商代出的先出）。
+ * 揀貨清單是從出貨單來的，貼進來的就是實際裝箱的那幾筆 —— 送出前螢幕上看得到
+ * 完整名單與筆數，按下去不會多出一筆沒人預期的訂單。
+ */
+export function ShipBatchAction() {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [open, setOpen] = useState(false)
+  const [raw, setRaw] = useState("")
+
+  // 逗號、空白、換行都當分隔；重複的只算一次。
+  const orderNumbers = Array.from(
+    new Set((raw.match(/[A-Za-z0-9]+/g) ?? []).map((n) => n.trim()).filter(Boolean)),
+  )
+
+  function handleShip() {
+    startTransition(async () => {
+      const result = await shipBatchAction(orderNumbers)
+      if (!result.ok) {
+        toast.error(result.error ?? "批次出貨失敗")
+        return
+      }
+      const shipped = result.shipped ?? []
+      const skipped = result.skipped ?? []
+      if (shipped.length > 0) {
+        toast.success(`已出貨 ${shipped.length} 筆，通知信已寄出`, {
+          description:
+            skipped.length > 0
+              ? `${skipped.length} 筆未處理：${skipped.map((x) => `${x.orderNumber}（${x.reason}）`).join("、")}`
+              : undefined,
+          duration: skipped.length > 0 ? 20000 : 5000,
+        })
+      } else {
+        toast.error("沒有任何訂單被出貨", {
+          description: skipped.map((x) => `${x.orderNumber}（${x.reason}）`).join("、"),
+          duration: 20000,
+        })
+      }
+      setRaw("")
+      setOpen(false)
+      router.refresh()
+    })
+  }
+
+  if (!open) {
+    return (
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        批次出貨
+      </Button>
+    )
+  }
+
+  return (
+    <div className="relative">
+      <Button variant="outline" size="sm" onClick={() => setOpen(false)}>
+        批次出貨
+      </Button>
+      <div className="absolute right-0 top-full z-20 mt-2 w-80 rounded-lg border bg-white p-3 shadow-lg">
+        <p className="mb-1 text-xs font-medium text-[#10305a]">批次標記出貨</p>
+        <p className="mb-2 text-[11px] leading-relaxed text-zinc-500">
+          貼上要出貨的訂單編號，一行一筆或用逗號分隔。每筆都會寄出貨通知信給客人。
+        </p>
+        <textarea
+          value={raw}
+          onChange={(e) => setRaw(e.target.value)}
+          rows={6}
+          autoFocus
+          placeholder="10000150, 10000159, 10000161"
+          className="w-full rounded border border-zinc-200 p-2 font-mono text-xs focus:border-[#10305a] focus:outline-none"
+        />
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span className="text-xs text-zinc-600">
+            {orderNumbers.length > 0 ? `共 ${orderNumbers.length} 筆` : "尚未輸入"}
+          </span>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setOpen(false)
+                setRaw("")
+              }}
+              disabled={isPending}
+            >
+              取消
+            </Button>
+            <Button size="sm" onClick={handleShip} disabled={isPending || orderNumbers.length === 0}>
+              {isPending ? "出貨中…" : `確定出貨 ${orderNumbers.length} 筆`}
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * 作廢 WP 舊站訂單被重複開立的發票。
+ *
+ * 只找得到「狀態為已開立、且訂單編號以 WP 開頭」的發票，指不到任何新站訂單。
+ * 已作廢的會自動略過，所以重複按不會再送一次作廢。
+ */
+export function VoidLegacyDuplicatesAction() {
+  const router = useRouter()
+  const [isPending, startTransition] = useTransition()
+  const [confirm, setConfirm] = useState(false)
+
+  function handleVoid() {
+    startTransition(async () => {
+      const result = await voidLegacyDuplicateInvoicesAction()
+      if (!result.ok) {
+        toast.error(result.error ?? "作廢失敗")
+        setConfirm(false)
+        return
+      }
+      const voided = result.voided ?? []
+      const failed = result.failed ?? []
+      const total = voided.reduce((sum, v) => sum + Number(v.amount ?? 0), 0)
+      if (voided.length > 0) {
+        toast.success(`已作廢 ${voided.length} 張發票（NT$ ${total.toLocaleString()}）`, {
+          description: voided.map((v) => `${v.orderNumber} ${v.invoiceNumber}`).join("、"),
+          duration: 20000,
+        })
+      } else if (failed.length === 0) {
+        toast.info("沒有需要作廢的舊站發票")
+      }
+      if (failed.length > 0) {
+        toast.error(`${failed.length} 張作廢失敗`, {
+          description: failed.map((f) => `${f.invoiceNumber}：${f.error}`).join("、"),
+          duration: 30000,
+        })
+      }
+      setConfirm(false)
+      router.refresh()
+    })
+  }
+
+  if (!confirm) {
+    return (
+      <Button variant="outline" size="sm" onClick={() => setConfirm(true)}>
+        作廢舊站重複發票
+      </Button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-zinc-600">作廢後無法復原，確定？</span>
+      <Button size="sm" onClick={handleVoid} disabled={isPending}>
+        {isPending ? "作廢中…" : "確定"}
       </Button>
       <Button variant="ghost" size="sm" onClick={() => setConfirm(false)} disabled={isPending}>
         取消
