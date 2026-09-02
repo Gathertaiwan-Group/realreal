@@ -1,5 +1,6 @@
 import type { Metadata } from "next"
 import { getSiteContent } from "@/lib/content"
+import { fetchShippingConfig, shippingFeeAnswer } from "@/lib/shipping-copy"
 
 export const metadata: Metadata = {
   title: "常見問題 | 誠真生活 RealReal",
@@ -12,6 +13,11 @@ type FaqSection = {
   title: string
   items: FaqItem[]
 }
+
+// 這一則的答案在 render 時用後台的實際運費設定換掉。用哨符而不是比對題目文字：
+// 題目哪天被改寫，比對就會默默失效，而失效的樣子是畫面上出現一串佔位字串 ——
+// 那至少看得見；比對失效則是靜靜地留著一個過期的數字，跟原本的 bug 一模一樣。
+const SHIPPING_FEE_ANSWER = "__SHIPPING_FEE_ANSWER__"
 
 const hardcodedSections: FaqSection[] = [
   {
@@ -151,7 +157,7 @@ const hardcodedSections: FaqSection[] = [
       },
       {
         q: "運費如何計算？",
-        a: "宅配運費 NT$150，超商取貨運費 NT$80，超商取貨付款運費 NT$80。消費滿 NT$649 超商取貨免運，消費滿 NT$999 宅配、超商取貨付款免運。港澳寄送採順豐速運，運費到付，不適用滿額免運活動。",
+        a: SHIPPING_FEE_ANSWER,
       },
       {
         q: "配送需要多久？",
@@ -211,11 +217,22 @@ const hardcodedSections: FaqSection[] = [
 
 export default async function FaqPage() {
   // Try fetching dynamic FAQ items from the API
-  const dynamicItems = await getSiteContent<FaqSection[]>("faq_items")
-  const sections =
+  const [dynamicItems, shipping] = await Promise.all([
+    getSiteContent<FaqSection[]>("faq_items"),
+    fetchShippingConfig(),
+  ])
+  const baseSections =
     Array.isArray(dynamicItems) && dynamicItems.length > 0
       ? dynamicItems
       : hardcodedSections
+
+  const feeAnswer = shippingFeeAnswer(shipping)
+  const sections = baseSections.map((section) => ({
+    ...section,
+    items: section.items.map((item) =>
+      item.a === SHIPPING_FEE_ANSWER ? { ...item, a: feeAnswer } : item,
+    ),
+  }))
 
   return (
     <div className="container mx-auto px-4 py-12 max-w-3xl">
