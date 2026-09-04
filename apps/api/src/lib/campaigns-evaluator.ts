@@ -942,6 +942,42 @@ function scoreForType(r: EvaluatorResult, ctx: EvaluatorContext): number {
   }
 }
 
+/**
+ * 互斥的活動組合：同一張訂單裡只能留一個。
+ *
+ * pickBestPerType 只負責「同類型取最好」，跨類型一律疊加，所以首購折扣與生日
+ * 禮金原本會同時生效 —— 而首購當下的會員一定是初心之友（累積消費 0），兩者剛好
+ * 都是 50，客人第一筆單直接折 100。
+ *
+ * 留下折扣較高的那一個。金額相同時留**首購**，這不是隨便選的：首購只認第一筆
+ * 訂單，一旦這筆單完成就永遠失效（isFirstPurchase 會排除任何已完成的訂單）；
+ * 生日禮金則是整個生日當月都還能用在下一筆。留首購、把生日禮金留到下一單，客人
+ * 兩份都拿得到；反過來則會讓首購直接消失。
+ */
+const EXCLUSIVE_GROUPS: readonly (readonly string[])[] = [
+  // 順序即平手時的優先序
+  ["first_purchase", "birthday_bonus"],
+]
+
+export function resolveExclusiveCampaigns(
+  results: EvaluatorResult[],
+): EvaluatorResult[] {
+  let kept = results
+  for (const group of EXCLUSIVE_GROUPS) {
+    const inGroup = kept.filter((r) => group.includes(r.type))
+    if (inGroup.length < 2) continue
+
+    const winner = inGroup.reduce((best, r) => {
+      const d = r.discount_amount ?? 0
+      const bd = best.discount_amount ?? 0
+      if (d !== bd) return d > bd ? r : best
+      return group.indexOf(r.type) < group.indexOf(best.type) ? r : best
+    })
+    kept = kept.filter((r) => !group.includes(r.type) || r === winner)
+  }
+  return kept
+}
+
 export function pickBestPerType(
   results: EvaluatorResult[],
   ctx: EvaluatorContext,
@@ -960,7 +996,10 @@ export function pickBestPerType(
   for (const r of sorted) {
     if (!byType.has(r.type)) byType.set(r.type, r)
   }
-  return Array.from(byType.values())
+  // 互斥檢查放在這裡，不是放在 evaluateAllCampaigns —— 後台的活動測試台
+  // (POST /admin/campaigns/preview) 直接呼叫 pickBestPerType，如果規則只長在
+  // 上層，測試台顯示的金額就會跟真實結帳不一樣，那比沒有測試台更糟。
+  return resolveExclusiveCampaigns(Array.from(byType.values()))
 }
 
 export async function evaluateAllCampaigns(
