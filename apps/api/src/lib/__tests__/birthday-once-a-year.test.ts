@@ -124,3 +124,80 @@ describe("生日禮金 — 一年限用一次", () => {
     expect(fromMock).not.toHaveBeenCalled()
   })
 })
+
+/**
+ * 生日當月（calendar_month）。
+ *
+ * 舊的天數算法看起來像「生日前後 31 天」，實際上是「生日前 1 天到生日後 31
+ * 天」—— 總共 33 天，而且生日之前幾乎用不到。5/21 生日的人整個五月上旬都不能
+ * 用，卻可以用到 6/21，既難解釋也不像生日禮金。
+ *
+ * 生日當月只比月份：5/21 生日 → 整個五月，5/1 就能用。
+ */
+describe("生日禮金 — 生日當月", () => {
+  const MONTH_CAMPAIGN = {
+    id: "camp-bday-50",
+    name: "初心之友生日禮金50元",
+    type: "birthday_bonus",
+    config: {
+      discount_method: "fixed",
+      discount_value: 50,
+      birthday_window_mode: "calendar_month",
+    },
+  } as never
+
+  function at(iso: string) {
+    return new Date(iso)
+  }
+
+  it("★ 5/21 生日：5/1 就能用（舊算法要等到 5/20）", async () => {
+    mockDb(0)
+    const r = await evalBirthdayBonus(MONTH_CAMPAIGN, ctx({ birthday: "1990-05-21" }), at("2026-05-01T00:30:00Z"))
+    expect(r.applied).toBe(true)
+    expect(r.discount_amount).toBe(50)
+  })
+
+  it("★ 5/21 生日：5/31 仍可用（當月最後一天）", async () => {
+    mockDb(0)
+    const r = await evalBirthdayBonus(MONTH_CAMPAIGN, ctx({ birthday: "1990-05-21" }), at("2026-05-31T15:00:00Z"))
+    expect(r.applied).toBe(true)
+  })
+
+  it("★ 5/21 生日：6/1 不能用（舊算法會一路開到 6/21）", async () => {
+    mockDb(0)
+    const r = await evalBirthdayBonus(MONTH_CAMPAIGN, ctx({ birthday: "1990-05-21" }), at("2026-06-01T04:00:00Z"))
+    expect(r.applied).toBe(false)
+    expect(r.reason).toContain("不在生日當月")
+  })
+
+  it("★ 4/30 不能用 —— 生日前一個月不算數", async () => {
+    mockDb(0)
+    const r = await evalBirthdayBonus(MONTH_CAMPAIGN, ctx({ birthday: "1990-05-21" }), at("2026-04-30T04:00:00Z"))
+    expect(r.applied).toBe(false)
+  })
+
+  it("★ 用台北時間判斷月份：台北 5/1 00:30（UTC 仍是 4/30 16:30）算五月", async () => {
+    mockDb(0)
+    const r = await evalBirthdayBonus(MONTH_CAMPAIGN, ctx({ birthday: "1990-05-21" }), at("2026-04-30T16:30:00Z"))
+    expect(r.applied).toBe(true)
+  })
+
+  it("★ 台北 6/1 00:30（UTC 5/31 16:30）已經不算五月", async () => {
+    mockDb(0)
+    const r = await evalBirthdayBonus(MONTH_CAMPAIGN, ctx({ birthday: "1990-05-21" }), at("2026-05-31T16:30:00Z"))
+    expect(r.applied).toBe(false)
+  })
+
+  it("當月模式不需要 birthday_window_days，缺了也照常運作", async () => {
+    mockDb(0)
+    const r = await evalBirthdayBonus(MONTH_CAMPAIGN, ctx({ birthday: "1990-05-21" }), at("2026-05-10T04:00:00Z"))
+    expect(r.applied).toBe(true)
+  })
+
+  it("★ 當月已經用過就不再折（一年一次仍然成立）", async () => {
+    mockDb(1)
+    const r = await evalBirthdayBonus(MONTH_CAMPAIGN, ctx({ birthday: "1990-05-21" }), at("2026-05-10T04:00:00Z"))
+    expect(r.applied).toBe(false)
+    expect(r.reason).toContain("一年限用一次")
+  })
+})

@@ -190,10 +190,24 @@ function sumItems(items: CartItem[]): number {
  * Window: from one day before birthday-this-year through `windowDays` days after.
  * Accepts explicit `now` for deterministic testing.
  */
+/**
+ * 生日視窗的兩種算法。
+ *
+ * calendar_month（生日當月）—— 目前三個生日禮金活動都用這個。
+ *   5/21 生日 → 5/1 00:00 至 5/31 23:59，整個五月。好記、好解釋，客人不必去
+ *   數「生日過後第幾天」。
+ *
+ * days（前一天 ～ 生日後 N 天）—— 舊算法，保留給還在用 birthday_window_days
+ *   的活動。它其實不對稱：windowDays=31 時真正的區間是生日前 1 天到生日後 31
+ *   天，總共 33 天，而且生日之前幾乎用不到。
+ */
+export type BirthdayWindowMode = "calendar_month" | "days"
+
 function resolveBirthdayWindow(
   birthday: string,
   windowDays: number,
   now: Date = new Date(),
+  mode: BirthdayWindowMode = "days",
 ): { inWindow: boolean; startMs: number } {
   const MISS = { inWindow: false, startMs: 0 }
   // Parse birthday string YYYY-MM-DD via String split (no Date constructor → no UTC drift)
@@ -208,6 +222,14 @@ function resolveBirthdayWindow(
   const tpeYear = tpeNow.getUTCFullYear()
   const tpeMonth = tpeNow.getUTCMonth() + 1
   const tpeDay = tpeNow.getUTCDate()
+
+  if (mode === "calendar_month") {
+    // 只比月份 —— 幾號無關。視窗起點是當月 1 號的台北零時。
+    return {
+      inWindow: tpeMonth === bMonth,
+      startMs: Date.UTC(tpeYear, bMonth - 1, 1) - 8 * 3600 * 1000,
+    }
+  }
 
   // Build two anchor timestamps (this-year + next-year birthday at TPE 00:00 → UTC = TPE - 8h)
   const tpeNowMs = Date.UTC(tpeYear, tpeMonth - 1, tpeDay)
@@ -744,6 +766,9 @@ export async function evalBirthdayBonus(
   const value = asNumber(cfg.discount_value)
   const rebateMultiplier = asNumber(cfg.rebate_multiplier)
   const windowDays = asNumber(cfg.birthday_window_days)
+  // 沒指定就沿用舊的天數算法，既有活動的行為不變。
+  const windowMode: BirthdayWindowMode =
+    asString(cfg.birthday_window_mode) === "calendar_month" ? "calendar_month" : "days"
 
   if (method !== "percent" && method !== "fixed") {
     return notApplied(c, "config.discount_method 缺失或非法")
@@ -751,15 +776,21 @@ export async function evalBirthdayBonus(
   if (value === undefined) {
     return notApplied(c, "config.discount_value 缺失或非法")
   }
-  if (windowDays === undefined || windowDays <= 0) {
+  // 生日當月模式不需要天數；只有天數模式才要求這個欄位。
+  if (windowMode === "days" && (windowDays === undefined || windowDays <= 0)) {
     return notApplied(c, "config.birthday_window_days 缺失或非法")
   }
   if (!ctx.user.birthday) {
     return notApplied(c, "顧客無生日資料")
   }
-  const window = resolveBirthdayWindow(ctx.user.birthday, windowDays, now)
+  const window = resolveBirthdayWindow(
+    ctx.user.birthday,
+    windowDays ?? 0,
+    now,
+    windowMode,
+  )
   if (!window.inWindow) {
-    return notApplied(c, "不在生日當月 window 內")
+    return notApplied(c, windowMode === "calendar_month" ? "不在生日當月" : "不在生日當月 window 內")
   }
 
   // 一年限用一次。視窗起點就是這次生日的前一天，所以「視窗內是否用過」等同

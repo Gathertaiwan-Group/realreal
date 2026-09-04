@@ -165,8 +165,8 @@ const PRESET_CATEGORIES: PresetCategory[] = [
     label: "生日",
     Icon: Cake,
     templates: [
-      { name: "生日當月 9 折 + 雙倍", description: "生日當月全館 9 折，公益存款 ×2", type: "birthday_bonus", config: { discount_method: "percent", discount_value: 10, rebate_multiplier: 2, birthday_window_days: 31 } },
-      { name: "生日當月 95 折 + 1.5 倍", description: "生日當月全館 95 折，公益存款 ×1.5", type: "birthday_bonus", config: { discount_method: "percent", discount_value: 5, rebate_multiplier: 1.5, birthday_window_days: 31 } },
+      { name: "生日當月 9 折 + 雙倍", description: "生日當月全館 9 折，公益存款 ×2", type: "birthday_bonus", config: { discount_method: "percent", discount_value: 10, rebate_multiplier: 2, birthday_window_mode: "calendar_month" } },
+      { name: "生日當月 95 折 + 1.5 倍", description: "生日當月全館 95 折，公益存款 ×1.5", type: "birthday_bonus", config: { discount_method: "percent", discount_value: 5, rebate_multiplier: 1.5, birthday_window_mode: "calendar_month" } },
     ],
   },
   {
@@ -272,7 +272,22 @@ function ConfigFields({
           <Input name={`${prefix}_discount_value`} type="number" min={0} defaultValue={(config.discount_value as number) ?? ""} placeholder="10" />
         </div>
         <div className="space-y-1.5">
-          <Label className="text-xs">生日前後天數</Label>
+          <Label className="text-xs">適用期間</Label>
+          <select
+            name={`${prefix}_birthday_window_mode`}
+            defaultValue={(config.birthday_window_mode as string) ?? "days"}
+            className={selectClass}
+          >
+            <option value="calendar_month">生日當月（整個月）</option>
+            <option value="days">生日前 1 天起算 N 天</option>
+          </select>
+          <p className="text-[11px] leading-relaxed text-zinc-500">
+            生日當月最好解釋：5/21 生日 → 整個五月都能用。
+            天數模式其實是「生日前 1 天到生日後 N 天」，並非前後對稱。
+          </p>
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">天數（僅天數模式使用）</Label>
           <Input name={`${prefix}_birthday_window_days`} type="number" min={1} defaultValue={(config.birthday_window_days as number) ?? ""} placeholder="7" />
         </div>
         <div className="space-y-1.5">
@@ -519,6 +534,8 @@ function extractConfig(fd: FormData, prefix: string, type: string): Record<strin
     return {
       discount_method: fd.get(`${prefix}_discount_method`) as string,
       discount_value: Number(fd.get(`${prefix}_discount_value`)) || 0,
+      birthday_window_mode:
+        (fd.get(`${prefix}_birthday_window_mode`) as string) || "days",
       birthday_window_days: Number(fd.get(`${prefix}_birthday_window_days`)) || 0,
       rebate_multiplier: rebate ? Number(rebate) : undefined,
     }
