@@ -60,7 +60,13 @@ function item(overrides: Partial<CartItem> = {}): CartItem {
 /** Build a minimal EvaluatorContext. */
 function ctx(
   items: CartItem[],
-  opts: { birthday?: string | null; shipping_fee?: number; tier_id?: string | null } = {},
+  opts: {
+    birthday?: string | null
+    shipping_fee?: number
+    tier_id?: string | null
+    /** 生日禮金一年一次的檢查會查資料庫；視窗邏輯的測試用這個把它固定住。 */
+    _birthday_bonus_used_override?: boolean
+  } = {},
 ): EvaluatorContext {
   const subtotal = items.reduce((s, i) => s + i.unit_price * i.qty, 0)
   return {
@@ -68,6 +74,9 @@ function ctx(
       id: USER_ID,
       tier_id: opts.tier_id ?? null,
       birthday: opts.birthday ?? null,
+      ...(typeof opts._birthday_bonus_used_override === "boolean"
+        ? { _birthday_bonus_used_override: opts._birthday_bonus_used_override }
+        : {}),
     },
     cart: {
       items,
@@ -461,7 +470,7 @@ describe("evalComboDiscount", () => {
 // ===========================================================================
 
 describe("evalBirthdayBonus", () => {
-  it("returns discount + rebate_multiplier when today is the birthday", () => {
+  it("returns discount + rebate_multiplier when today is the birthday", async () => {
     const c = campaign("birthday_bonus", {
       discount_method: "percent",
       discount_value: 10,
@@ -470,9 +479,9 @@ describe("evalBirthdayBonus", () => {
     })
     // Fixed today = birthday → diffDays = 0 → in window
     const fixedNow = new Date("2026-05-30T12:00:00Z")
-    const result = evalBirthdayBonus(
+    const result = await evalBirthdayBonus(
       c,
-      ctx([item({ unit_price: 1000, qty: 1 })], { birthday: "1990-05-30" }),
+      ctx([item({ unit_price: 1000, qty: 1 })], { birthday: "1990-05-30", _birthday_bonus_used_override: false }),
       fixedNow,
     )
     expect(result.applied).toBe(true)
@@ -480,7 +489,7 @@ describe("evalBirthdayBonus", () => {
     expect(result.rebate_multiplier).toBe(2)
   })
 
-  it("returns notApplied when today is outside the birthday window", () => {
+  it("returns notApplied when today is outside the birthday window", async () => {
     const c = campaign("birthday_bonus", {
       discount_method: "percent",
       discount_value: 10,
@@ -488,23 +497,23 @@ describe("evalBirthdayBonus", () => {
     })
     // birthday=Jan 1, now=Mar 5 (>31 days after) → out of window
     const fixedNow = new Date("2026-03-05T12:00:00Z")
-    const result = evalBirthdayBonus(
+    const result = await evalBirthdayBonus(
       c,
-      ctx([item({ unit_price: 1000, qty: 1 })], { birthday: "1990-01-01" }),
+      ctx([item({ unit_price: 1000, qty: 1 })], { birthday: "1990-01-01", _birthday_bonus_used_override: false }),
       fixedNow,
     )
     expect(result.applied).toBe(false)
     expect(result.reason).toMatch(/不在生日當月/)
   })
 
-  it("returns notApplied when user has no birthday", () => {
+  it("returns notApplied when user has no birthday", async () => {
     const c = campaign("birthday_bonus", {
       discount_method: "percent",
       discount_value: 10,
       birthday_window_days: 31,
     })
     const fixedNow = new Date("2026-05-30T12:00:00Z")
-    const result = evalBirthdayBonus(
+    const result = await evalBirthdayBonus(
       c,
       ctx([item({ unit_price: 1000, qty: 1 })], { birthday: null }),
       fixedNow,
@@ -600,47 +609,47 @@ describe("resolveScopeItems (via evalDiscount)", () => {
 describe("isInBirthdayWindow (via evalBirthdayBonus)", () => {
   // The window is [birthday-1 day, birthday+windowDays days] inclusive.
   // We fix the birthday at 1990-06-15 and probe `now` around it.
-  function probe(now: Date, birthday: string | null) {
+  async function probe(now: Date, birthday: string | null) {
     const c = campaign("birthday_bonus", {
       discount_method: "percent",
       discount_value: 10,
       birthday_window_days: 30,
     })
-    return evalBirthdayBonus(
+    return await evalBirthdayBonus(
       c,
-      ctx([item({ unit_price: 100, qty: 1 })], { birthday }),
+      ctx([item({ unit_price: 100, qty: 1 })], { birthday, _birthday_bonus_used_override: false }),
       now,
     )
   }
 
-  it("today === birthday → in window (applied)", () => {
-    const result = probe(new Date("2026-06-15T12:00:00Z"), "1990-06-15")
+  it("today === birthday → in window (applied)", async () => {
+    const result = await probe(new Date("2026-06-15T12:00:00Z"), "1990-06-15")
     expect(result.applied).toBe(true)
   })
 
-  it("today === birthday - 1 day → in window (applied)", () => {
-    const result = probe(new Date("2026-06-14T12:00:00Z"), "1990-06-15")
+  it("today === birthday - 1 day → in window (applied)", async () => {
+    const result = await probe(new Date("2026-06-14T12:00:00Z"), "1990-06-15")
     expect(result.applied).toBe(true)
   })
 
-  it("today === birthday + ~29 days → in window (applied)", () => {
+  it("today === birthday + ~29 days → in window (applied)", async () => {
     // Use birthday-relative +29d (not the exact +30 boundary) to stay robust
     // across timezones — isInBirthdayWindow normalizes `bdThisYear` in LOCAL
     // time but `now` is UTC, so the boundary can drift by a few hours.
-    const result = probe(new Date("2026-07-14T00:00:00Z"), "1990-06-15")
+    const result = await probe(new Date("2026-07-14T00:00:00Z"), "1990-06-15")
     expect(result.applied).toBe(true)
   })
 
-  it("today === birthday + ~33 days → out of window (notApplied)", () => {
+  it("today === birthday + ~33 days → out of window (notApplied)", async () => {
     // Spec calls for "+32 days → false", but we use +33 to stay well beyond
     // the 30-day window regardless of timezone-induced sub-day drift.
-    const result = probe(new Date("2026-07-18T12:00:00Z"), "1990-06-15")
+    const result = await probe(new Date("2026-07-18T12:00:00Z"), "1990-06-15")
     expect(result.applied).toBe(false)
     expect(result.reason).toMatch(/不在生日當月/)
   })
 
-  it("no birthday → notApplied with '無生日資料'", () => {
-    const result = probe(new Date("2026-06-15T12:00:00Z"), null)
+  it("no birthday → notApplied with '無生日資料'", async () => {
+    const result = await probe(new Date("2026-06-15T12:00:00Z"), null)
     expect(result.applied).toBe(false)
     expect(result.reason).toMatch(/無生日資料/)
   })

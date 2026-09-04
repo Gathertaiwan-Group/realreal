@@ -30,6 +30,14 @@ export type EvaluatorContext = {
      * false = pretend user already has past paid orders
      */
     _is_first_purchase_override?: boolean
+    /**
+     * Sandbox override for the once-a-year birthday-gift check (admin test
+     * bench). Real checkout NEVER sets this — evalBirthdayBonus falls back to
+     * the DB.
+     * true  = pretend the gift was already used in this birthday window
+     * false = pretend it has not been used
+     */
+    _birthday_bonus_used_override?: boolean
   }
   cart: {
     items: CartItem[]
@@ -182,17 +190,18 @@ function sumItems(items: CartItem[]): number {
  * Window: from one day before birthday-this-year through `windowDays` days after.
  * Accepts explicit `now` for deterministic testing.
  */
-function isInBirthdayWindow(
+function resolveBirthdayWindow(
   birthday: string,
   windowDays: number,
   now: Date = new Date(),
-): boolean {
+): { inWindow: boolean; startMs: number } {
+  const MISS = { inWindow: false, startMs: 0 }
   // Parse birthday string YYYY-MM-DD via String split (no Date constructor → no UTC drift)
   const parts = birthday.split("-")
-  if (parts.length < 3) return false
+  if (parts.length < 3) return MISS
   const bMonth = Number(parts[1])
   const bDay = Number(parts[2])
-  if (!Number.isFinite(bMonth) || !Number.isFinite(bDay)) return false
+  if (!Number.isFinite(bMonth) || !Number.isFinite(bDay)) return MISS
 
   // Convert "now" UTC to Asia/Taipei wall-clock by adding 8h offset
   const tpeNow = new Date(now.getTime() + 8 * 3600 * 1000)
@@ -219,7 +228,27 @@ function isInBirthdayWindow(
   // days after". Implementation was using a symmetric ±half-window, which
   // didn't match the test cases (test expects birthday+29d still in window
   // with windowDays=30) or the docstring. Make it asymmetric: [-1, +windowDays].
-  return bestDiff >= -1 && bestDiff <= windowDays
+  const inWindow = bestDiff >= -1 && bestDiff <= windowDays
+
+  // Which of the three anchors won — needed to date the CURRENT window, so the
+  // once-a-year check looks at this year's orders and not last year's.
+  let anchorMs = thisYearMs
+  if (bestDiff === diffNext) anchorMs = nextYearMs
+  else if (bestDiff === diffPrev) anchorMs = prevYearMs
+
+  // Anchor is TPE midnight expressed as a UTC epoch; subtract the 8h offset to
+  // get the real instant, then the window opens one day earlier.
+  const startMs = anchorMs - 8 * 3600 * 1000 - 86_400_000
+  return { inWindow, startMs }
+}
+
+/** Kept for readability at the call sites that only care about the boolean. */
+function isInBirthdayWindow(
+  birthday: string,
+  windowDays: number,
+  now: Date = new Date(),
+): boolean {
+  return resolveBirthdayWindow(birthday, windowDays, now).inWindow
 }
 
 function notApplied(c: CampaignRow, reason: string): EvaluatorResult {
@@ -665,12 +694,51 @@ export async function evalComboDiscount(
   return { ...applied(c), discount_amount: discount }
 }
 
-// 11. birthday_bonus — % or fixed off + optional rebate multiplier within birthday window
-export function evalBirthdayBonus(
+/**
+ * 這位會員在「這一次的生日視窗」裡已經用過生日禮金了嗎？
+ *
+ * 比對的是 birthday_bonus 這個**類型**的所有活動，不是單一 campaign id：三個
+ * 等級各有一個活動，如果只比對 id，會員在視窗中途升等就能先用初心之友的 50、
+ * 再用知心之友的 100。
+ *
+ * 取消／失敗的訂單不算數 —— 那些訂單從來沒有成立，跟首購折扣的處理一致，否則
+ * 一次付款失敗就會讓客人整年拿不到生日禮金。
+ */
+async function birthdayGiftAlreadyUsed(
+  userId: string,
+  windowStartIso: string,
+): Promise<boolean> {
+  const { data: campaigns, error: campaignError } = await supabase
+    .from("campaigns")
+    .select("id")
+    .eq("type", "birthday_bonus")
+  if (campaignError || !campaigns?.length) return false
+
+  const ids = campaigns.map((x) => (x as { id: string }).id)
+  const { count, error } = await supabase
+    .from("orders")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", userId)
+    .overlaps("applied_campaign_ids", ids)
+    .not("status", "in", "(failed,cancelled)")
+    .gte("created_at", windowStartIso)
+
+  // 查不到就放行。寧可偶爾多送一次禮金，也不要因為一個查詢失敗就在結帳頁把
+  // 客人的生日折扣默默拿掉 —— 後者客人看得到，而且會來問。
+  if (error) {
+    console.warn("[campaigns] birthday gift usage check failed:", error)
+    return false
+  }
+  return (count ?? 0) > 0
+}
+
+// 11. birthday_bonus — % or fixed off + optional rebate multiplier within birthday window.
+//     一年限用一次：同一個生日視窗內只認第一筆。
+export async function evalBirthdayBonus(
   c: CampaignRow,
   ctx: EvaluatorContext,
   now: Date = new Date(),
-): EvaluatorResult {
+): Promise<EvaluatorResult> {
   const cfg = getConfig(c)
   const method = asString(cfg.discount_method)
   const value = asNumber(cfg.discount_value)
@@ -689,8 +757,20 @@ export function evalBirthdayBonus(
   if (!ctx.user.birthday) {
     return notApplied(c, "顧客無生日資料")
   }
-  if (!isInBirthdayWindow(ctx.user.birthday, windowDays, now)) {
+  const window = resolveBirthdayWindow(ctx.user.birthday, windowDays, now)
+  if (!window.inWindow) {
     return notApplied(c, "不在生日當月 window 內")
+  }
+
+  // 一年限用一次。視窗起點就是這次生日的前一天，所以「視窗內是否用過」等同
+  // 「今年是否用過」。
+  const usedOverride = ctx.user._birthday_bonus_used_override
+  const alreadyUsed =
+    typeof usedOverride === "boolean"
+      ? usedOverride
+      : await birthdayGiftAlreadyUsed(ctx.user.id, new Date(window.startMs).toISOString())
+  if (alreadyUsed) {
+    return notApplied(c, "本次生日禮金已使用過（一年限用一次）")
   }
 
   // Same 折-multiplier guard as evalDiscount: a percent value in (0,1) means
