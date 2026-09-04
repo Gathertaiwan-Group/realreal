@@ -133,10 +133,12 @@ function ProfileBlock({
         })
         .eq("user_id", user.id)
       if (error) {
-        // 資料庫的生日鎖是用 raise exception 擋的，訊息就是要給人看的那一句。
-        toast.error(
-          error.message?.includes("生日") ? error.message : "儲存失敗，請稍後再試",
-        )
+        // 把資料庫回的原因直接顯示出來。原本這裡一律吞成「儲存失敗，請稍後再
+        // 試」，於是生日欄位少了一個 column-level GRANT 時（0051 之前），畫面
+        // 只說「請稍後再試」—— 而那個錯誤等到天荒地老也不會自己好。
+        // 生日鎖與日期檢查本來就是用 raise exception 寫給人看的訊息。
+        toast.error(error.message || "儲存失敗，請稍後再試")
+        console.error("[my-account] profile save failed:", error)
         return
       }
       toast.success(

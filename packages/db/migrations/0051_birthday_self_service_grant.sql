@@ -1,0 +1,17 @@
+-- 讓會員自己填生日：把 birthday 加進 column-level GRANT
+--
+-- 0036 用欄位級授權限制客人只能改自己的 display_name 與 phone：
+--     GRANT UPDATE (display_name, phone) ON public.user_profiles TO authenticated;
+-- 這道限制的目的是杜絕自我升級成 admin（改 role 欄位），到今天依然成立。
+--
+-- 但生日欄位上線後，會員中心的儲存是一句同時寫 display_name / phone / birthday
+-- 的 UPDATE，birthday 不在授權清單裡 → 整句被 Postgres 擋掉，連姓名和電話都存
+-- 不進去，畫面只顯示「儲存失敗」。
+--
+-- 為什麼把 birthday 加進來是安全的：
+--   * 202609040036 的 lock_birthday_once trigger 讓它「設定後不可自行修改」，
+--     所以授權給客人的其實只有「從空白填入一次」。
+--   * validate_birthday trigger 擋掉未來日期與 1900 年以前的值。
+--   * role / total_spend / membership_tier_id 等欄位一律沒有授權，原本的防線
+--     完全沒有被打開。
+GRANT UPDATE (birthday) ON public.user_profiles TO authenticated;
