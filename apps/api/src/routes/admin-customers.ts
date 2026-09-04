@@ -4,6 +4,11 @@ import { supabase } from "../lib/supabase"
 import { requireAuth } from "../middleware/auth"
 import { requireAdmin } from "../middleware/admin"
 import { adjustPoints } from "../lib/points"
+import { sendEmail } from "../lib/email"
+import {
+  birthdayInviteSubject,
+  renderBirthdayInvite,
+} from "../emails/BirthdayInvite"
 
 /**
  * Admin customer detail endpoints.
@@ -111,6 +116,103 @@ adminCustomersRouter.get("/", async (_req, res) => {
 // GET /admin/customers/lookup?email=X — single-row email→id lookup
 // Used by the campaigns test bench (admin impersonates a customer scenario).
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// POST /admin/customers/birthday-invite — 邀請還沒填生日的會員去補填
+// ---------------------------------------------------------------------------
+//
+// 生日禮金的活動早就啟用，評估器碰到沒有生日的顧客就跳過。2026-09-04 前台才有
+// 輸入欄位，在那之前註冊的會員全都拿不到。
+//
+// 收件範圍由規則決定，不是外部傳進來的名單：一般會員（非 admin/editor/viewer）、
+// 目前沒有生日、且有 email。已經填過的人一定不會收到 —— 這也讓重複執行是安全的，
+// 補填過的人自然從名單裡消失。
+//
+// dryRun 先看名單再決定要不要送。2026-08-31 那次事故就是一個沒人先看過名單的
+// 批次寄了 20 封錯誤通知；能先看，就不該用猜的。
+adminCustomersRouter.post("/birthday-invite", async (req, res) => {
+  const dryRun = (req.body as { dryRun?: boolean } | undefined)?.dryRun === true
+
+  const GIFT_BY_TIER: Record<string, number> = {
+    初心之友: 50,
+    知心之友: 100,
+    同心之友: 150,
+  }
+
+  const { data: profiles, error } = await supabase
+    .from("user_profiles")
+    .select("user_id, display_name, birthday, role, membership_tiers(name)")
+  if (error) { res.status(500).json({ error: error.message }); return }
+
+  type Row = {
+    user_id: string
+    display_name: string | null
+    birthday: string | null
+    role: string | null
+    membership_tiers: { name: string } | Array<{ name: string }> | null
+  }
+
+  const candidates = ((profiles ?? []) as Row[]).filter(
+    (p) =>
+      !p.birthday &&
+      p.role !== "admin" &&
+      p.role !== "editor" &&
+      p.role !== "viewer",
+  )
+
+  // Emails live on auth.users; one listUsers pass beats N lookups.
+  const emailById = new Map<string, string>()
+  try {
+    const { data } = await supabase.auth.admin.listUsers({ page: 1, perPage: 1000 })
+    for (const u of data?.users ?? []) if (u.email) emailById.set(u.id, u.email)
+  } catch (err) {
+    res.status(500).json({ error: `listUsers failed: ${String(err)}` }); return
+  }
+
+  const recipients = candidates
+    .map((p) => {
+      const t = Array.isArray(p.membership_tiers) ? p.membership_tiers[0] : p.membership_tiers
+      const tier = t?.name ?? "初心之友"
+      return {
+        userId: p.user_id,
+        name: p.display_name ?? "會員",
+        email: emailById.get(p.user_id) ?? null,
+        tier,
+        gift: GIFT_BY_TIER[tier] ?? 50,
+      }
+    })
+    .filter((r): r is typeof r & { email: string } => Boolean(r.email))
+
+  if (dryRun) {
+    res.json({
+      dryRun: true,
+      total: recipients.length,
+      recipients: recipients.map(({ name, email, tier, gift }) => ({ name, email, tier, gift })),
+    })
+    return
+  }
+
+  const sent: string[] = []
+  const failed: Array<{ email: string; error: string }> = []
+
+  // 一封一封送。Resend 有速率限制，而且中途掛掉時「已經寄了哪幾封」必須查得到 ——
+  // 群發最怕的就是不知道停在哪裡，重跑一次就變成有人收到兩封。
+  for (const r of recipients) {
+    try {
+      await sendEmail({
+        to: r.email,
+        subject: birthdayInviteSubject(r.gift),
+        html: renderBirthdayInvite(r.name, r.tier, r.gift),
+      })
+      sent.push(r.email)
+    } catch (err) {
+      failed.push({ email: r.email, error: err instanceof Error ? err.message : String(err) })
+    }
+    await new Promise((resolve) => setTimeout(resolve, 600))
+  }
+
+  res.json({ dryRun: false, sentCount: sent.length, failedCount: failed.length, failed })
+})
 
 adminCustomersRouter.get("/lookup", async (req, res) => {
   const email = String(req.query.email ?? "").trim().toLowerCase()
