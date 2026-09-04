@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState, useTransition } from "react"
+import { useRouter } from "next/navigation"
 import { ChevronDown, ChevronRight, MapPin, Pencil, Plus, Save, Trash2, User as UserIcon, X } from "lucide-react"
 import { toast } from "sonner"
 import { createClient } from "@/lib/supabase/client"
@@ -21,6 +22,8 @@ interface AccountSettingsSectionProps {
   initialDisplayName: string
   /** Initial phone (server-fetched). */
   initialPhone: string
+  /** 已設定的生日 (YYYY-MM-DD)；空字串代表還沒填過，此時才可輸入。 */
+  initialBirthday: string
   /** Read-only auth email. */
   email: string
   /** Auto-expand on mount — used when redirected from a deleted sub-route. */
@@ -40,6 +43,7 @@ const emptyAddressForm: Omit<UserAddress, "id"> = {
 export function AccountSettingsSection({
   initialDisplayName,
   initialPhone,
+  initialBirthday,
   email,
   defaultOpen = false,
 }: AccountSettingsSectionProps) {
@@ -70,6 +74,7 @@ export function AccountSettingsSection({
           <ProfileBlock
             initialDisplayName={initialDisplayName}
             initialPhone={initialPhone}
+            initialBirthday={initialBirthday}
             email={email}
           />
           <hr className="border-zinc-100" />
@@ -83,18 +88,28 @@ export function AccountSettingsSection({
 function ProfileBlock({
   initialDisplayName,
   initialPhone,
+  initialBirthday,
   email,
 }: {
   initialDisplayName: string
   initialPhone: string
+  initialBirthday: string
   email: string
 }) {
   const [displayName, setDisplayName] = useState(initialDisplayName)
   const [phone, setPhone] = useState(initialPhone)
+  // 生日填過就鎖住。資料庫也有 lock_birthday_once trigger 擋——這裡的唯讀只是
+  // 別讓人白填一場，真正的鎖在資料庫，因為這個表單是前端直接寫 Supabase 的。
+  const birthdayLocked = initialBirthday !== ""
+  const [birthday, setBirthday] = useState(initialBirthday)
+  const today = new Date().toISOString().slice(0, 10)
+  const router = useRouter()
   const [isPending, startTransition] = useTransition()
 
   const dirty =
-    displayName !== initialDisplayName || phone !== initialPhone
+    displayName !== initialDisplayName ||
+    phone !== initialPhone ||
+    (!birthdayLocked && birthday !== "")
 
   function handleSave() {
     startTransition(async () => {
@@ -111,13 +126,23 @@ function ProfileBlock({
         .update({
           display_name: displayName.trim() || null,
           phone: phone.trim() || null,
+          // 只在「本來沒有、這次填了」時送出生日。已鎖定的欄位連送都不送，
+          // 免得 trigger 因為送了一個相同的值而誤判（is distinct from 會擋掉
+          // 真正的變更，相同值本來就會通過，但不送最乾淨）。
+          ...(!birthdayLocked && birthday ? { birthday } : {}),
         })
         .eq("user_id", user.id)
       if (error) {
-        toast.error("儲存失敗，請稍後再試")
+        // 資料庫的生日鎖是用 raise exception 擋的，訊息就是要給人看的那一句。
+        toast.error(
+          error.message?.includes("生日") ? error.message : "儲存失敗，請稍後再試",
+        )
         return
       }
-      toast.success("帳號資料已儲存")
+      toast.success(
+        !birthdayLocked && birthday ? "已儲存，生日設定完成" : "帳號資料已儲存",
+      )
+      if (!birthdayLocked && birthday) router.refresh()
     })
   }
 
@@ -147,6 +172,22 @@ function ProfileBlock({
             onChange={(e) => setPhone(e.target.value)}
             placeholder="09xxxxxxxx"
           />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="birthday">生日</Label>
+          <Input
+            id="birthday"
+            type="date"
+            max={today}
+            value={birthday}
+            disabled={birthdayLocked}
+            onChange={(e) => setBirthday(e.target.value)}
+          />
+          <p className="text-xs text-zinc-500">
+            {birthdayLocked
+              ? "生日已設定，如需更正請聯絡客服"
+              : "生日當月消費享會員禮金；儲存後無法自行修改"}
+          </p>
         </div>
         <div className="space-y-1.5 md:col-span-2">
           <Label htmlFor="email">Email</Label>

@@ -19,6 +19,8 @@ import Image from "next/image"
 
 export default function RegisterPage() {
   const [state, formAction, isPending] = useActionState(registerAction, null)
+  // 生日不可能是未來 —— 讓日期選擇器自己擋掉，比讓人填完再被退件好。
+  const today = new Date().toISOString().slice(0, 10)
 
   useEffect(() => {
     if (state?.success) {
@@ -71,6 +73,16 @@ export default function RegisterPage() {
                   minLength={8}
                   required
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="birthday">
+                  生日 <span className="text-muted-foreground">（選填）</span>
+                </Label>
+                <Input id="birthday" name="birthday" type="date" max={today} />
+                <p className="text-xs text-muted-foreground">
+                  生日當月消費可享會員禮金（初心之友 NT$50、知心之友 NT$100、同心之友 NT$150）。
+                  <span className="text-[#10305a]">送出後無法自行修改</span>，請確認填寫正確。
+                </p>
               </div>
               {state?.error && (
                 <p className="text-sm text-destructive">{state.error}</p>

@@ -17,6 +17,16 @@ const registerSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
   displayName: z.string().min(1),
+  // 生日選填 —— 註冊當下填寫率最高，但多一個必填欄位會拉低完成率。空字串
+  // (使用者沒填) 一律轉成 undefined，不要送一個空值進 user metadata。
+  birthday: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/)
+    .refine((d) => {
+      const t = Date.parse(`${d}T00:00:00Z`)
+      return Number.isFinite(t) && t <= Date.now() && d > "1900-01-01"
+    })
+    .optional(),
 })
 
 function getSiteUrl() {
@@ -70,19 +80,36 @@ export async function loginAction(_prev: unknown, formData: FormData) {
 }
 
 export async function registerAction(_prev: unknown, formData: FormData) {
+  const rawBirthday = String(formData.get("birthday") ?? "").trim()
   const parsed = registerSchema.safeParse({
     email: formData.get("email"),
     password: formData.get("password"),
     displayName: formData.get("displayName"),
+    birthday: rawBirthday === "" ? undefined : rawBirthday,
   })
-  if (!parsed.success) return { error: "請確認所有欄位填寫正確" }
+  if (!parsed.success) {
+    // 生日是選填，所以它自己壞掉時要講清楚是哪一欄 —— 不然使用者會盯著必填
+    // 欄位找錯，而那些都填對了。
+    const badBirthday = parsed.error.issues.some((i) => i.path[0] === "birthday")
+    return {
+      error: badBirthday
+        ? "生日格式不正確，請確認日期並非未來日期"
+        : "請確認所有欄位填寫正確",
+    }
+  }
 
   const supabase = await createClient()
   const { error } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
     options: {
-      data: { display_name: parsed.data.displayName },
+      // 生日先進 user metadata，帳號建立後由 user_profiles 的
+      // copy_birthday_from_signup trigger 搬進 profile
+      // (migration 202609040036)。沒填就不要放這個 key。
+      data: {
+        display_name: parsed.data.displayName,
+        ...(parsed.data.birthday ? { birthday: parsed.data.birthday } : {}),
+      },
       // Point signup confirmation at the device-independent token-hash handler
       // so the confirm link works even when opened on a different device. As
       // with recovery, the Supabase dashboard "Confirm signup" email template

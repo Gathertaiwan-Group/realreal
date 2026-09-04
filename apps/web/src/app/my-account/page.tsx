@@ -49,7 +49,7 @@ export default async function MyAccountPage({
         // Spec C Section 7: also need tier validity + period spend so HeroCard
         // can render "會員效期至…" + 達標 progress bar. requalify_* /
         // validity_months come from the joined membership_tiers row.
-        "display_name, phone, total_spend, tier_started_at, tier_expires_at, tier_period_spend, membership_tiers(name, validity_months, requalify_amount, requalify_window_months)",
+        "display_name, phone, birthday, total_spend, tier_started_at, tier_expires_at, tier_period_spend, membership_tiers(name, validity_months, requalify_amount, requalify_window_months)",
       )
       .eq("user_id", user.id)
       .single(),
@@ -139,6 +139,7 @@ export default async function MyAccountPage({
       <AccountSettingsSection
         initialDisplayName={profile?.display_name ?? ""}
         initialPhone={(profile as { phone?: string | null } | null)?.phone ?? ""}
+        initialBirthday={(profile as { birthday?: string | null } | null)?.birthday ?? ""}
         email={user.email ?? ""}
         defaultOpen={settingsOpen}
       />
