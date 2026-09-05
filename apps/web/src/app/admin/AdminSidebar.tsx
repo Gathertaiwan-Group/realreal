@@ -14,6 +14,7 @@ import {
   Share2,
   Menu,
   X,
+  Store,
 } from "lucide-react"
 import { LogoutButton } from "./LogoutButton"
 
@@ -24,6 +25,7 @@ const NAV_ITEMS = [
   { href: "/admin/orders", label: "訂單", icon: ShoppingCart, roles: ["admin", "editor"] },
   { href: "/admin/products", label: "商品", icon: Package, roles: ["admin", "editor"] },
   { href: "/admin/customers", label: "客戶", icon: Users, roles: ["admin", "editor"] },
+  { href: "/admin/wholesale", label: "通路商", icon: Store, roles: ["admin"] },
   { href: "/admin/campaigns", label: "行銷", icon: Megaphone, roles: ["admin", "editor"] },
   { href: "/admin/kols", label: "聯盟行銷", icon: Share2, roles: ["admin"] },
   { href: "/admin/posts", label: "文章", icon: FileText, roles: ["admin", "editor"] },

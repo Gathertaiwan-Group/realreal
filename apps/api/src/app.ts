@@ -38,6 +38,7 @@ import { tiersRouter } from "./routes/tiers"
 import { campaignsRouter } from "./routes/campaigns"
 import { reviewsPublicRouter, reviewsAdminRouter } from "./routes/reviews"
 import { adminOrdersRouter } from "./routes/admin-orders"
+import { adminWholesaleRouter } from "./routes/admin-wholesale"
 import { adminSettingsRouter } from "./routes/admin-settings"
 import { adminTeamRouter } from "./routes/admin-team"
 import { adminCustomersRouter } from "./routes/admin-customers"
@@ -94,6 +95,7 @@ app.use("/", analyticsRouter)
 app.use("/admin/invoices", requireAuth, requireAdmin, invoicesRouter)
 app.use("/webhooks/amego", amegoWebhookRouter)
 app.use("/admin/orders", adminOrdersRouter)
+app.use("/admin/wholesale", adminWholesaleRouter)
 app.use("/admin/settings", adminSettingsRouter)
 app.use("/admin/team", adminTeamRouter)
 app.use("/admin/customers", adminCustomersRouter)
