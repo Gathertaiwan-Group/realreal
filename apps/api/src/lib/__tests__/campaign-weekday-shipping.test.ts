@@ -16,8 +16,11 @@ const SATURDAY_CAMPAIGN = {
   id: "camp-sat",
   name: "週六超商取貨滿666免運",
   type: "free_shipping",
-  config: { min_order_amount: 666, active_weekdays: [6], shipping_buckets: ["cvs"] },
-} as never
+  config: { min_order_amount: 666, active_weekdays: [6], shipping_buckets: ["cvs"] } as Record<
+    string,
+    unknown
+  >,
+}
 
 function ctx(subtotal: number, bucket?: string) {
   return {
@@ -43,57 +46,54 @@ describe("運費級距：超商取貨 vs 超商取貨付款", () => {
 describe("限定星期（台北時間）", () => {
   // 2026-09-05 是星期六
   it("★ 週六生效", () => {
-    expect(weekdayBlocked(SATURDAY_CAMPAIGN, new Date("2026-09-05T04:00:00Z"))).toBeNull()
+    expect(weekdayBlocked(SATURDAY_CAMPAIGN as never, new Date("2026-09-05T04:00:00Z"))).toBeNull()
   })
 
   it("★ 週五不生效", () => {
-    expect(weekdayBlocked(SATURDAY_CAMPAIGN, new Date("2026-09-04T04:00:00Z"))).toContain("限星期六")
+    expect(weekdayBlocked(SATURDAY_CAMPAIGN as never, new Date("2026-09-04T04:00:00Z"))).toContain("限星期六")
   })
 
   it("★ 台北週六 00:30（UTC 仍是週五 16:30）算週六", () => {
-    expect(weekdayBlocked(SATURDAY_CAMPAIGN, new Date("2026-09-04T16:30:00Z"))).toBeNull()
+    expect(weekdayBlocked(SATURDAY_CAMPAIGN as never, new Date("2026-09-04T16:30:00Z"))).toBeNull()
   })
 
   it("★ 台北週日 00:30（UTC 仍是週六 16:30）已經不算週六", () => {
-    expect(weekdayBlocked(SATURDAY_CAMPAIGN, new Date("2026-09-05T16:30:00Z"))).not.toBeNull()
+    expect(weekdayBlocked(SATURDAY_CAMPAIGN as never, new Date("2026-09-05T16:30:00Z"))).not.toBeNull()
   })
 
   it("沒設定 active_weekdays 就是天天生效", () => {
-    const always = { ...SATURDAY_CAMPAIGN, config: { min_order_amount: 666 } } as never
-    expect(weekdayBlocked(always, new Date("2026-09-04T04:00:00Z"))).toBeNull()
+    const always = { ...SATURDAY_CAMPAIGN, config: { min_order_amount: 666 } }
+    expect(weekdayBlocked(always as never, new Date("2026-09-04T04:00:00Z"))).toBeNull()
   })
 })
 
 describe("限定取貨方式的免運", () => {
   it("★ 超商取貨滿 666 → 免運", () => {
-    const r = evalFreeShipping(SATURDAY_CAMPAIGN, ctx(666, "cvs"))
+    const r = evalFreeShipping(SATURDAY_CAMPAIGN as never, ctx(666, "cvs"))
     expect(r.applied).toBe(true)
     expect(r.zero_shipping).toBe(true)
   })
 
   it("★ 超商取貨付款不適用 —— 代收貨款有額外成本", () => {
-    const r = evalFreeShipping(SATURDAY_CAMPAIGN, ctx(1000, "cvsCod"))
+    const r = evalFreeShipping(SATURDAY_CAMPAIGN as never, ctx(1000, "cvsCod"))
     expect(r.applied).toBe(false)
   })
 
   it("★ 宅配不適用", () => {
-    expect(evalFreeShipping(SATURDAY_CAMPAIGN, ctx(1000, "home")).applied).toBe(false)
+    expect(evalFreeShipping(SATURDAY_CAMPAIGN as never, ctx(1000, "home")).applied).toBe(false)
   })
 
   it("665 未達門檻", () => {
-    expect(evalFreeShipping(SATURDAY_CAMPAIGN, ctx(665, "cvs")).applied).toBe(false)
+    expect(evalFreeShipping(SATURDAY_CAMPAIGN as never, ctx(665, "cvs")).applied).toBe(false)
   })
 
   it("★ 結帳沒帶級距時不套用 —— 寧可少給一次，也不要在不該給的通路給了", () => {
-    expect(evalFreeShipping(SATURDAY_CAMPAIGN, ctx(1000, undefined)).applied).toBe(false)
+    expect(evalFreeShipping(SATURDAY_CAMPAIGN as never, ctx(1000, undefined)).applied).toBe(false)
   })
 
   it("沒設定 shipping_buckets 的舊活動，行為不變（全部適用）", () => {
-    const anyMethod = {
-      ...SATURDAY_CAMPAIGN,
-      config: { min_order_amount: 666 },
-    } as never
-    expect(evalFreeShipping(anyMethod, ctx(700, "cvsCod")).applied).toBe(true)
-    expect(evalFreeShipping(anyMethod, ctx(700, undefined)).applied).toBe(true)
+    const anyMethod = { ...SATURDAY_CAMPAIGN, config: { min_order_amount: 666 } }
+    expect(evalFreeShipping(anyMethod as never, ctx(700, "cvsCod")).applied).toBe(true)
+    expect(evalFreeShipping(anyMethod as never, ctx(700, undefined)).applied).toBe(true)
   })
 })

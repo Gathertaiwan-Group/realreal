@@ -1,5 +1,6 @@
 import { Router } from "express"
 import { getShippingRule } from "../lib/shipping"
+import { supabase } from "../lib/supabase"
 
 export const configRouter = Router()
 
@@ -42,8 +43,48 @@ configRouter.get("/", async (_req, res) => {
     console.warn("[config] shipping rule lookup failed (non-fatal):", err)
   }
 
+  // 目前生效中的免運「活動」（跟上面的常態門檻不同）。
+  //
+  // 例：週六限定、超商取貨滿 666 免運。跑馬燈要能講這件事，但**不能寫死** ——
+  // 常態門檻寫死的那句已經出過兩次錯（649/999 對不上實際設定）。這裡把活動的
+  // 條件原樣送出去，文案由前端依條件組出來，後台改門檻或星期就自己跟著變。
+  //
+  // 只送條件、不送任何內部識別，是公開端點該有的樣子。
+  let shippingCampaigns: Array<{
+    minOrder: number
+    buckets: string[]
+    weekdays: number[]
+  }> = []
+  try {
+    const now = new Date().toISOString()
+    const { data } = await supabase
+      .from("campaigns")
+      .select("config, starts_at, ends_at")
+      .eq("type", "free_shipping")
+      .eq("is_active", true)
+      .lte("starts_at", now)
+    shippingCampaigns = (data ?? [])
+      .filter((c) => !c.ends_at || (c.ends_at as string) > now)
+      .map((c) => {
+        const cfg = (c.config ?? {}) as Record<string, unknown>
+        return {
+          minOrder: Number(cfg.min_order_amount ?? 0),
+          buckets: Array.isArray(cfg.shipping_buckets)
+            ? (cfg.shipping_buckets as unknown[]).map(String)
+            : [],
+          weekdays: Array.isArray(cfg.active_weekdays)
+            ? (cfg.active_weekdays as unknown[]).map(Number)
+            : [],
+        }
+      })
+      .filter((c) => c.minOrder > 0)
+  } catch (err) {
+    console.warn("[config] free-shipping campaign lookup failed (non-fatal):", err)
+  }
+
   res.json({
     allowTestPaid: process.env.ALLOW_NON_ADMIN_TEST_PAID === "true",
     shipping,
+    shippingCampaigns,
   })
 })

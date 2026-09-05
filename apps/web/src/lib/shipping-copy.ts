@@ -25,6 +25,13 @@ export type FreeShippingGroup = {
   coversEveryMethod: boolean
 }
 
+/** 目前生效中的免運活動（跟常態門檻不同，可限定星期與取貨方式）。 */
+export type ShippingCampaign = {
+  minOrder: number
+  buckets: string[]
+  weekdays: number[]
+}
+
 export async function fetchShippingConfig(): Promise<ShippingConfig | null> {
   try {
     const res = await fetch(`${API_URL}/config`, { cache: "no-store" })
@@ -89,4 +96,35 @@ export function shippingFeeAnswer(s: ShippingConfig | null): string {
     .join("")
 
   return `${fees}${free}${overseas}`
+}
+
+const WEEKDAY_NAMES = ["日", "一", "二", "三", "四", "五", "六"]
+const BUCKET_NAMES: Record<string, string> = {
+  cvs: "超商取貨",
+  cvsCod: "超商取貨付款",
+  home: "宅配",
+}
+
+/**
+ * 免運活動的跑馬燈文案，由活動條件產生，不寫死。
+ *
+ * 常態門檻那句寫死過一次（649/999 對不上後台實際設定，害客人在 999 被收運費），
+ * 這裡不重蹈覆轍：後台改門檻、改星期、改適用取貨方式，這句話自己跟著變。
+ *
+ * 例：{ minOrder: 666, buckets: ["cvs"], weekdays: [6] }
+ *     → 「週六超商取貨滿666元免運」
+ */
+export function campaignShippingMessages(campaigns: ShippingCampaign[]): string[] {
+  return campaigns
+    .filter((c) => c.minOrder > 0)
+    .map((c) => {
+      const days =
+        c.weekdays.length > 0 && c.weekdays.length < 7
+          ? `週${c.weekdays.map((d) => WEEKDAY_NAMES[d] ?? "").join("、")}`
+          : ""
+      const methods = c.buckets.length > 0
+        ? c.buckets.map((b) => BUCKET_NAMES[b] ?? b).join("、")
+        : "全站"
+      return `${days}${methods}滿${c.minOrder}元免運`
+    })
 }

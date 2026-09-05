@@ -9,6 +9,7 @@
  */
 import { describe, it, expect } from "vitest"
 import {
+  campaignShippingMessages,
   freeShippingGroups,
   marqueeShippingMessages,
   shippingFeeAnswer,
@@ -64,5 +65,58 @@ describe("免運文案", () => {
     expect(answer).not.toContain("消費滿")
     expect(answer).not.toContain("NT$")
     expect(answer).toBe("港澳寄送採順豐速運，運費到付，不適用滿額免運活動。")
+  })
+})
+
+/**
+ * 免運活動的跑馬燈文案。
+ *
+ * 常態門檻那句寫死過一次（649/999 對不上後台，客人在 999 被收運費）。活動這句
+ * 更容易重蹈覆轍 —— 「週六超商取貨滿666免運」看起來就是一句固定的話。所以它由
+ * 活動條件產生，這裡鎖住那個對應關係。
+ */
+describe("免運活動的跑馬燈文案", () => {
+  it("★ 週六 × 超商取貨 × 666", () => {
+    expect(
+      campaignShippingMessages([{ minOrder: 666, buckets: ["cvs"], weekdays: [6] }]),
+    ).toEqual(["週六超商取貨滿666元免運"])
+  })
+
+  it("★ 後台改成週三宅配滿 800，文案自己跟著變", () => {
+    expect(
+      campaignShippingMessages([{ minOrder: 800, buckets: ["home"], weekdays: [3] }]),
+    ).toEqual(["週三宅配滿800元免運"])
+  })
+
+  it("多天：週六日", () => {
+    expect(
+      campaignShippingMessages([{ minOrder: 666, buckets: ["cvs"], weekdays: [6, 0] }]),
+    ).toEqual(["週六、日超商取貨滿666元免運"])
+  })
+
+  it("沒限定星期就不加星期前綴", () => {
+    expect(
+      campaignShippingMessages([{ minOrder: 500, buckets: ["cvs"], weekdays: [] }]),
+    ).toEqual(["超商取貨滿500元免運"])
+  })
+
+  it("沒限定取貨方式就說「全站」", () => {
+    expect(
+      campaignShippingMessages([{ minOrder: 500, buckets: [], weekdays: [6] }]),
+    ).toEqual(["週六全站滿500元免運"])
+  })
+
+  it("多種取貨方式並列", () => {
+    expect(
+      campaignShippingMessages([{ minOrder: 666, buckets: ["cvs", "home"], weekdays: [6] }]),
+    ).toEqual(["週六超商取貨、宅配滿666元免運"])
+  })
+
+  it("★ 門檻是 0 的活動不出現在跑馬燈（那不是有效的免運條件）", () => {
+    expect(campaignShippingMessages([{ minOrder: 0, buckets: ["cvs"], weekdays: [6] }])).toEqual([])
+  })
+
+  it("沒有活動時不產生任何句子", () => {
+    expect(campaignShippingMessages([])).toEqual([])
   })
 })
