@@ -136,8 +136,32 @@
   }
 }
 
+/* 跑馬燈：整條訊息跑完一輪的秒數。
+ *
+ * 動畫是把內容平移 -50%（內容重複兩份，所以 -50% 剛好接回起點），因此「跑完一
+ * 輪」的時間固定，而**每則訊息露臉的頻率**取決於訊息有幾則。訊息從 4 則加到 5
+ * 則之後，同樣 32 秒要跑更多內容，等一則訊息輪到自己就變久了。
+ *
+ * 手機更明顯：畫面窄，一次只看得到一則，讀完就得等下一則捲進來；桌機一眼可以
+ * 看到兩三則，感覺不出來。所以手機縮短一輪的秒數。 */
 @utility animate-marquee {
-  animation: marquee 32s linear infinite;
+  animation: marquee 22s linear infinite;
+}
+
+@media (max-width: 640px) {
+  .animate-marquee {
+    animation-duration: 14s;
+  }
+}
+
+/* 使用者若在系統設定關閉動態效果，就不要一直捲 —— 前庭失調與注意力障礙者對
+ * 持續移動的文字特別敏感，而這條訊息是靜止也讀得完的。 */
+@media (prefers-reduced-motion: reduce) {
+  .animate-marquee {
+    animation: none;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
 }
 
 @layer base {

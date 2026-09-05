@@ -106,6 +106,22 @@ const BUCKET_NAMES: Record<string, string> = {
 }
 
 /**
+ * 「超商取貨」與「超商取貨付款」在客人眼裡是同一件事的兩種付法，所以活動只給
+ * 前者時一定要講清楚，否則選了取貨付款的人結帳被收運費才發現。
+ *
+ * 只在「有超商取貨、但不含取貨付款」時才加註記 —— 兩者都涵蓋時寫成
+ * 「超商取貨(非取貨付款)、超商取貨付款」會自相矛盾。
+ */
+function bucketLabels(buckets: string[]): string {
+  const needsQualifier = buckets.includes("cvs") && !buckets.includes("cvsCod")
+  return buckets
+    .map((b) =>
+      b === "cvs" && needsQualifier ? "超商取貨(非取貨付款)" : (BUCKET_NAMES[b] ?? b),
+    )
+    .join("、")
+}
+
+/**
  * 免運活動的跑馬燈文案，由活動條件產生，不寫死。
  *
  * 常態門檻那句寫死過一次（649/999 對不上後台實際設定，害客人在 999 被收運費），
@@ -122,9 +138,7 @@ export function campaignShippingMessages(campaigns: ShippingCampaign[]): string[
         c.weekdays.length > 0 && c.weekdays.length < 7
           ? `週${c.weekdays.map((d) => WEEKDAY_NAMES[d] ?? "").join("、")}`
           : ""
-      const methods = c.buckets.length > 0
-        ? c.buckets.map((b) => BUCKET_NAMES[b] ?? b).join("、")
-        : "全站"
+      const methods = c.buckets.length > 0 ? bucketLabels(c.buckets) : "全站"
       return `${days}${methods}滿${c.minOrder}元免運`
     })
 }

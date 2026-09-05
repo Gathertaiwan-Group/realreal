@@ -76,28 +76,38 @@ describe("免運文案", () => {
  * 活動條件產生，這裡鎖住那個對應關係。
  */
 describe("免運活動的跑馬燈文案", () => {
-  it("★ 週六 × 超商取貨 × 666", () => {
+  it("★ 週六 × 超商取貨 × 666，並註明不含取貨付款", () => {
+    // 「超商取貨」和「超商取貨付款」在客人眼裡是同一件事的兩種付法。活動只給
+    // 前者時不講清楚，選了取貨付款的人會在結帳被收運費才發現。
     expect(
       campaignShippingMessages([{ minOrder: 666, buckets: ["cvs"], weekdays: [6] }]),
-    ).toEqual(["週六超商取貨滿666元免運"])
+    ).toEqual(["週六超商取貨(非取貨付款)滿666元免運"])
+  })
+
+  it("★ 兩種超商方式都涵蓋時，不加註記（否則自相矛盾）", () => {
+    expect(
+      campaignShippingMessages([
+        { minOrder: 666, buckets: ["cvs", "cvsCod"], weekdays: [6] },
+      ]),
+    ).toEqual(["週六超商取貨、超商取貨付款滿666元免運"])
   })
 
   it("★ 後台改成週三宅配滿 800，文案自己跟著變", () => {
     expect(
       campaignShippingMessages([{ minOrder: 800, buckets: ["home"], weekdays: [3] }]),
-    ).toEqual(["週三宅配滿800元免運"])
+    ).toEqual(["週三宅配滿800元免運"])  // 沒有超商取貨就不會出現註記
   })
 
   it("多天：週六日", () => {
     expect(
       campaignShippingMessages([{ minOrder: 666, buckets: ["cvs"], weekdays: [6, 0] }]),
-    ).toEqual(["週六、日超商取貨滿666元免運"])
+    ).toEqual(["週六、日超商取貨(非取貨付款)滿666元免運"])
   })
 
   it("沒限定星期就不加星期前綴", () => {
     expect(
       campaignShippingMessages([{ minOrder: 500, buckets: ["cvs"], weekdays: [] }]),
-    ).toEqual(["超商取貨滿500元免運"])
+    ).toEqual(["超商取貨(非取貨付款)滿500元免運"])
   })
 
   it("沒限定取貨方式就說「全站」", () => {
@@ -109,7 +119,7 @@ describe("免運活動的跑馬燈文案", () => {
   it("多種取貨方式並列", () => {
     expect(
       campaignShippingMessages([{ minOrder: 666, buckets: ["cvs", "home"], weekdays: [6] }]),
-    ).toEqual(["週六超商取貨、宅配滿666元免運"])
+    ).toEqual(["週六超商取貨(非取貨付款)、宅配滿666元免運"])
   })
 
   it("★ 門檻是 0 的活動不出現在跑馬燈（那不是有效的免運條件）", () => {
