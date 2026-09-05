@@ -65,6 +65,9 @@ analyticsRouter.get("/admin/analytics/orders", requireAuth, requireAdmin, async 
   const { data: orders, error: ordersErr } = await supabase
     .from("orders")
     .select("id, total, status, created_at")
+    // 只算零售。通路商是月結批發，金額級距與零售差很多，混進來會讓日營收
+    // 曲線失去意義 —— 設計上就要求兩邊數字不互相汙染。
+    .eq("order_type", "retail")
     .gte("created_at", since)
     .order("created_at", { ascending: true })
 

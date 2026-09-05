@@ -62,6 +62,9 @@ export default async function AdminOrdersPage({
     .select(
       "id, order_number, status, payment_status, payment_method, total, created_at, deleted_at, user_id, guest_email, logistics(status, type)"
     )
+    // 只列零售訂單。批發訂單有自己的頁面（/admin/wholesale），混在一起會讓
+    // 「今天有幾張要出貨」這種一眼判斷失準 —— 兩種訂單的流程與狀態意義都不同。
+    .eq("order_type", "retail")
     .order("created_at", { ascending: false })
     .limit(200)
 

@@ -364,7 +364,10 @@ adminWholesaleRouter.post("/orders", async (req, res) => {
       // wholesale_paid_at，payment_status 只是讓既有查詢不至於看到 null。
       payment_status: "pending",
       shipping_method: "home_delivery",
-      payment_method: "wholesale_terms",
+      // 批發沒有線上金流，payment_method 就是 null。不硬塞一個 'wholesale_terms'：
+      // orders.payment_method 有 check constraint，塞進去整筆 insert 會被擋掉
+      // （23514），而「這筆訂單沒有線上付款方式」本來就是 null 要表達的意思。
+      payment_method: null,
       subtotal,
       shipping_fee: shippingFee,
       discount_amount: 0,
