@@ -45,7 +45,7 @@ function AnnouncementBar() {
     "加入會員立即享首購折50元",
     ...marqueeShippingMessages(shipping),
     ...campaignShippingMessages(campaigns),
-    "港澳寄送可運費到付",
+    "港澳寄件可順豐運費到付",
     "銀杏水蜜桃口味新上市",
   ]
   const items = [...messages, ...messages]
