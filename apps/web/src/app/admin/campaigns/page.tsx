@@ -441,11 +441,39 @@ function ConfigFields({
   }
 
   if (type === "free_shipping") {
+    const buckets = Array.isArray(config.shipping_buckets)
+      ? (config.shipping_buckets as string[])
+      : []
     return (
-      <div className="space-y-1.5">
-        <Label className="text-xs">最低訂單金額 (NT$)</Label>
-        <Input name={`${prefix}_min_order_amount`} type="number" min={0} defaultValue={(config.min_order_amount as number) ?? ""} placeholder="500" />
-      </div>
+      <>
+        <div className="space-y-1.5">
+          <Label className="text-xs">最低訂單金額 (NT$)</Label>
+          <Input name={`${prefix}_min_order_amount`} type="number" min={0} defaultValue={(config.min_order_amount as number) ?? ""} placeholder="500" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">適用取貨方式</Label>
+          <div className="flex flex-wrap gap-3 text-sm">
+            {[
+              ["cvs", "超商取貨"],
+              ["cvsCod", "超商取貨付款"],
+              ["home", "宅配"],
+            ].map(([value, label]) => (
+              <label key={value} className="flex items-center gap-1.5">
+                <input
+                  type="checkbox"
+                  name={`${prefix}_shipping_buckets`}
+                  value={value}
+                  defaultChecked={buckets.includes(value)}
+                />
+                {label}
+              </label>
+            ))}
+          </div>
+          <p className="text-[11px] text-zinc-500">
+            全部不勾＝不限取貨方式。超商取貨付款有代收成本，通常單獨考慮。
+          </p>
+        </div>
+      </>
     )
   }
 
@@ -520,7 +548,21 @@ function ConfigFields({
   )
 }
 
+/**
+ * 限定星期幾 —— 對所有活動類型通用，所以在這裡統一併進 config，
+ * 而不是每個類型的分支各寫一次（總會有一個新類型漏掉）。
+ * 一個都沒勾 = 不限制。
+ */
+function weekdayConfig(fd: FormData, prefix: string): Record<string, unknown> {
+  const days = fd.getAll(`${prefix}_active_weekdays`).map(Number)
+  return days.length > 0 ? { active_weekdays: days } : {}
+}
+
 function extractConfig(fd: FormData, prefix: string, type: string): Record<string, unknown> {
+  return { ...extractTypeConfig(fd, prefix, type), ...weekdayConfig(fd, prefix) }
+}
+
+function extractTypeConfig(fd: FormData, prefix: string, type: string): Record<string, unknown> {
   if (type === "discount") {
     return {
       discount_method: fd.get(`${prefix}_discount_method`) as string,
@@ -583,7 +625,11 @@ function extractConfig(fd: FormData, prefix: string, type: string): Record<strin
     }
   }
   if (type === "free_shipping") {
-    return { min_order_amount: Number(fd.get(`${prefix}_min_order_amount`)) || 0 }
+    return {
+      min_order_amount: Number(fd.get(`${prefix}_min_order_amount`)) || 0,
+      // 一個都沒勾 = 不限取貨方式，所以存空陣列（評估器把空陣列當作不限制）。
+      shipping_buckets: fd.getAll(`${prefix}_shipping_buckets`).map(String),
+    }
   }
   if (type === "points_multiplier") {
     return {
@@ -881,6 +927,18 @@ export default function AdminCampaignsPage() {
               <Label className="text-xs">開始時間 *</Label>
               <Input name="starts_at" type="datetime-local" required />
             </div>
+            <div className="space-y-1.5 md:col-span-2">
+              <Label className="text-xs">限定星期（不勾＝天天生效）</Label>
+              <div className="flex flex-wrap gap-3 text-sm">
+                {["日", "一", "二", "三", "四", "五", "六"].map((label, i) => (
+                  <label key={i} className="flex items-center gap-1">
+                    <input type="checkbox" name="c_active_weekdays" value={i} />
+                    星期{label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
             <div className="space-y-1.5">
               <Label className="text-xs">結束時間（選填）</Label>
               <Input name="ends_at" type="datetime-local" />
@@ -1065,6 +1123,26 @@ export default function AdminCampaignsPage() {
                               <Label className="text-xs">開始時間 *</Label>
                               <Input name="starts_at" type="datetime-local" required defaultValue={toLocalDatetime(c.starts_at)} />
                             </div>
+                            <div className="space-y-1.5 md:col-span-2">
+                              <Label className="text-xs">限定星期（不勾＝天天生效）</Label>
+                              <div className="flex flex-wrap gap-3 text-sm">
+                                {["日", "一", "二", "三", "四", "五", "六"].map((label, i) => (
+                                  <label key={i} className="flex items-center gap-1">
+                                    <input
+                                      type="checkbox"
+                                      name="e_active_weekdays"
+                                      value={i}
+                                      defaultChecked={
+                                        Array.isArray(c.config?.active_weekdays) &&
+                                        (c.config.active_weekdays as number[]).includes(i)
+                                      }
+                                    />
+                                    星期{label}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+
                             <div className="space-y-1.5">
                               <Label className="text-xs">結束時間（選填）</Label>
                               <Input name="ends_at" type="datetime-local" defaultValue={toLocalDatetime(c.ends_at)} />

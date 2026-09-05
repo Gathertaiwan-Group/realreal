@@ -16,7 +16,7 @@ import { requestPayment as linePayRequestPayment } from "../lib/linepay"
 import { initiatePayment as jkoPayInitiatePayment } from "../lib/jkopay"
 import { getApiBaseUrl, getSiteUrl } from "../lib/urls"
 import { verifyRepayToken } from "../lib/repay-token"
-import { computeShipping, getShippingRule } from "../lib/shipping"
+import { computeShipping, getShippingRule, shippingBucket } from "../lib/shipping"
 import { inventoryQueue } from "../lib/queue"
 import { enqueuePostPaymentJobs, notifyOrderPlacedCod } from "../lib/enqueue-post-payment"
 import { saveCustomerContact } from "../lib/save-customer-contact"
@@ -330,6 +330,7 @@ ordersRouter.post("/preview", optionalAuth, async (req, res) => {
       items: cartItems,
       subtotal: subtotalCents / 100,
       shipping_fee: shippingFeeCents / 100,
+      shipping_bucket: shippingBucket(shippingMethod, paymentMethodHint),
     },
     couponId: earlyCouponId,
   }
@@ -751,6 +752,7 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
       items: cartItems,
       subtotal: subtotalCents / 100,
       shipping_fee: shippingFeeCents / 100,
+      shipping_bucket: shippingBucket(shippingMethod, paymentMethod),
     },
     couponId: earlyCouponId,
   }

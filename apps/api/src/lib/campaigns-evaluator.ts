@@ -1,4 +1,5 @@
 import { supabase } from "./supabase"
+import type { ShippingBucket } from "./shipping"
 
 /* ============================================================================
  * Exported types
@@ -45,6 +46,13 @@ export type EvaluatorContext = {
     subtotal: number
     /** Shipping fee in dollars. */
     shipping_fee: number
+    /**
+     * 運費級距：cvs 超商取貨／cvsCod 超商取貨付款／home 宅配／overseas 海外。
+     * 由 shippingBucket() 從運送方式 + 付款方式算出 —— 前兩者的 shipping_method
+     * 相同，差別只在付款方式，所以活動要限定「超商取貨但不含取貨付款」時，光看
+     * 運送方式是分不出來的。未提供時視為不限制。
+     */
+    shipping_bucket?: ShippingBucket
   }
   /**
    * id of the coupon the customer typed at checkout, already validated
@@ -477,6 +485,20 @@ export function evalFreeShipping(
   if (ctx.cart.subtotal < minOrder) {
     return notApplied(c, "subtotal 未達門檻")
   }
+
+  // 可限定只有某幾種取貨方式享有，例如「超商取貨滿 666 免運」不含超商取貨付款
+  // （代收貨款有額外成本）。沒設就是全部適用，維持既有活動的行為。
+  const methods = Array.isArray(cfg.shipping_buckets)
+    ? (cfg.shipping_buckets as unknown[]).map(String)
+    : null
+  if (methods && methods.length > 0) {
+    const bucket = ctx.cart.shipping_bucket
+    // 結帳沒帶級距進來時不套用 —— 寧可少給一次免運，也不要在不該給的通路給了。
+    if (!bucket || !methods.includes(bucket)) {
+      return notApplied(c, `此活動不適用於這個取貨方式（${bucket ?? "未知"}）`)
+    }
+  }
+
   return { ...applied(c), zero_shipping: true }
 }
 
@@ -868,10 +890,42 @@ export async function evalFirstPurchase(
  * Dispatcher
  * ========================================================================== */
 
+/**
+ * 限定星期幾才生效。0=週日 … 6=週六，以**台北時間**判斷。
+ *
+ * 活動本身只有起訖日期，無法表達「每週六」這種週期性檔期。這道閘門放在
+ * dispatcher，所以任何活動類型都能限定星期，不必為了免運再開一個新類型。
+ *
+ * 時區是重點：週六 00:30（台北）在 UTC 還是週五。用 UTC 判斷會讓週六一開始的
+ * 半夜訂單拿不到優惠、而週日凌晨反而拿得到 —— 兩邊都會被客訴。
+ */
+export function weekdayBlocked(
+  c: CampaignRow,
+  now: Date = new Date(),
+): string | null {
+  const raw = (getConfig(c) as { active_weekdays?: unknown }).active_weekdays
+  if (!Array.isArray(raw) || raw.length === 0) return null
+
+  const allowed = raw.map(Number).filter((n) => Number.isInteger(n) && n >= 0 && n <= 6)
+  if (allowed.length === 0) return null
+
+  const tpe = new Date(now.getTime() + 8 * 3600 * 1000)
+  const today = tpe.getUTCDay()
+  if (allowed.includes(today)) return null
+
+  const NAMES = ["日", "一", "二", "三", "四", "五", "六"]
+  return `此活動限星期${allowed.map((d) => NAMES[d]).join("、")}，今天是星期${NAMES[today]}`
+}
+
 export async function evaluateCampaign(
   c: CampaignRow,
   ctx: EvaluatorContext,
 ): Promise<EvaluatorResult> {
+  // 星期限制對所有類型一視同仁，所以擋在分派之前 —— 寫在個別 eval 函式裡，
+  // 早晚會有一個新類型忘記加。
+  const blocked = weekdayBlocked(c)
+  if (blocked) return notApplied(c, blocked)
+
   switch (c.type) {
     case "discount":
       return evalDiscount(c, ctx)

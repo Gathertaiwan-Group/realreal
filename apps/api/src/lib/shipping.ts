@@ -49,3 +49,23 @@ export async function computeShipping(
   if (rule.free_threshold > 0 && subtotal >= rule.free_threshold) return 0
   return rule.fee
 }
+
+/**
+ * 三種運費級距：cvs 超商取貨、cvsCod 超商取貨付款、home 宅配。
+ *
+ * 「超商取貨」與「超商取貨付款」的差別在**付款方式**（cvs_cod），不是運送方式
+ * —— 兩者的 shipping_method 都是 cvs_711 / cvs_family。任何要區分這兩者的地方
+ * 都得同時看付款方式，所以把判斷收在這裡一次，免得各處自己拼、拼錯一個就變成
+ * 給錯免運。
+ */
+export type ShippingBucket = "cvs" | "cvsCod" | "home" | "overseas"
+
+export function shippingBucket(
+  method: string | null | undefined,
+  paymentMethod?: string | null,
+): ShippingBucket {
+  if (method === "overseas_cod") return "overseas"
+  const isCvs = method === "cvs_711" || method === "cvs_family"
+  if (isCvs) return paymentMethod === "cvs_cod" ? "cvsCod" : "cvs"
+  return "home"
+}
