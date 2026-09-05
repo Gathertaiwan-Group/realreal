@@ -176,7 +176,14 @@ export default function WholesalePage() {
             ) : (
               orders.map((o) => (
                 <tr key={o.id} className="hover:bg-zinc-50">
-                  <td className="px-4 py-3 font-mono text-xs">{o.order_number}</td>
+                  <td className="px-4 py-3 font-mono text-xs">
+                    <Link
+                      href={`/admin/wholesale/orders/${o.id}`}
+                      className="text-[#10305a] hover:underline"
+                    >
+                      {o.order_number}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3">{o.channel_name}</td>
                   <td className="px-4 py-3 text-xs">{o.status_label}</td>
                   <td className="px-4 py-3 text-right">

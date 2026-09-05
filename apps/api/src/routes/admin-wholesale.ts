@@ -432,3 +432,122 @@ adminWholesaleRouter.get("/orders", async (req, res) => {
     })),
   })
 })
+
+/**
+ * 付款到期日。
+ *   on_receipt_3d 收貨後 3 個工作天 —— 從出貨日起算，跳過六日
+ *   month_end     當月最後一天
+ * 以台北時間計算：出貨都在台灣，用 UTC 會在半夜前後差一天。
+ */
+export function calcDueDate(
+  shippedAt: Date,
+  terms: "on_receipt_3d" | "month_end",
+): string {
+  const tpe = new Date(shippedAt.getTime() + 8 * 3600 * 1000)
+  if (terms === "month_end") {
+    const end = new Date(Date.UTC(tpe.getUTCFullYear(), tpe.getUTCMonth() + 1, 0))
+    return end.toISOString().slice(0, 10)
+  }
+  const d = new Date(Date.UTC(tpe.getUTCFullYear(), tpe.getUTCMonth(), tpe.getUTCDate()))
+  let added = 0
+  while (added < 3) {
+    d.setUTCDate(d.getUTCDate() + 1)
+    const day = d.getUTCDay()
+    if (day !== 0 && day !== 6) added += 1
+  }
+  return d.toISOString().slice(0, 10)
+}
+
+adminWholesaleRouter.get("/orders/:id", async (req, res) => {
+  const { data: order, error } = await supabase
+    .from("orders")
+    .select("*")
+    .eq("id", req.params.id)
+    .eq("order_type", "wholesale")
+    .single()
+  if (error || !order) { res.status(404).json({ error: "找不到這張批發訂單" }); return }
+
+  const [{ data: channel }, { data: items }] = await Promise.all([
+    supabase
+      .from("wholesale_channels")
+      .select("*")
+      .eq("id", order.wholesale_channel_id as string)
+      .maybeSingle(),
+    supabase
+      .from("order_items")
+      .select("id, variant_id, qty, unit_price, product_snapshot")
+      .eq("order_id", order.id as string),
+  ])
+
+  res.json({
+    order: { ...order, status_label: WHOLESALE_STATUS_LABEL[order.status as string] ?? order.status },
+    channel,
+    items: (items ?? []).map((i) => {
+      const snap = (i.product_snapshot ?? {}) as { name?: string }
+      return {
+        id: i.id,
+        name: snap.name ?? "商品",
+        qty: Number(i.qty),
+        unitPrice: Number(i.unit_price),
+        amount: Number(i.qty) * Number(i.unit_price),
+      }
+    }),
+  })
+})
+
+const orderPatchSchema = z.object({
+  status: z.enum(["pending", "processing", "shipped", "completed", "cancelled"]).optional(),
+  markPaid: z.boolean().optional(),
+})
+
+/**
+ * PATCH /admin/wholesale/orders/:id — 推進狀態 / 標記收款。
+ *
+ * 出貨與收款是兩條獨立的線：出貨改 status，收款寫 wholesale_paid_at。標記出貨時
+ * 順手依這家的付款條件算出到期日，因為那正是「出貨時附帳單」的那張帳單要印的
+ * 日期 —— 事後補算就得回頭查出貨日，容易算錯。
+ */
+adminWholesaleRouter.patch("/orders/:id", async (req, res) => {
+  const parsed = orderPatchSchema.safeParse(req.body)
+  if (!parsed.success) { res.status(400).json({ error: "欄位格式不正確" }); return }
+  const { status, markPaid } = parsed.data
+
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, status, wholesale_channel_id, wholesale_due_date")
+    .eq("id", req.params.id)
+    .eq("order_type", "wholesale")
+    .single()
+  if (!order) { res.status(404).json({ error: "找不到這張批發訂單" }); return }
+
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
+  if (status) patch.status = status
+
+  // 第一次標記出貨時才算到期日；重複出貨或事後改狀態不覆寫已經印在帳單上的日期。
+  if (status === "shipped" && !order.wholesale_due_date) {
+    const { data: channel } = await supabase
+      .from("wholesale_channels")
+      .select("payment_terms")
+      .eq("id", order.wholesale_channel_id as string)
+      .maybeSingle()
+    const terms = (channel?.payment_terms as "on_receipt_3d" | "month_end") ?? "on_receipt_3d"
+    patch.wholesale_due_date = calcDueDate(new Date(), terms)
+  }
+
+  if (markPaid === true) {
+    patch.wholesale_paid_at = new Date().toISOString()
+    patch.payment_status = "paid"
+  } else if (markPaid === false) {
+    patch.wholesale_paid_at = null
+    patch.payment_status = "pending"
+  }
+
+  const { data, error } = await supabase
+    .from("orders")
+    .update(patch)
+    .eq("id", req.params.id)
+    .select()
+    .single()
+  if (error) { res.status(500).json({ error: error.message }); return }
+  res.json({ order: data })
+})
