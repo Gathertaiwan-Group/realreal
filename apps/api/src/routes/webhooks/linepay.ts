@@ -51,7 +51,12 @@ linepayWebhookRouter.get("/confirm", async (req, res) => {
 
     const { error: captureErr } = await supabase
       .from("payments")
-      .update({ status: "captured", updated_at: new Date().toISOString() })
+      // No updated_at: the payments table has no such column (only orders does),
+      // and PostgREST rejects the whole UPDATE with "Could not find the
+      // 'updated_at' column of 'payments' in the schema cache" — which is why
+      // every LINE Pay row sat on status="pending" while the order below
+      // correctly went "paid". Every other gateway's webhook omits it too.
+      .update({ status: "captured" })
       .eq("id", payment.id)
     if (captureErr) {
       // Payment captured at LINE Pay but the local payments-row flip failed —
@@ -90,7 +95,8 @@ linepayWebhookRouter.get("/confirm", async (req, res) => {
 
     await supabase
       .from("payments")
-      .update({ status: "failed", updated_at: new Date().toISOString() })
+      // No updated_at — see the capture flip above; the column does not exist.
+      .update({ status: "failed" })
       .eq("id", payment.id)
       .neq("status", "captured")
 
