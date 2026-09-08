@@ -158,10 +158,16 @@ async function isFirstPurchase(userId: string | null | undefined): Promise<boole
   // order fails or is cancelled; this status filter is the second line of
   // defence, so pre-existing rows that still carry a stale flag don't
   // misjudge the customer either.
+  //
+  // Archived orders (deleted_at set) are excluded for the same reason. Hiding an
+  // order from the admin list used to leave it holding the claim forever:
+  // #10000071 was archived on 2026-08-02 and was still eating that customer's
+  // NT$50 a month later, with nothing on screen to show why.
   const { count, error } = await supabase
     .from("orders")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
+    .is("deleted_at", null)
     .not("status", "in", "(failed,cancelled)")
     .or("status.in.(processing,shipped,completed),first_purchase_applied.eq.true")
   if (error) {

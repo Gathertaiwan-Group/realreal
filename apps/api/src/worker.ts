@@ -22,6 +22,7 @@ import { invoiceWorker } from "./workers/invoice-issuer"
 import { pointsExpireQueue, pointsExpireWorker } from "./workers/points-expire"
 import { subscriptionBillingQueue, subscriptionBillingWorker } from "./workers/subscription-billing"
 import { tierExpireQueue, tierExpireWorker } from "./workers/tier-expire"
+import { expireUnpaidOrdersQueue, expireUnpaidOrdersWorker, UNPAID_GRACE_HOURS } from "./workers/expire-unpaid-orders"
 
 const logger = pino({
   transport: process.env.NODE_ENV !== "production" ? { target: "pino-pretty" } : undefined,
@@ -59,7 +60,16 @@ async function registerSchedulers() {
     { pattern: "0 4 * * *", tz: "Asia/Taipei" },
     { name: "expire", data: {} },
   )
-  logger.info("Job schedulers registered (daily-billing 03:00, low-stock-check 09:00, daily-points-expire 03:00, daily-tier-expire 04:00 Asia/Taipei)")
+  // Hourly sweep for unpaid online orders. Hourly rather than daily because the
+  // grace period is measured in hours — a daily run would let an order sit
+  // unpaid for up to 48h, holding the customer's first-purchase discount that
+  // whole time.
+  await expireUnpaidOrdersQueue.upsertJobScheduler(
+    "expire-unpaid-orders",
+    { pattern: "10 * * * *", tz: "Asia/Taipei" },
+    { name: "expire", data: {} },
+  )
+  logger.info(`Job schedulers registered (daily-billing 03:00, low-stock-check 09:00, daily-points-expire 03:00, daily-tier-expire 04:00 Asia/Taipei, expire-unpaid-orders hourly at :10, grace ${UNPAID_GRACE_HOURS}h)`)
 }
 
 const workers = [
@@ -68,6 +78,7 @@ const workers = [
   { name: "points-expire", worker: pointsExpireWorker },
   { name: "subscription-billing", worker: subscriptionBillingWorker },
   { name: "tier-expire", worker: tierExpireWorker },
+  { name: "expire-unpaid-orders", worker: expireUnpaidOrdersWorker },
 ]
 
 /**
@@ -138,7 +149,7 @@ const healthServer = http.createServer((req, res) => {
 healthServer.listen(Number(process.env.PORT ?? 4001), () =>
   logger.info({ port: process.env.PORT ?? 4001 }, "worker health server listening"))
 
-logger.info("Worker process started (inventory, invoice, points-expire, subscription-billing, tier-expire)")
+logger.info("Worker process started (inventory, invoice, points-expire, subscription-billing, tier-expire, expire-unpaid-orders)")
 
 /**
  * Graceful shutdown.
