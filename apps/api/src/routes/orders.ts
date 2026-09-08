@@ -1,4 +1,5 @@
 import { Router } from "express"
+import * as Sentry from "@sentry/node"
 import { randomBytes } from "crypto"
 import { z } from "zod"
 import { supabase } from "../lib/supabase"
@@ -1270,6 +1271,14 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
     }
   } catch (err) {
     console.error(`[orders] ${paymentMethod} payment initiation failed:`, err)
+    // Report it. The customer only ever sees "Payment gateway error", and the
+    // console line lives in a log nobody reads — so when #10000217's LINE Pay
+    // attempts failed on 2026-09-07 the actual gateway message was lost and the
+    // cause could not be determined afterwards. Sentry keeps the real reason.
+    Sentry.captureException(err, {
+      tags: { area: "checkout", gateway: paymentMethod },
+      extra: { orderNumber: order.order_number, amount: Math.round(centsToTwd(totalCents)) },
+    })
     // Rollback: delete child tables + restore stock first, then delete parent order.
     // Order matters: payments/items/addresses must be removed before orders (FK).
     await Promise.all([
