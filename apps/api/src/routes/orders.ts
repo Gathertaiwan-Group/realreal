@@ -1104,12 +1104,23 @@ ordersRouter.post("/", optionalAuth, idempotencyMiddleware, async (req, res) => 
 
   if (addrError) {
     console.error("[orders] insert order_addresses failed:", addrError)
-    // Rollback: restore stock, delete items + order in parallel.
+    // Rollback. The parent `orders` row must be deleted AFTER its children —
+    // order_items has an FK to it. This used to put all three in one
+    // Promise.all, so the two deletes raced: whenever the parent delete won,
+    // Postgres rejected it for the FK violation, nothing checked the error,
+    // and the order survived with items but no address and no payment. That is
+    // exactly the state #10000217 was left in on 2026-09-07 — the customer saw
+    // a broken checkout and re-ordered as #10000221.
     await Promise.all([
       supabase.rpc("atomic_restore_stock", { p_variants: variantsPayload }),
       supabase.from("order_items").delete().eq("order_id", order.id),
-      supabase.from("orders").delete().eq("id", order.id),
     ])
+    const { error: rollbackErr } = await supabase.from("orders").delete().eq("id", order.id)
+    if (rollbackErr) {
+      // A half-rolled-back order is worse than a failed one: it shows up in the
+      // admin order list as a real order nobody can ship. Say so loudly.
+      console.error("[orders] rollback could not delete order", order.order_number, rollbackErr)
+    }
     res.status(500).json({ error: "Failed to create order address" }); return
   }
 
