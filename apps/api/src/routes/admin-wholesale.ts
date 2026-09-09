@@ -551,3 +551,46 @@ adminWholesaleRouter.patch("/orders/:id", async (req, res) => {
   if (error) { res.status(500).json({ error: error.message }); return }
   res.json({ order: data })
 })
+
+/**
+ * DELETE /admin/wholesale/orders/:id —— 刪掉一張批發訂單。
+ *
+ * 為什麼需要：建立訂單的畫面很容易留下測試單。#10000205 就是 2026-09-05 測試
+ * 下單功能時建的，一直混在通路商訂單列表裡，差點被當成真單出貨；後台沒有任何
+ * 刪除的地方，只能直接進資料庫刪。
+ *
+ * 只准刪「還沒出貨、也還沒收款」的訂單。已出貨或已收款的是真實的商業紀錄，
+ * 該留著 —— 那種情況要的是改狀態，不是讓它消失。
+ *
+ * 先刪 order_items 再刪 orders：order_items 有外鍵指向 orders，兩者並行刪除時
+ * 只要父列先到就會被外鍵擋下來（今天早上零售訂單的回滾就是這樣留下殘骸的）。
+ */
+adminWholesaleRouter.delete("/orders/:id", async (req, res) => {
+  const { data: order } = await supabase
+    .from("orders")
+    .select("id, order_number, status, payment_status")
+    .eq("id", req.params.id)
+    .eq("order_type", "wholesale")
+    .single()
+  if (!order) { res.status(404).json({ error: "找不到這張批發訂單" }); return }
+
+  if (order.status === "shipped" || order.payment_status === "paid") {
+    res.status(409).json({
+      error: `#${order.order_number} 已經出貨或已收款，不能刪除。要作廢請改狀態。`,
+    })
+    return
+  }
+
+  const { error: itemsErr } = await supabase.from("order_items").delete().eq("order_id", order.id)
+  if (itemsErr) { res.status(500).json({ error: `刪除訂單明細失敗：${itemsErr.message}` }); return }
+
+  const { error: orderErr } = await supabase.from("orders").delete().eq("id", order.id)
+  if (orderErr) {
+    // 明細已經沒了，訂單卻還在 —— 這是最糟的狀態，一定要講出來。
+    console.error("[admin-wholesale] 明細已刪但訂單刪不掉:", order.order_number, orderErr)
+    res.status(500).json({ error: `訂單明細已刪除，但訂單本身刪除失敗：${orderErr.message}` })
+    return
+  }
+
+  res.json({ ok: true, orderNumber: order.order_number })
+})

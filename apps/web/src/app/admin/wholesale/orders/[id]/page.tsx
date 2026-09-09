@@ -2,6 +2,7 @@
 
 import { use, useCallback, useEffect, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { adminFetch } from "@/lib/admin-fetch"
 import { API_URL } from "@/lib/api-url"
@@ -44,6 +45,7 @@ const TERMS_LABEL: Record<string, string> = {
 
 export default function WholesaleOrderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
+  const router = useRouter()
   const [order, setOrder] = useState<Order | null>(null)
   const [channel, setChannel] = useState<Channel | null>(null)
   const [items, setItems] = useState<Item[]>([])
@@ -79,6 +81,31 @@ export default function WholesaleOrderPage({ params }: { params: Promise<{ id: s
       }
       toast.success(okMsg)
       load()
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 建單畫面很容易留下測試單（#10000205 就是這樣來的，一直混在列表裡差點被
+  // 當成真單出貨）。只有還沒出貨、也還沒收款的訂單刪得掉 —— 後端也擋一次。
+  async function remove() {
+    if (!order) return
+    const yes = window.confirm(
+      `確定要刪除 #${order.order_number}？
+
+這張訂單和它的明細會被永久移除，無法復原。`,
+    )
+    if (!yes) return
+    setBusy(true)
+    try {
+      const res = await adminFetch(`${API_URL}/admin/wholesale/orders/${id}`, { method: "DELETE" })
+      const json = await res.json()
+      if (!res.ok) {
+        toast.error(json.error ?? "刪除失敗")
+        return
+      }
+      toast.success(`已刪除 #${json.orderNumber}`)
+      router.push("/admin/wholesale")
     } finally {
       setBusy(false)
     }
@@ -151,6 +178,16 @@ export default function WholesaleOrderPage({ params }: { params: Promise<{ id: s
           >
             列印出貨單／帳單
           </button>
+          {order.status !== "shipped" && !order.wholesale_paid_at && (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={remove}
+              className="rounded-[10px] border border-red-200 px-3 py-1.5 text-sm text-red-600 disabled:opacity-50"
+            >
+              刪除訂單
+            </button>
+          )}
         </div>
       </div>
 
