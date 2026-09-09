@@ -23,6 +23,7 @@ import { pointsExpireQueue, pointsExpireWorker } from "./workers/points-expire"
 import { subscriptionBillingQueue, subscriptionBillingWorker } from "./workers/subscription-billing"
 import { tierExpireQueue, tierExpireWorker } from "./workers/tier-expire"
 import { expireUnpaidOrdersQueue, expireUnpaidOrdersWorker, UNPAID_GRACE_HOURS } from "./workers/expire-unpaid-orders"
+import { completeShippedQueue, completeShippedWorker, AUTO_COMPLETE_DAYS } from "./workers/complete-shipped-orders"
 
 const logger = pino({
   transport: process.env.NODE_ENV !== "production" ? { target: "pino-pretty" } : undefined,
@@ -69,7 +70,14 @@ async function registerSchedulers() {
     { pattern: "10 * * * *", tz: "Asia/Taipei" },
     { name: "expire", data: {} },
   )
-  logger.info(`Job schedulers registered (daily-billing 03:00, low-stock-check 09:00, daily-points-expire 03:00, daily-tier-expire 04:00 Asia/Taipei, expire-unpaid-orders hourly at :10, grace ${UNPAID_GRACE_HOURS}h)`)
+  // 出貨滿 20 天自動結案（05:00 Asia/Taipei）。每天一次就夠 —— 差幾小時
+  // 對「出貨後 20 天」沒有意義，而且這支不寄信，沒有時效壓力。
+  await completeShippedQueue.upsertJobScheduler(
+    "daily-complete-shipped",
+    { pattern: "0 5 * * *", tz: "Asia/Taipei" },
+    { name: "complete", data: {} },
+  )
+  logger.info(`Job schedulers registered (daily-billing 03:00, low-stock-check 09:00, daily-points-expire 03:00, daily-tier-expire 04:00, daily-complete-shipped 05:00 Asia/Taipei, expire-unpaid-orders hourly at :10, grace ${UNPAID_GRACE_HOURS}h, auto-complete ${AUTO_COMPLETE_DAYS}d)`)
 }
 
 const workers = [
@@ -79,6 +87,7 @@ const workers = [
   { name: "subscription-billing", worker: subscriptionBillingWorker },
   { name: "tier-expire", worker: tierExpireWorker },
   { name: "expire-unpaid-orders", worker: expireUnpaidOrdersWorker },
+  { name: "complete-shipped-orders", worker: completeShippedWorker },
 ]
 
 /**
@@ -149,7 +158,7 @@ const healthServer = http.createServer((req, res) => {
 healthServer.listen(Number(process.env.PORT ?? 4001), () =>
   logger.info({ port: process.env.PORT ?? 4001 }, "worker health server listening"))
 
-logger.info("Worker process started (inventory, invoice, points-expire, subscription-billing, tier-expire, expire-unpaid-orders)")
+logger.info("Worker process started (inventory, invoice, points-expire, subscription-billing, tier-expire, expire-unpaid-orders, complete-shipped-orders)")
 
 /**
  * Graceful shutdown.

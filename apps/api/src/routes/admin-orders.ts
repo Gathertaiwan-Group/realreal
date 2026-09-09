@@ -9,8 +9,6 @@ import { refundOrderPoints } from "../lib/points"
 import { decrementSpendOnRefund } from "../lib/tier"
 import { restoreOrderStock, refundCouponUsage, cancelOrderById } from "../lib/cancel-order"
 import { renderAndSendEmail } from "../workers/email-sender"
-import { sendEmail, parseRecipients } from "../lib/email"
-import { getSetting } from "../lib/settings"
 
 export const adminOrdersRouter = Router()
 
@@ -442,7 +440,7 @@ async function shipOrderById(
 ): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
   const { data: order, error } = await supabase
     .from("orders")
-    .select("id, order_number, status, payment_method, total, guest_email, user_id")
+    .select("id, order_number, status, payment_method, total, guest_email, user_id, metadata")
     .eq("id", orderId)
     .single()
 
@@ -496,9 +494,19 @@ async function shipOrderById(
   }
   if (!recipientEmail) recipientEmail = (order.guest_email as string | null | undefined) ?? undefined
 
+  // 出貨時間記進 metadata。orders 沒有 shipped_at 欄位，而「出貨後 20 天自動
+  // 結案」需要知道到底哪天出的貨 —— updated_at 只要之後任何一次修改就會被推後。
+  // metadata 是既有的 jsonb 欄位，不必動資料表結構。
+  const shippedAt = new Date().toISOString()
+  const prevMeta = (order.metadata ?? {}) as Record<string, unknown>
+
   const { error: updateError } = await supabase
     .from("orders")
-    .update({ status: "shipped", updated_at: new Date().toISOString() })
+    .update({
+      status: "shipped",
+      metadata: { ...prevMeta, shipped_at: shippedAt },
+      updated_at: shippedAt,
+    })
     .eq("id", orderId)
 
   if (updateError) {
@@ -520,19 +528,10 @@ async function shipOrderById(
     }
   }
 
-  try {
-    const settingVal = await getSetting("notifications.admin_email")
-    const adminEmails = parseRecipients(settingVal ?? process.env.ADMIN_EMAIL)
-    console.log(`[admin/orders] ship admin email → setting="${settingVal}" envFallback="${process.env.ADMIN_EMAIL}" resolved=${JSON.stringify(adminEmails)}`)
-    if (adminEmails.length > 0) {
-      const { renderOrderShipped } = await import("../emails/OrderShipped")
-      const subject = `【已出貨】訂單 #${order.order_number} — ${customerName}`
-      const html = renderOrderShipped(emailData)
-      await sendEmail({ to: adminEmails, subject, html })
-    }
-  } catch (err) {
-    console.warn(`[admin/orders] order-shipped admin email failed for ${orderId}:`, err)
-  }
+  // 出貨通知只寄給客人。以前會再寄一份一模一樣的給 notifications.admin_email
+  // （也就是店主自己），出貨日一次 30 筆就是 30 封自己寄給自己的信,信箱被洗版
+  // 而且沒有任何用處 —— 後台訂單列表本來就看得到出貨狀態。2026-09-09 移除。
+  // 其他管理者通知（新訂單、付款、退款、聯絡表單）不受影響。
 
   return { ok: true }
 }
